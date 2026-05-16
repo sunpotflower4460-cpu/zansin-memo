@@ -71,10 +71,11 @@ export function AnimatedPressable({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ ...accessibilityState, disabled: disabled ?? false }}
     >
-      <Animated.View style={[style, pressed && pressedStyle, { transform: [{ scale }], opacity: pressed ? 0.92 : 1 }]}>
+      <Animated.View
+        style={[style, pressed && pressedStyle, { transform: [{ scale }], opacity: pressed ? motion.pressOpacity : 1 }]}
+      >
         {children}
       </Animated.View>
     </Pressable>
   );
 }
-

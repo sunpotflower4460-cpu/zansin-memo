@@ -10,21 +10,36 @@ type AppLaunchIntroProps = {
 
 export function AppLaunchIntro({ visible }: AppLaunchIntroProps) {
   const opacity = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const [shouldRender, setShouldRender] = React.useState(visible);
 
   React.useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: motion.fadeInMs,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
     Animated.timing(opacity, {
-      toValue: visible ? 1 : 0,
-      duration: visible ? motion.fadeInMs : motion.fadeOutMs,
+      toValue: 0,
+      duration: motion.fadeOutMs,
       useNativeDriver: true,
-    }).start();
+    }).start(({ finished }) => {
+      if (finished) {
+        setShouldRender(false);
+      }
+    });
   }, [opacity, visible]);
 
-  if (!visible) {
+  if (!shouldRender) {
     return null;
   }
 
   return (
-    <Animated.View style={[styles.overlay, { opacity }]}>
+    <Animated.View style={[styles.overlay, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
       <View style={styles.iconWrap}>
         <Ionicons name="leaf-outline" size={24} color={theme.colors.primary} />
       </View>
@@ -65,4 +80,3 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 });
-
