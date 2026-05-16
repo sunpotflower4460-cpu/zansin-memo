@@ -24,7 +24,13 @@ export function ChipSelector<T extends string | number>({
   return (
     <View style={styles.section}>
       <Text style={styles.label}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+        accessibilityLabel={`${label} の選択肢`}
+        accessibilityHint="左右にスワイプして選択肢を表示できます"
+      >
         {allowClear ? (
           <IOSChip label={clearLabel} selected={selectedValue === undefined} onPress={() => onChange(undefined)} />
         ) : null}
