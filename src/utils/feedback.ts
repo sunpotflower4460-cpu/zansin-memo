@@ -1,5 +1,5 @@
-import { Platform, Vibration } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 export const triggerLightFeedback = () => {
-  Vibration.vibrate(Platform.OS === 'ios' ? 10 : 15);
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 };

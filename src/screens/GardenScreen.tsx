@@ -13,6 +13,7 @@ type GardenScreenProps = {
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const untaggedLabel = '未分類';
+const GARDEN_CARD_WIDTH = 210;
 
 const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
   seed: 'leaf-outline',
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
     paddingRight: 14,
   },
   card: {
-    width: 210,
+    width: GARDEN_CARD_WIDTH,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,

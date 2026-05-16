@@ -11,6 +11,7 @@ export const theme = {
     primary: '#1f6b49',
     primaryPressed: '#19583c',
     primarySoft: '#e4f1e8',
+    primaryDisabled: '#8fa1af',
     border: '#dbe4dd',
     chipBg: '#edf3ee',
     dangerBg: '#fff1f2',

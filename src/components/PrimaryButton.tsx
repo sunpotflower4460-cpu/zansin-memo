@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
   },
   buttonDisabled: {
-    backgroundColor: '#8fa1af',
+    backgroundColor: theme.colors.primaryDisabled,
   },
   label: {
     color: '#ffffff',

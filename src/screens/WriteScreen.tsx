@@ -31,11 +31,14 @@ type WriteScreenProps = {
   onSave: (input: SeedCreateInput) => void;
 };
 
+const MIN_SCROLL_BOTTOM_PADDING = 150;
+const BOTTOM_BAR_OVERLAY_OFFSET = 110;
+
 export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
   const insets = useSafeAreaInsets();
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const contentStyle = [styles.content, { paddingBottom: Math.max(150, insets.bottom + 110) }];
+  const contentStyle = [styles.content, { paddingBottom: Math.max(MIN_SCROLL_BOTTOM_PADDING, insets.bottom + BOTTOM_BAR_OVERLAY_OFFSET) }];
   const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
 
   return (

@@ -52,6 +52,8 @@ const toDraft = (seed: Seed): DraftState => ({
   relatedSeedIds: seed.relatedSeedIds,
 });
 
+const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
+
 export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -149,7 +151,11 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                       return (
                         <IOSChip
                           key={candidate.id}
-                          label={candidate.body.length > 16 ? `${candidate.body.slice(0, 16)}…` : candidate.body}
+                          label={
+                            candidate.body.length > MAX_RELATED_CHIP_LABEL_LENGTH
+                              ? `${candidate.body.slice(0, MAX_RELATED_CHIP_LABEL_LENGTH)}…`
+                              : candidate.body
+                          }
                           selected={selected}
                           onPress={() => toggleRelatedSeed(candidate.id)}
                         />
