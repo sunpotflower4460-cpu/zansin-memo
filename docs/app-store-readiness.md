@@ -48,3 +48,4 @@
 - Apple Developer Program加入状態確認
 - App ID / Bundle Identifier / Provisioning の整備
 - App Store Connect のアプリ作成とメタ情報入力
+- 現在の開発用ID（`com.sunpotflower4460.kizashinotes`）を本番提出前に最終確定する

@@ -10,7 +10,7 @@ export interface AiAssistService {
 }
 
 export class LocalOnlyAiAssistService implements AiAssistService {
-  async suggestTransform(): Promise<undefined> {
+  async suggestTransform(_seed: Seed, _type: TransformType): Promise<undefined> {
     return undefined;
   }
 }

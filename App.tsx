@@ -9,6 +9,7 @@ import type {
   ResurfacedSeed,
   Seed,
   SeedCreateInput,
+  SeedUpdateInput,
   TransformType,
 } from './src/domain/types';
 import { GardenScreen } from './src/screens/GardenScreen';
@@ -16,7 +17,14 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
-import { buildTransformOutput, createSeed, pickTodaySeed, updateSeed } from './src/utils/seedUtils';
+import {
+  buildTransformOutput,
+  createSeed,
+  getLocalDateKey,
+  pickTodaySeed,
+  updateSeed,
+  updateSeedResurfacingMeta,
+} from './src/utils/seedUtils';
 
 type MainTab = 'home' | 'write' | 'seeds' | 'garden';
 
@@ -44,8 +52,6 @@ const initialWriteDraft: {
   importance: 3,
 };
 
-const getTodayKey = (): string => new Date().toISOString().slice(0, 10);
-
 export default function App() {
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
   const [isReady, setIsReady] = React.useState(false);
@@ -55,6 +61,7 @@ export default function App() {
   const [todayKey, setTodayKey] = React.useState('');
   const [seedsSearch, setSeedsSearch] = React.useState('');
   const [stateFilter, setStateFilter] = React.useState<GrowthState | 'all'>('all');
+  const [tagFilter, setTagFilter] = React.useState<string>('all');
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
 
   React.useEffect(() => {
@@ -87,7 +94,7 @@ export default function App() {
   const refreshTodaySeed = React.useCallback(() => {
     const picked = pickTodaySeed(seeds);
     setTodaySeed(picked);
-    setTodayKey(getTodayKey());
+    setTodayKey(getLocalDateKey());
 
     if (!picked) {
       return;
@@ -96,7 +103,7 @@ export default function App() {
     setSeeds((current) =>
       current.map((seed) =>
         seed.id === picked.seed.id
-          ? updateSeed(seed, {
+          ? updateSeedResurfacingMeta(seed, {
               lastResurfacedAt: new Date().toISOString(),
               resurfacingScore: picked.seed.resurfacingScore,
             })
@@ -110,7 +117,7 @@ export default function App() {
       return;
     }
 
-    if (todayKey !== getTodayKey() || !todaySeed || !seeds.some((seed) => seed.id === todaySeed.seed.id)) {
+    if (todayKey !== getLocalDateKey() || !todaySeed || !seeds.some((seed) => seed.id === todaySeed.seed.id)) {
       refreshTodaySeed();
     }
   }, [isReady, seeds, todayKey, todaySeed, refreshTodaySeed]);
@@ -123,7 +130,7 @@ export default function App() {
     Alert.alert('保存しました', '種をやさしく保管しました。');
   };
 
-  const handleUpdateSeed = (seedId: string, payload: Partial<Seed>) => {
+  const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
     Alert.alert('更新しました', '種を育てました。');
   };
@@ -188,9 +195,11 @@ export default function App() {
           seeds={seeds}
           search={seedsSearch}
           stateFilter={stateFilter}
+          tagFilter={tagFilter}
           sortType={sortType}
           onChangeSearch={setSeedsSearch}
           onChangeFilter={setStateFilter}
+          onChangeTagFilter={setTagFilter}
           onChangeSort={setSortType}
           onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'seeds' })}
         />

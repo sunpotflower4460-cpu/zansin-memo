@@ -7,8 +7,30 @@ type GardenScreenProps = {
 };
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
+const untaggedLabel = '未分類';
 
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
+  const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
+    if (seed.tags.length === 0) {
+      acc[untaggedLabel] = [...(acc[untaggedLabel] ?? []), seed];
+      return acc;
+    }
+
+    seed.tags.forEach((tag) => {
+      acc[tag] = [...(acc[tag] ?? []), seed];
+    });
+    return acc;
+  }, {});
+  const orderedTags = Object.keys(groupedByTag).sort((a, b) => {
+    if (a === untaggedLabel) {
+      return 1;
+    }
+    if (b === untaggedLabel) {
+      return -1;
+    }
+    return a.localeCompare(b);
+  });
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.heading}>Garden</Text>
@@ -42,6 +64,33 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
           </View>
         );
       })}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>カテゴリのまとまり</Text>
+        {orderedTags.length === 0 ? (
+          <Text style={styles.emptyText}>まだカテゴリ付きの種はありません。</Text>
+        ) : (
+          <View style={styles.grid}>
+            {orderedTags.map((tag) => {
+              const bucket = groupedByTag[tag];
+              return (
+                <View key={tag} style={styles.tagCard}>
+                  <Text style={styles.tagTitle}>
+                    {tag} ({bucket.length})
+                  </Text>
+                  {bucket.slice(0, 3).map((seed) => (
+                    <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={styles.tagItem}>
+                      <Text numberOfLines={2} style={styles.metaBody}>
+                        {seed.body}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -78,6 +127,29 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     backgroundColor: '#ffffff',
+  },
+  tagCard: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#ffffff',
+    gap: 8,
+  },
+  tagTitle: {
+    color: '#1e293b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tagItem: {
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 8,
+  },
+  metaBody: {
+    color: '#334155',
+    fontSize: 13,
+    lineHeight: 18,
   },
   body: {
     color: '#0f172a',

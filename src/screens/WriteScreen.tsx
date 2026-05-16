@@ -9,6 +9,7 @@ import {
   type Mood,
   type SeedCreateInput,
 } from '../domain/types';
+import { parseTags } from '../utils/seedUtils';
 
 type WriteScreenProps = {
   draft: {
@@ -101,10 +102,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               mood: draft.mood,
               importance: draft.importance,
               growthState: draft.growthState,
-              tags: draft.tags
-                .split(',')
-                .map((value) => value.trim())
-                .filter(Boolean),
+              tags: parseTags(draft.tags),
             })
           }
           style={[styles.saveButton, saveDisabled && styles.saveButtonDisabled]}

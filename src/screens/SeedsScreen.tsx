@@ -9,9 +9,11 @@ type SeedsScreenProps = {
   seeds: Seed[];
   search: string;
   stateFilter: GrowthState | 'all';
+  tagFilter: string;
   sortType: SortType;
   onChangeSearch: (value: string) => void;
   onChangeFilter: (value: GrowthState | 'all') => void;
+  onChangeTagFilter: (value: string) => void;
   onChangeSort: (value: SortType) => void;
   onOpenSeed: (seedId: string) => void;
 };
@@ -20,15 +22,22 @@ export function SeedsScreen({
   seeds,
   search,
   stateFilter,
+  tagFilter,
   sortType,
   onChangeSearch,
   onChangeFilter,
+  onChangeTagFilter,
   onChangeSort,
   onOpenSeed,
 }: SeedsScreenProps) {
+  const tagOptions = Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b));
+
   const filteredSeeds = seeds
     .filter((seed) => {
       if (stateFilter !== 'all' && seed.growthState !== stateFilter) {
+        return false;
+      }
+      if (tagFilter !== 'all' && !seed.tags.includes(tagFilter)) {
         return false;
       }
       if (!search.trim()) {
@@ -73,6 +82,27 @@ export function SeedsScreen({
               style={[styles.filterChip, stateFilter === state && styles.filterChipSelected]}
             >
               <Text style={[styles.filterChipText, stateFilter === state && styles.filterChipTextSelected]}>{state}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.label}>カテゴリ</Text>
+        <View style={styles.row}>
+          <Pressable
+            onPress={() => onChangeTagFilter('all')}
+            style={[styles.filterChip, tagFilter === 'all' && styles.filterChipSelected]}
+          >
+            <Text style={[styles.filterChipText, tagFilter === 'all' && styles.filterChipTextSelected]}>all</Text>
+          </Pressable>
+          {tagOptions.map((tag) => (
+            <Pressable
+              key={tag}
+              onPress={() => onChangeTagFilter(tag)}
+              style={[styles.filterChip, tagFilter === tag && styles.filterChipSelected]}
+            >
+              <Text style={[styles.filterChipText, tagFilter === tag && styles.filterChipTextSelected]}>{tag}</Text>
             </Pressable>
           ))}
         </View>

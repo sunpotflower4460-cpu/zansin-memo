@@ -10,6 +10,7 @@ import {
   type Importance,
   type Mood,
   type Seed,
+  type SeedUpdateInput,
   type TransformOutput,
   type TransformType,
 } from '../domain/types';
@@ -19,7 +20,7 @@ type SeedDetailScreenProps = {
   seed: Seed;
   allSeeds: Seed[];
   onBack: () => void;
-  onSave: (seedId: string, payload: Partial<Seed>) => void;
+  onSave: (seedId: string, payload: SeedUpdateInput) => void;
   onDelete: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
 };
@@ -60,6 +61,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
   const relatedCandidates = allSeeds.filter((item) => item.id !== seed.id).slice(0, 20);
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
+  const canSave = draft.body.trim().length > 0;
 
   const toggleRelatedSeed = (relatedSeedId: string) => {
     setDraft((current) => {
@@ -151,7 +153,12 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
         </View>
 
         <Pressable
-          onPress={() =>
+          onPress={() => {
+            if (!canSave) {
+              Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
+              return;
+            }
+
             onSave(seed.id, {
               title: draft.title,
               body: draft.body,
@@ -160,12 +167,14 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               growthState: draft.growthState,
               tags: parseTags(draft.tags),
               relatedSeedIds: draft.relatedSeedIds,
-            })
-          }
-          style={styles.primaryButton}
+            });
+          }}
+          disabled={!canSave}
+          style={[styles.primaryButton, !canSave && styles.primaryButtonDisabled]}
         >
           <Text style={styles.primaryButtonText}>変更を保存</Text>
         </Pressable>
+        {!canSave ? <Text style={styles.hintText}>種のことばだけ、少し残しておきましょう。</Text> : null}
 
         <View style={styles.transformSection}>
           <Text style={styles.sectionTitle}>変換アクション</Text>
@@ -285,6 +294,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#1d7a53',
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#94a3b8',
   },
   primaryButtonText: {
     color: '#ffffff',

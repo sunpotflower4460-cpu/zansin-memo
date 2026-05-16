@@ -45,6 +45,15 @@ export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => ({
   updatedAt: new Date().toISOString(),
 });
 
+export const updateSeedResurfacingMeta = (
+  seed: Seed,
+  meta: Pick<Seed, 'lastResurfacedAt' | 'resurfacingScore'>,
+): Seed => ({
+  ...seed,
+  lastResurfacedAt: meta.lastResurfacedAt ?? seed.lastResurfacedAt,
+  resurfacingScore: meta.resurfacingScore ?? seed.resurfacingScore,
+});
+
 export const parseTags = (raw: string): string[] =>
   cleanArray(
     raw
@@ -120,4 +129,11 @@ export const formatDate = (isoDate: string): string => {
     .getHours()
     .toString()
     .padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+};
+
+export const getLocalDateKey = (date = new Date()): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };

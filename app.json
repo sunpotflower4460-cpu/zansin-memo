@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kizashi.notes"
+      "bundleIdentifier": "com.sunpotflower4460.kizashinotes"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +23,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.kizashi.notes"
+      "package": "com.sunpotflower4460.kizashinotes"
     },
     "web": {
       "favicon": "./assets/favicon.png"
