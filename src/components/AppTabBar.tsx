@@ -49,17 +49,20 @@ export function AppTabBar({ activeTab, onChangeTab }: AppTabBarProps) {
 
 const styles = StyleSheet.create({
   tabBar: {
+    width: '100%',
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    paddingTop: 10,
-    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingHorizontal: 8,
     ...theme.shadows.card,
   },
   tabButton: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 60,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
