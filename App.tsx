@@ -77,7 +77,7 @@ export default function App() {
   const [toastMsg, setToastMsg] = React.useState('');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const launchedAtRef = React.useRef(Date.now());
+  const launchedAtRef = React.useRef(performance.now());
   const transformTapMapRef = React.useRef<Record<string, number>>({});
 
   const showToast = React.useCallback((msg: string) => {
@@ -99,7 +99,7 @@ export default function App() {
       return;
     }
 
-    const elapsed = Date.now() - launchedAtRef.current;
+    const elapsed = performance.now() - launchedAtRef.current;
     const waitMs = Math.max(0, motion.launchMinVisibleMs - elapsed);
 
     launchTimer.current = setTimeout(() => {

@@ -27,8 +27,7 @@ export function FadeInView({ children, style, delayMs = 0 }: FadeInViewProps) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [delayMs, opacity, translateY]);
+  }, [opacity, translateY]);
 
   return <Animated.View style={[style, { opacity, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
-

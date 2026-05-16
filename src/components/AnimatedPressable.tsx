@@ -37,6 +37,10 @@ export function AnimatedPressable({
 }: AnimatedPressableProps) {
   const scale = React.useRef(new Animated.Value(1)).current;
   const [pressed, setPressed] = React.useState(false);
+  const animatedStyle = React.useMemo(
+    () => ({ transform: [{ scale }], opacity: pressed ? motion.pressOpacity : 1 }),
+    [pressed, scale],
+  );
 
   const animateTo = React.useCallback(
     (toValue: number, duration: number) => {
@@ -71,9 +75,7 @@ export function AnimatedPressable({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ ...accessibilityState, disabled: disabled ?? false }}
     >
-      <Animated.View
-        style={[style, { transform: [{ scale }], opacity: pressed ? motion.pressOpacity : 1 }, pressed && pressedStyle]}
-      >
+      <Animated.View style={[style, animatedStyle, pressed && pressedStyle]}>
         {children}
       </Animated.View>
     </Pressable>
