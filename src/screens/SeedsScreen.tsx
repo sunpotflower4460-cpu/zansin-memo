@@ -37,6 +37,7 @@ export function SeedsScreen({
   onOpenSeed,
 }: SeedsScreenProps) {
   const tagOptions = Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b));
+  const normalizedSearch = search.trim().toLowerCase();
 
   const filteredSeeds = seeds
     .filter((seed) => {
@@ -46,11 +47,11 @@ export function SeedsScreen({
       if (tagFilter !== 'all' && !seed.tags.includes(tagFilter)) {
         return false;
       }
-      if (!search.trim()) {
+      if (!normalizedSearch) {
         return true;
       }
       const target = `${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`.toLowerCase();
-      return target.includes(search.toLowerCase());
+      return target.includes(normalizedSearch);
     })
     .sort((a, b) => {
       if (sortType === 'importance') {
@@ -72,6 +73,7 @@ export function SeedsScreen({
           style={styles.searchInput}
           placeholder="本文・タイトル・カテゴリで検索"
           placeholderTextColor="#96a3ae"
+          accessibilityLabel="種の検索"
         />
       </View>
 
@@ -115,7 +117,13 @@ export function SeedsScreen({
           />
         ) : (
           filteredSeeds.map((seed) => (
-            <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}>
+            <Pressable
+              key={seed.id}
+              onPress={() => onOpenSeed(seed.id)}
+              style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}
+              accessibilityRole="button"
+              accessibilityLabel="種の詳細を開く"
+            >
               {seed.title ? <Text style={styles.title}>{seed.title}</Text> : null}
               <Text numberOfLines={3} style={styles.body}>
                 {seed.body}

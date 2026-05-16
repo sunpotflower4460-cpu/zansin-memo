@@ -32,12 +32,18 @@ const stateAccents: Record<GrowthState, string> = {
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
   const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
     if (seed.tags.length === 0) {
-      acc[untaggedLabel] = [...(acc[untaggedLabel] ?? []), seed];
+      if (!acc[untaggedLabel]) {
+        acc[untaggedLabel] = [];
+      }
+      acc[untaggedLabel].push(seed);
       return acc;
     }
 
     seed.tags.forEach((tag) => {
-      acc[tag] = [...(acc[tag] ?? []), seed];
+      if (!acc[tag]) {
+        acc[tag] = [];
+      }
+      acc[tag].push(seed);
     });
     return acc;
   }, {});
@@ -82,6 +88,8 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                     key={seed.id}
                     onPress={() => onOpenSeed(seed.id)}
                     style={({ pressed }) => [styles.card, { borderLeftColor: stateAccents[state], borderLeftWidth: 3 }, pressedOpacity({ pressed })]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${growthStateLabels[state]}の種の詳細を開く`}
                   >
                     <Text numberOfLines={3} style={styles.body}>
                       {seed.body}
@@ -106,10 +114,16 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
               return (
                 <View key={tag} style={styles.tagCard}>
                   <Text style={styles.tagTitle}>
-                    {tag} {bucket.length}
+                    {tag} ({bucket.length})
                   </Text>
                   {bucket.slice(0, 2).map((seed) => (
-                    <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={({ pressed }) => [styles.tagItem, pressedOpacity({ pressed })]}>
+                    <Pressable
+                      key={seed.id}
+                      onPress={() => onOpenSeed(seed.id)}
+                      style={({ pressed }) => [styles.tagItem, pressedOpacity({ pressed })]}
+                      accessibilityRole="button"
+                      accessibilityLabel="カテゴリ内の種の詳細を開く"
+                    >
                       <Text numberOfLines={2} style={styles.metaBody}>
                         {seed.body}
                       </Text>

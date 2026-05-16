@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
 import { IOSChip } from '../components/IOSChip';
@@ -56,6 +57,7 @@ const toDraft = (seed: Seed): DraftState => ({
 const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
 
 export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
 
@@ -64,8 +66,13 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   }, [seed]);
 
   const relatedCandidates = allSeeds.filter((item) => item.id !== seed.id).slice(0, 20);
+  const relatedCandidateIds = React.useMemo(() => new Set(relatedCandidates.map((item) => item.id)), [relatedCandidates]);
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
   const canSave = draft.body.trim().length > 0;
+  const contentStyle = React.useMemo(
+    () => [styles.content, { paddingBottom: Math.max(110, insets.bottom + 80) }],
+    [insets.bottom],
+  );
 
   const toggleRelatedSeed = (relatedSeedId: string) => {
     setDraft((current) => {
@@ -79,7 +86,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
         <Pressable
           onPress={onBack}
           style={({ pressed }) => [styles.backButton, pressedOpacity({ pressed })]}
@@ -111,7 +118,13 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             placeholderTextColor="#9ca8b3"
           />
 
-          <Pressable onPress={() => setDetailsOpen((value) => !value)} style={({ pressed }) => [styles.toggle, pressedOpacity({ pressed })]}>
+          <Pressable
+            onPress={() => setDetailsOpen((value) => !value)}
+            style={({ pressed }) => [styles.toggle, pressedOpacity({ pressed })]}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+            accessibilityLabel="詳細編集を開閉"
+          >
             <Text style={styles.toggleText}>詳細を編集する</Text>
             <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
           </Pressable>
@@ -177,23 +190,26 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
           <PrimaryButton
             label="変更を保存"
             disabled={!canSave}
-            onPress={() => {
-              if (!canSave) {
-                Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
-                return;
-              }
+              onPress={() => {
+                if (!canSave) {
+                  Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
+                  return;
+                }
 
-              onSave(seed.id, {
-                title: draft.title,
-                body: draft.body,
+                const nextRelatedSeedIds = Array.from(
+                  new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
+                );
+                onSave(seed.id, {
+                  title: draft.title,
+                  body: draft.body,
                 mood: draft.mood,
-                importance: draft.importance,
-                growthState: draft.growthState,
-                tags: parseTags(draft.tags),
-                relatedSeedIds: draft.relatedSeedIds,
-              });
-            }}
-          />
+                  importance: draft.importance,
+                  growthState: draft.growthState,
+                  tags: parseTags(draft.tags),
+                  relatedSeedIds: nextRelatedSeedIds,
+                });
+              }}
+            />
         </SectionCard>
 
         <SectionCard muted>
@@ -242,6 +258,8 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             ])
           }
           style={({ pressed }) => [styles.deleteButton, pressedOpacity({ pressed })]}
+          accessibilityRole="button"
+          accessibilityLabel="種を削除"
         >
           <Text style={styles.deleteButtonText}>種を削除</Text>
         </Pressable>
