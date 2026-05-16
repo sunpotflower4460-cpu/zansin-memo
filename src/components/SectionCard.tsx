@@ -14,9 +14,9 @@ export function SectionCard({ children, muted, style }: SectionCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceElevated,
     borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
+    padding: theme.spacing.lg,
     gap: theme.spacing.sm,
     ...theme.shadows.card,
   },

@@ -48,7 +48,7 @@ export function ChipSelector<T extends string | number>({
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 14,
+    marginBottom: 16,
     gap: 8,
   },
   label: {
@@ -58,6 +58,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 8,
-    paddingRight: 12,
+    paddingRight: 16,
   },
 });

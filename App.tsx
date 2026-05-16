@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
 import { seedRepository } from './src/data/asyncStorageSeedRepository';
@@ -21,6 +22,7 @@ import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
+import { motion } from './src/utils/motion';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import {
   buildTransformOutput,
@@ -62,6 +64,7 @@ const initialWriteDraft: {
 export default function App() {
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
   const [isReady, setIsReady] = React.useState(false);
+  const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
   const [todaySeed, setTodaySeed] = React.useState<ResurfacedSeed | undefined>();
@@ -73,6 +76,8 @@ export default function App() {
   const [toastKey, setToastKey] = React.useState(0);
   const [toastMsg, setToastMsg] = React.useState('');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const launchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const launchedAtRef = React.useRef(performance.now());
   const transformTapMapRef = React.useRef<Record<string, number>>({});
 
   const showToast = React.useCallback((msg: string) => {
@@ -85,8 +90,28 @@ export default function App() {
   React.useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (launchTimer.current) clearTimeout(launchTimer.current);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    const elapsed = performance.now() - launchedAtRef.current;
+    const waitMs = Math.max(0, motion.launchMinVisibleMs - elapsed);
+
+    launchTimer.current = setTimeout(() => {
+      setShowLaunchIntro(false);
+    }, waitMs);
+
+    return () => {
+      if (launchTimer.current) {
+        clearTimeout(launchTimer.current);
+      }
+    };
+  }, [isReady]);
 
   React.useEffect(() => {
     let active = true;
@@ -218,11 +243,7 @@ export default function App() {
 
   const renderMainScreen = () => {
     if (!isReady) {
-      return (
-        <View style={styles.loadingWrap}>
-          <Text style={styles.loadingText}>種を読み込み中...</Text>
-        </View>
-      );
+      return null;
     }
 
     if (screen.kind === 'detail' && selectedSeed) {
@@ -289,8 +310,9 @@ export default function App() {
         <View style={styles.app}>
           {renderMainScreen()}
           {toastMsg ? <SaveToast key={toastKey} message={toastMsg} /> : null}
+          <AppLaunchIntro visible={!isReady || showLaunchIntro} />
         </View>
-        {screen.kind !== 'detail' ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
+        {screen.kind !== 'detail' && isReady ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -303,14 +325,5 @@ const styles = StyleSheet.create({
   },
   app: {
     flex: 1,
-  },
-  loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
   },
 });

@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
+import { FadeInView } from '../components/FadeInView';
 import { SectionCard } from '../components/SectionCard';
 import type { GrowthState, Seed } from '../domain/types';
-import { pressedOpacity, theme } from '../styles/theme';
+import { theme } from '../styles/theme';
 import { growthStateLabels } from '../utils/displayLabels';
 
 type GardenScreenProps = {
@@ -70,10 +72,11 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
         const bucket = seeds.filter((seed) => seed.growthState === state);
 
         return (
-          <SectionCard key={state} muted style={{ borderTopWidth: 3, borderTopColor: stateAccents[state] }}>
+          <FadeInView key={state} delayMs={40}>
+            <SectionCard muted style={{ borderTopWidth: 3, borderTopColor: stateAccents[state] }}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleWrap}>
-                <Ionicons name={stateIcons[state]} size={17} color={stateAccents[state]} />
+                <Ionicons name={stateIcons[state]} size={18} color={stateAccents[state]} />
                 <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
               </View>
               <Text style={[styles.countText, { color: stateAccents[state] }]}>{bucket.length}</Text>
@@ -84,10 +87,12 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
                 {bucket.map((seed) => (
-                  <Pressable
+                  <AnimatedPressable
                     key={seed.id}
                     onPress={() => onOpenSeed(seed.id)}
-                    style={({ pressed }) => [styles.card, { borderLeftColor: stateAccents[state], borderLeftWidth: 3 }, pressedOpacity({ pressed })]}
+                    style={[styles.card, { borderLeftColor: stateAccents[state], borderLeftWidth: 3 }]}
+                    pressedStyle={styles.cardPressed}
+                    haptic="light"
                     accessibilityRole="button"
                     accessibilityLabel={`${growthStateLabels[state]}の種の詳細を開く`}
                   >
@@ -95,15 +100,17 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                       {seed.body}
                     </Text>
                     <Text style={styles.meta}>大切度{seed.importance}</Text>
-                  </Pressable>
+                  </AnimatedPressable>
                 ))}
               </ScrollView>
             )}
-          </SectionCard>
+            </SectionCard>
+          </FadeInView>
         );
       })}
 
-      <SectionCard>
+      <FadeInView delayMs={80}>
+        <SectionCard>
         <Text style={styles.sectionTitle}>カテゴリのまとまり</Text>
         {orderedTags.length === 0 ? (
           <Text style={styles.emptyText}>まだカテゴリ付きの種はありません。</Text>
@@ -117,24 +124,26 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                     {tag} ({bucket.length})
                   </Text>
                   {bucket.slice(0, 2).map((seed) => (
-                    <Pressable
+                    <AnimatedPressable
                       key={seed.id}
                       onPress={() => onOpenSeed(seed.id)}
-                      style={({ pressed }) => [styles.tagItem, pressedOpacity({ pressed })]}
+                      style={styles.tagItem}
+                      haptic="light"
                       accessibilityRole="button"
                       accessibilityLabel="カテゴリ内の種の詳細を開く"
                     >
                       <Text numberOfLines={2} style={styles.metaBody}>
                         {seed.body}
                       </Text>
-                    </Pressable>
+                    </AnimatedPressable>
                   ))}
                 </View>
               );
             })}
           </View>
         )}
-      </SectionCard>
+        </SectionCard>
+      </FadeInView>
     </ScrollView>
   );
 }
@@ -142,9 +151,9 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    paddingBottom: 110,
-    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: 124,
+    gap: theme.spacing.md,
   },
   heading: {
     fontSize: theme.typography.title,
@@ -154,6 +163,7 @@ const styles = StyleSheet.create({
   subheading: {
     color: theme.colors.textMuted,
     lineHeight: 22,
+    marginBottom: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -163,7 +173,7 @@ const styles = StyleSheet.create({
   sectionTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 16,
@@ -174,6 +184,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.primary,
     fontWeight: '600',
+    minWidth: 24,
+    textAlign: 'right',
   },
   horizontalRow: {
     gap: 10,
@@ -186,7 +198,10 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     padding: 12,
-    gap: 6,
+    gap: 8,
+  },
+  cardPressed: {
+    backgroundColor: '#f4f8f3',
   },
   body: {
     color: theme.colors.text,

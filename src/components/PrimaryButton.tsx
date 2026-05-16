@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
-import { pressedOpacity, theme } from '../styles/theme';
+import { StyleSheet, Text } from 'react-native';
+import { AnimatedPressable } from './AnimatedPressable';
+import { theme } from '../styles/theme';
 
 type PrimaryButtonProps = {
   label: string;
@@ -9,28 +10,37 @@ type PrimaryButtonProps = {
 
 export function PrimaryButton({ label, onPress, disabled }: PrimaryButtonProps) {
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [styles.button, pressedOpacity({ pressed }), disabled && styles.buttonDisabled]}
+      haptic="light"
+      style={[styles.button, disabled && styles.buttonDisabled]}
+      pressedStyle={styles.buttonPressed}
     >
       <Text style={styles.label}>{label}</Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 50,
-    borderRadius: theme.radius.md,
+    minHeight: 52,
+    borderRadius: theme.radius.lg,
     backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
+    ...theme.shadows.floating,
+  },
+  buttonPressed: {
+    backgroundColor: theme.colors.primaryPressed,
   },
   buttonDisabled: {
     backgroundColor: theme.colors.primaryDisabled,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   label: {
     color: '#ffffff',

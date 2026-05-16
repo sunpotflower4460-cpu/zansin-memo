@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
+import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
@@ -14,7 +16,7 @@ import {
   type Mood,
   type SeedCreateInput,
 } from '../domain/types';
-import { pressedOpacity, theme } from '../styles/theme';
+import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
 import { growthStateLabels, moodLabels } from '../utils/displayLabels';
 
@@ -50,7 +52,8 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         <Text style={styles.heading}>種を書く</Text>
         <Text style={styles.subheading}>きれいにまとめなくても大丈夫です。</Text>
 
-        <SectionCard>
+        <FadeInView delayMs={40}>
+          <SectionCard>
           <Text style={styles.bodyLabel}>今の種</Text>
           <TextInput
             value={draft.body}
@@ -69,16 +72,22 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             placeholder="タイトル（任意）"
             placeholderTextColor="#9aa6b2"
           />
-        </SectionCard>
+          </SectionCard>
+        </FadeInView>
 
-        <SectionCard muted>
-          <Pressable onPress={() => setDetailsOpen((value) => !value)} style={({ pressed }) => [styles.detailToggle, pressedOpacity({ pressed })]}>
+        <FadeInView delayMs={90}>
+          <SectionCard muted>
+          <AnimatedPressable
+            onPress={() => setDetailsOpen((value) => !value)}
+            style={styles.detailToggle}
+            haptic="light"
+          >
             <View style={styles.detailLabelWrap}>
               <Ionicons name="options-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.detailTitle}>気分やカテゴリを添える</Text>
             </View>
             <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={18} color={theme.colors.textMuted} />
-          </Pressable>
+          </AnimatedPressable>
 
           {detailsOpen ? (
             <View>
@@ -120,7 +129,8 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               </View>
             </View>
           ) : null}
-        </SectionCard>
+          </SectionCard>
+        </FadeInView>
       </ScrollView>
 
       <View style={bottomBarStyle}>
@@ -149,8 +159,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.lg,
+    gap: theme.spacing.md,
   },
   heading: {
     fontSize: theme.typography.title,
@@ -160,26 +170,29 @@ const styles = StyleSheet.create({
   subheading: {
     color: theme.colors.textMuted,
     lineHeight: 22,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   bodyLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.typography.subbody,
+    marginBottom: 2,
   },
   bodyInput: {
-    minHeight: 180,
+    minHeight: 220,
     borderRadius: theme.radius.md,
-    backgroundColor: '#f9fbf8',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    backgroundColor: '#fbfcfa',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     fontSize: 17,
     color: theme.colors.text,
     lineHeight: 24,
+    borderWidth: 1,
+    borderColor: '#e2e9e3',
   },
   titleInput: {
     borderRadius: theme.radius.sm,
-    minHeight: 40,
-    paddingHorizontal: 10,
+    minHeight: 42,
+    paddingHorizontal: 12,
     backgroundColor: '#f5f8f4',
     fontSize: 14,
     color: theme.colors.text,
@@ -188,6 +201,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 2,
   },
   detailLabelWrap: {
     flexDirection: 'row',
@@ -227,6 +241,6 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: 10,
+    paddingTop: 12,
   },
 });

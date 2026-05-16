@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { pressedOpacity, theme } from '../styles/theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { AnimatedPressable } from './AnimatedPressable';
+import { theme } from '../styles/theme';
 
 type EmptyStateProps = {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -25,9 +26,9 @@ export function EmptyState({
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} style={({ pressed }) => [styles.action, pressedOpacity({ pressed })]}>
+        <AnimatedPressable onPress={onAction} style={styles.action} haptic="light" pressedStyle={styles.actionPressed}>
           <Text style={styles.actionText}>{actionLabel}</Text>
-        </Pressable>
+        </AnimatedPressable>
       ) : null}
     </View>
   );
@@ -37,9 +38,9 @@ const styles = StyleSheet.create({
   wrap: {
     borderRadius: theme.radius.md,
     backgroundColor: '#eef5ef',
-    padding: theme.spacing.md,
+    padding: theme.spacing.lg,
     alignItems: 'center',
-    gap: theme.spacing.xs,
+    gap: theme.spacing.sm,
   },
   iconWrap: {
     width: 36,
@@ -60,13 +61,17 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
+    maxWidth: 280,
   },
   action: {
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
     borderRadius: theme.radius.full,
     backgroundColor: '#dceee1',
     paddingVertical: 7,
     paddingHorizontal: 12,
+  },
+  actionPressed: {
+    backgroundColor: '#d3e7d9',
   },
   actionText: {
     color: theme.colors.primary,

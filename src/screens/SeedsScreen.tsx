@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
+import { FadeInView } from '../components/FadeInView';
 import { IOSChip } from '../components/IOSChip';
 import { SectionCard } from '../components/SectionCard';
 import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
-import { pressedOpacity, theme } from '../styles/theme';
+import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { formatDate } from '../utils/seedUtils';
 
@@ -77,7 +79,8 @@ export function SeedsScreen({
         />
       </View>
 
-      <SectionCard muted>
+      <FadeInView delayMs={40}>
+        <SectionCard muted>
         <Text style={styles.label}>状態</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
           <IOSChip label={allLabel} selected={stateFilter === 'all'} onPress={() => onChangeFilter('all')} />
@@ -106,7 +109,8 @@ export function SeedsScreen({
           onChange={(value) => onChangeSort(value ?? 'updated')}
           getLabel={(value) => sortLabels[value]}
         />
-      </SectionCard>
+        </SectionCard>
+      </FadeInView>
 
       <View style={styles.listWrap}>
         {filteredSeeds.length === 0 ? (
@@ -117,10 +121,12 @@ export function SeedsScreen({
           />
         ) : (
           filteredSeeds.map((seed) => (
-            <Pressable
+            <AnimatedPressable
               key={seed.id}
               onPress={() => onOpenSeed(seed.id)}
-              style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}
+              style={styles.seedCard}
+              pressedStyle={styles.seedCardPressed}
+              haptic="light"
               accessibilityRole="button"
               accessibilityLabel="種の詳細を開く"
             >
@@ -132,7 +138,7 @@ export function SeedsScreen({
                 {growthStateLabels[seed.growthState]} ・ 大切度{seed.importance} ・ {formatDate(seed.updatedAt)}
               </Text>
               {seed.tags.length > 0 ? <Text style={styles.tags}>カテゴリ: {seed.tags.join(', ')}</Text> : null}
-            </Pressable>
+            </AnimatedPressable>
           ))
         )}
       </View>
@@ -143,9 +149,9 @@ export function SeedsScreen({
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    paddingBottom: 110,
-    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: 124,
+    gap: theme.spacing.md,
   },
   heading: {
     fontSize: theme.typography.title,
@@ -155,22 +161,23 @@ const styles = StyleSheet.create({
   subheading: {
     color: theme.colors.textMuted,
     lineHeight: 22,
+    marginBottom: 2,
   },
   searchWrap: {
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.surface,
-    minHeight: 44,
-    paddingHorizontal: 12,
+    minHeight: 46,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     ...theme.shadows.card,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: theme.colors.text,
-    minHeight: 44,
+    minHeight: 46,
   },
   label: {
     color: theme.colors.textMuted,
@@ -178,17 +185,20 @@ const styles = StyleSheet.create({
   },
   row: {
     gap: 8,
-    paddingRight: 12,
+    paddingRight: 16,
   },
   listWrap: {
-    gap: 10,
+    gap: 12,
   },
   seedCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
     padding: theme.spacing.sm,
-    gap: 6,
+    gap: 7,
     ...theme.shadows.card,
+  },
+  seedCardPressed: {
+    backgroundColor: '#f4f8f3',
   },
   title: {
     fontSize: 14,
