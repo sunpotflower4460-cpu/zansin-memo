@@ -20,7 +20,7 @@ export function SaveToast({ message }: SaveToastProps) {
     return () => {
       opacity.stopAnimation();
     };
-  }, [opacity]);
+  }, [opacity, message]);
 
   return (
     <Animated.View style={[styles.toast, { opacity }]} pointerEvents="none">

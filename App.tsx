@@ -80,6 +80,12 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  React.useEffect(() => {
     let active = true;
 
     const load = async () => {
