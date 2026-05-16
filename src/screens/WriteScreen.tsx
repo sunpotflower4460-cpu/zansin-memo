@@ -35,11 +35,13 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
   const insets = useSafeAreaInsets();
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const contentStyle = [styles.content, { paddingBottom: Math.max(150, insets.bottom + 110) }];
+  const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(150, insets.bottom + 110) }]}
+        contentContainerStyle={contentStyle}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.heading}>種を書く</Text>
@@ -118,7 +120,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         </SectionCard>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}> 
+      <View style={bottomBarStyle}>
         <PrimaryButton
           label="種を保存する"
           disabled={saveDisabled}

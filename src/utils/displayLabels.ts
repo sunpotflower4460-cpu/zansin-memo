@@ -35,6 +35,9 @@ export const tabLabels: Record<'home' | 'write' | 'seeds' | 'garden', string> = 
 };
 
 export const allLabel = 'すべて';
+export const tabLabelSuffix = 'タブ';
+export const chipSelectorScrollHint = '左右にスワイプして選択肢を表示できます';
+export const chipSelectorOptionsSuffix = 'の選択肢';
 
 export const toGrowthLabel = (value: GrowthState) => growthStateLabels[value];
 export const toMoodLabel = (value?: Mood) => (value ? moodLabels[value] : 'なし');

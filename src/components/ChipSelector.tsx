@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { IOSChip } from './IOSChip';
 import { theme } from '../styles/theme';
+import { chipSelectorOptionsSuffix, chipSelectorScrollHint } from '../utils/displayLabels';
 
 type ChipSelectorProps<T extends string | number> = {
   options: readonly T[];
@@ -28,8 +29,8 @@ export function ChipSelector<T extends string | number>({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
-        accessibilityLabel={`${label} の選択肢`}
-        accessibilityHint="左右にスワイプして選択肢を表示できます"
+        accessibilityLabel={`${label}${chipSelectorOptionsSuffix}`}
+        accessibilityHint={chipSelectorScrollHint}
       >
         {allowClear ? (
           <IOSChip label={clearLabel} selected={selectedValue === undefined} onPress={() => onChange(undefined)} />
