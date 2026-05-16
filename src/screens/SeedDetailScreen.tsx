@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChipSelector } from '../components/ChipSelector';
+import { EmptyState } from '../components/EmptyState';
+import { IOSChip } from '../components/IOSChip';
+import { PrimaryButton } from '../components/PrimaryButton';
+import { SectionCard } from '../components/SectionCard';
 import {
   GROWTH_STATE_OPTIONS,
   IMPORTANCE_OPTIONS,
@@ -14,6 +18,9 @@ import {
   type TransformOutput,
   type TransformType,
 } from '../domain/types';
+import { pressedOpacity, theme } from '../styles/theme';
+import { triggerLightFeedback } from '../utils/feedback';
+import { growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
 import { formatDate, parseTags } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
@@ -45,15 +52,9 @@ const toDraft = (seed: Seed): DraftState => ({
   relatedSeedIds: seed.relatedSeedIds,
 });
 
-const transformLabel: Record<TransformType, string> = {
-  question: '問い',
-  task: 'タスク',
-  article: '記事案',
-  project: 'プロジェクト案',
-};
-
 export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   React.useEffect(() => {
     setDraft(toDraft(seed));
@@ -68,9 +69,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
       const has = current.relatedSeedIds.includes(relatedSeedId);
       return {
         ...current,
-        relatedSeedIds: has
-          ? current.relatedSeedIds.filter((id) => id !== relatedSeedId)
-          : [...current.relatedSeedIds, relatedSeedId],
+        relatedSeedIds: has ? current.relatedSeedIds.filter((id) => id !== relatedSeedId) : [...current.relatedSeedIds, relatedSeedId],
       };
     });
   };
@@ -78,138 +77,158 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={onBack} style={styles.backButton}>
+        <Pressable onPress={onBack} style={({ pressed }) => [styles.backButton, pressedOpacity({ pressed })]}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </Pressable>
 
-        <Text style={styles.heading}>Seed Detail</Text>
+        <Text style={styles.heading}>種の詳細</Text>
         <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
 
-        <View style={styles.fieldWrap}>
-          <Text style={styles.label}>タイトル（任意）</Text>
-          <TextInput value={draft.title} onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))} style={styles.input} />
-        </View>
-
-        <View style={styles.fieldWrap}>
-          <Text style={styles.label}>本文</Text>
+        <SectionCard>
           <TextInput
             value={draft.body}
             onChangeText={(body) => setDraft((prev) => ({ ...prev, body }))}
-            style={[styles.input, styles.bodyInput]}
+            style={styles.bodyInput}
             multiline
             textAlignVertical="top"
+            placeholder="種のことば"
+            placeholderTextColor="#95a1ac"
           />
-        </View>
+          <TextInput
+            value={draft.title}
+            onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
+            style={styles.titleInput}
+            placeholder="タイトル（任意）"
+            placeholderTextColor="#9ca8b3"
+          />
 
-        <ChipSelector<Mood>
-          label="気分"
-          options={MOOD_OPTIONS}
-          selectedValue={draft.mood}
-          onChange={(mood) => setDraft((prev) => ({ ...prev, mood }))}
-          allowClear
-        />
+          <Pressable onPress={() => setDetailsOpen((value) => !value)} style={({ pressed }) => [styles.toggle, pressedOpacity({ pressed })]}>
+            <Text style={styles.toggleText}>詳細を編集する</Text>
+            <Text style={styles.toggleArrow}>{detailsOpen ? '▲' : '▼'}</Text>
+          </Pressable>
 
-        <ChipSelector<Importance>
-          label="重要度"
-          options={IMPORTANCE_OPTIONS}
-          selectedValue={draft.importance}
-          onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
-        />
+          {detailsOpen ? (
+            <View>
+              <ChipSelector<Mood>
+                label="気分"
+                options={MOOD_OPTIONS}
+                selectedValue={draft.mood}
+                onChange={(mood) => setDraft((prev) => ({ ...prev, mood }))}
+                allowClear
+                getLabel={(mood) => moodLabels[mood]}
+              />
 
-        <ChipSelector<GrowthState>
-          label="育ち方"
-          options={GROWTH_STATE_OPTIONS}
-          selectedValue={draft.growthState}
-          onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
-        />
+              <ChipSelector<Importance>
+                label="大切度"
+                options={IMPORTANCE_OPTIONS}
+                selectedValue={draft.importance}
+                onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
+              />
 
-        <View style={styles.fieldWrap}>
-          <Text style={styles.label}>カテゴリ（保存キー: tags）</Text>
-          <TextInput value={draft.tags} onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))} style={styles.input} />
-        </View>
+              <ChipSelector<GrowthState>
+                label="育ち方"
+                options={GROWTH_STATE_OPTIONS}
+                selectedValue={draft.growthState}
+                onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
+                getLabel={(state) => growthStateLabels[state]}
+              />
 
-        <View style={styles.fieldWrap}>
-          <Text style={styles.label}>関連する種（任意）</Text>
-          {relatedCandidates.length === 0 ? (
-            <Text style={styles.emptyText}>他の種が作成されるとここで紐づけできます。</Text>
-          ) : (
-            <View style={styles.relatedList}>
-              {relatedCandidates.map((candidate) => {
-                const selected = draft.relatedSeedIds.includes(candidate.id);
-                return (
-                  <Pressable
-                    key={candidate.id}
-                    onPress={() => toggleRelatedSeed(candidate.id)}
-                    style={[styles.relatedItem, selected && styles.relatedItemSelected]}
-                  >
-                    <Text numberOfLines={2} style={[styles.relatedText, selected && styles.relatedTextSelected]}>
-                      {candidate.body}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>カテゴリ（保存キー: tags）</Text>
+                <TextInput value={draft.tags} onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))} style={styles.input} />
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>関連する種（任意）</Text>
+                {relatedCandidates.length === 0 ? (
+                  <Text style={styles.emptyText}>他の種が作成されるとここで紐づけできます。</Text>
+                ) : (
+                  <View style={styles.relatedList}>
+                    {relatedCandidates.map((candidate) => {
+                      const selected = draft.relatedSeedIds.includes(candidate.id);
+                      return (
+                        <IOSChip
+                          key={candidate.id}
+                          label={candidate.body.length > 16 ? `${candidate.body.slice(0, 16)}…` : candidate.body}
+                          selected={selected}
+                          onPress={() => toggleRelatedSeed(candidate.id)}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-        </View>
+          ) : null}
 
-        <Pressable
-          onPress={() => {
-            if (!canSave) {
-              Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
-              return;
-            }
+          <PrimaryButton
+            label="変更を保存"
+            disabled={!canSave}
+            onPress={() => {
+              if (!canSave) {
+                Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
+                return;
+              }
 
-            onSave(seed.id, {
-              title: draft.title,
-              body: draft.body,
-              mood: draft.mood,
-              importance: draft.importance,
-              growthState: draft.growthState,
-              tags: parseTags(draft.tags),
-              relatedSeedIds: draft.relatedSeedIds,
-            });
-          }}
-          disabled={!canSave}
-          style={[styles.primaryButton, !canSave && styles.primaryButtonDisabled]}
-        >
-          <Text style={styles.primaryButtonText}>変更を保存</Text>
-        </Pressable>
-        {!canSave ? <Text style={styles.hintText}>種のことばだけ、少し残しておきましょう。</Text> : null}
+              onSave(seed.id, {
+                title: draft.title,
+                body: draft.body,
+                mood: draft.mood,
+                importance: draft.importance,
+                growthState: draft.growthState,
+                tags: parseTags(draft.tags),
+                relatedSeedIds: draft.relatedSeedIds,
+              });
+            }}
+          />
+        </SectionCard>
 
-        <View style={styles.transformSection}>
-          <Text style={styles.sectionTitle}>変換アクション</Text>
-          <Text style={styles.hintText}>提案として保存できます。押しつけにはしません。</Text>
+        <SectionCard muted>
+          <Text style={styles.sectionTitle}>この種を育てる</Text>
+          <Text style={styles.hintText}>問いや行動の候補として、やさしく変換します。</Text>
           <View style={styles.rowWrap}>
             {TRANSFORM_TYPES.map((type) => (
-              <Pressable key={type} onPress={() => onCreateTransform(seed.id, type)} style={styles.transformButton}>
-                <Text style={styles.transformButtonText}>{transformLabel[type]}にする</Text>
-              </Pressable>
+              <IOSChip
+                key={type}
+                label={transformLabels[type]}
+                onPress={() => {
+                  triggerLightFeedback();
+                  onCreateTransform(seed.id, type);
+                }}
+              />
             ))}
           </View>
           {transformOutputs.length === 0 ? (
-            <Text style={styles.emptyText}>まだ変換結果はありません。</Text>
+            <EmptyState icon="sparkles-outline" title="まだ変換結果はありません" description="必要なときに候補を作ってみましょう。" />
           ) : (
             transformOutputs
               .slice()
               .reverse()
               .map((output) => (
                 <View key={output.id} style={styles.outputCard}>
-                  <Text style={styles.outputType}>{transformLabel[output.type]}</Text>
+                  <Text style={styles.outputType}>{transformLabels[output.type]}</Text>
                   <Text style={styles.outputBody}>{output.content}</Text>
                   <Text style={styles.outputDate}>{formatDate(output.createdAt)}</Text>
                 </View>
               ))
           )}
-        </View>
+        </SectionCard>
 
         <Pressable
           onPress={() =>
             Alert.alert('種を削除しますか？', 'この操作は元に戻せません。', [
               { text: 'キャンセル', style: 'cancel' },
-              { text: '削除', style: 'destructive', onPress: () => onDelete(seed.id) },
+              {
+                text: '削除',
+                style: 'destructive',
+                onPress: () => {
+                  triggerLightFeedback();
+                  onDelete(seed.id);
+                },
+              },
             ])
           }
-          style={styles.deleteButton}
+          style={({ pressed }) => [styles.deleteButton, pressedOpacity({ pressed })]}
         >
           <Text style={styles.deleteButtonText}>種を削除</Text>
         </Pressable>
@@ -221,157 +240,137 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: {
-    padding: 16,
-    paddingBottom: 120,
-    gap: 14,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: 110,
+    gap: 12,
   },
   backButton: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#eaf1ea',
   },
   backButtonText: {
-    color: '#334155',
+    color: theme.colors.textMuted,
     fontSize: 14,
   },
   heading: {
-    fontSize: 27,
+    fontSize: theme.typography.title,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   dateText: {
-    color: '#64748b',
+    color: theme.colors.textSoft,
     fontSize: 12,
   },
+  bodyInput: {
+    minHeight: 140,
+    borderRadius: theme.radius.md,
+    backgroundColor: '#f9fbf8',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 17,
+    color: theme.colors.text,
+    lineHeight: 24,
+  },
+  titleInput: {
+    borderRadius: theme.radius.sm,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    backgroundColor: '#f5f8f4',
+    fontSize: 14,
+    color: theme.colors.text,
+  },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  toggleText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  toggleArrow: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+  },
   fieldWrap: {
+    marginTop: 6,
     gap: 8,
   },
   label: {
     fontSize: 14,
-    color: '#334155',
+    color: theme.colors.textMuted,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#dbe3ed',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
-    color: '#0f172a',
-  },
-  bodyInput: {
-    minHeight: 110,
+    color: theme.colors.text,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   relatedList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
-  },
-  relatedItem: {
-    borderWidth: 1,
-    borderColor: '#dbe3ed',
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: '#ffffff',
-  },
-  relatedItemSelected: {
-    borderColor: '#8bc7af',
-    backgroundColor: '#e7f7ef',
-  },
-  relatedText: {
-    color: '#334155',
-    fontSize: 14,
-  },
-  relatedTextSelected: {
-    color: '#0f5132',
-    fontWeight: '600',
-  },
-  primaryButton: {
-    minHeight: 50,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1d7a53',
-  },
-  primaryButtonDisabled: {
-    backgroundColor: '#94a3b8',
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  transformSection: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 14,
-    padding: 12,
-    gap: 10,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1e293b',
+    color: theme.colors.text,
   },
   hintText: {
     fontSize: 13,
-    color: '#64748b',
+    color: theme.colors.textMuted,
   },
   rowWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  transformButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#bfd9cc',
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  transformButtonText: {
-    color: '#166534',
-    fontSize: 13,
-  },
   outputCard: {
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: '#dbe4dd',
     paddingTop: 10,
     gap: 4,
   },
   outputType: {
     fontSize: 12,
-    color: '#64748b',
+    color: theme.colors.textMuted,
   },
   outputBody: {
     fontSize: 14,
-    color: '#1e293b',
+    color: theme.colors.text,
     lineHeight: 21,
   },
   outputDate: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: theme.colors.textSoft,
   },
   deleteButton: {
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: theme.radius.md,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fff1f2',
+    borderColor: '#f4b0b7',
+    backgroundColor: theme.colors.dangerBg,
   },
   deleteButtonText: {
-    color: '#b91c1c',
+    color: theme.colors.dangerText,
     fontSize: 15,
     fontWeight: '600',
   },
   emptyText: {
-    color: '#64748b',
+    color: theme.colors.textMuted,
     fontSize: 14,
   },
 });

@@ -1,4 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { IOSChip } from './IOSChip';
+import { theme } from '../styles/theme';
 
 type ChipSelectorProps<T extends string | number> = {
   options: readonly T[];
@@ -6,6 +8,8 @@ type ChipSelectorProps<T extends string | number> = {
   onChange: (value: T | undefined) => void;
   label: string;
   allowClear?: boolean;
+  getLabel?: (value: T) => string;
+  clearLabel?: string;
 };
 
 export function ChipSelector<T extends string | number>({
@@ -14,34 +18,23 @@ export function ChipSelector<T extends string | number>({
   onChange,
   label,
   allowClear,
+  getLabel,
+  clearLabel = 'なし',
 }: ChipSelectorProps<T>) {
   return (
     <View style={styles.section}>
       <Text style={styles.label}>{label}</Text>
-      <View style={styles.row}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {allowClear ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onChange(undefined)}
-            style={[styles.chip, selectedValue === undefined && styles.chipSelected]}
-          >
-            <Text style={[styles.chipText, selectedValue === undefined && styles.chipTextSelected]}>なし</Text>
-          </Pressable>
+          <IOSChip label={clearLabel} selected={selectedValue === undefined} onPress={() => onChange(undefined)} />
         ) : null}
         {options.map((option) => {
           const selected = option === selectedValue;
           return (
-            <Pressable
-              key={String(option)}
-              accessibilityRole="button"
-              onPress={() => onChange(option)}
-              style={[styles.chip, selected && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{String(option)}</Text>
-            </Pressable>
+            <IOSChip key={String(option)} label={getLabel ? getLabel(option) : String(option)} selected={selected} onPress={() => onChange(option)} />
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -53,31 +46,11 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    color: '#334155',
+    color: theme.colors.textMuted,
   },
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#dbe3ed',
-  },
-  chipSelected: {
-    backgroundColor: '#d9efe6',
-    borderColor: '#8bc7af',
-  },
-  chipText: {
-    color: '#334155',
-    fontSize: 13,
-  },
-  chipTextSelected: {
-    color: '#163c2e',
-    fontWeight: '600',
+    paddingRight: 12,
   },
 });
