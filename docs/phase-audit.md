@@ -35,6 +35,7 @@
    - README / MVP / UX は「カテゴリ」を使用。
    - architecture は `tags: string[]` を定義し「Tag」を説明。
    - 実装時に別概念として分裂するリスクがある。
+   - **推奨統一方針**: UI表示語は「カテゴリ」、保存キーと実装名は `tags` に統一する。
 2. **Phase 6完了条件とデータ保存定義の弱さ**
    - phase-roadmap Phase 6 は「UIから選択・保存できる」を要求。
    - architecture Seed には変換結果保存先が未定義。
@@ -81,7 +82,7 @@
   - `growthState=archived` の履歴理由を扱いやすくする。
 - `sourceType?: "manual" | "import" | "transform"`
   - 将来の入力経路区別に有効。
-- `transformOutputs?: Array<{ type: "question" | "task" | "article" | "project"; content: string; createdAt: string; }>`
+- `transformOutputs?: Array<{ id: string; type: "question" | "task" | "article" | "project"; content: string; createdAt: string; }>`
   - Phase 6 の「保存」を最小限で満たしやすい。
 - `softDeletedAt?: string`
   - 将来の復元導線に拡張しやすい。
