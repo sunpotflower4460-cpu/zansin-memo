@@ -30,13 +30,25 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
       <SectionCard>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>今日の種</Text>
-          <Pressable onPress={onRefreshToday} style={({ pressed }) => [styles.secondaryButton, pressedOpacity({ pressed })]}>
-            <Text style={styles.secondaryButtonText}>別の種を見る</Text>
-          </Pressable>
+          {todaySeed ? (
+            <Pressable
+              onPress={onRefreshToday}
+              style={({ pressed }) => [styles.secondaryButton, pressedOpacity({ pressed })]}
+              accessibilityRole="button"
+              accessibilityLabel="今日の種を切り替える"
+            >
+              <Text style={styles.secondaryButtonText}>別の種を見る</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {todaySeed ? (
-          <Pressable onPress={() => onOpenSeed(todaySeed.seed.id)} style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}>
+          <Pressable
+            onPress={() => onOpenSeed(todaySeed.seed.id)}
+            style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}
+            accessibilityRole="button"
+            accessibilityLabel="今日の種の詳細を開く"
+          >
             <Text style={styles.seedBody}>{todaySeed.seed.body}</Text>
             <Text style={styles.seedMeta}>理由: {todaySeed.reason}</Text>
             <Text style={styles.seedMeta}>更新: {formatDate(todaySeed.seed.updatedAt)}</Text>
@@ -56,7 +68,13 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
         <Text style={styles.cardTitle}>最近の種</Text>
         {recent.length > 0 ? (
           recent.map((seed) => (
-            <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={({ pressed }) => [styles.listItem, pressedOpacity({ pressed })]}>
+            <Pressable
+              key={seed.id}
+              onPress={() => onOpenSeed(seed.id)}
+              style={({ pressed }) => [styles.listItem, pressedOpacity({ pressed })]}
+              accessibilityRole="button"
+              accessibilityLabel="最近の種の詳細を開く"
+            >
               <Text style={styles.listBody} numberOfLines={2}>
                 {seed.body}
               </Text>

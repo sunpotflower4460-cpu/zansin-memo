@@ -58,6 +58,7 @@ const initialWriteDraft: {
 };
 
 export default function App() {
+  const TRANSFORM_TAP_GUARD_MS = 700;
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
   const [isReady, setIsReady] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
@@ -71,6 +72,7 @@ export default function App() {
   const [toastKey, setToastKey] = React.useState(0);
   const [toastMsg, setToastMsg] = React.useState('');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transformTapMapRef = React.useRef<Record<string, number>>({});
 
   const showToast = React.useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -109,7 +111,15 @@ export default function App() {
       return;
     }
 
-    void seedRepository.saveAll(seeds);
+    const persist = async () => {
+      try {
+        await seedRepository.saveAll(seeds);
+      } catch {
+        return;
+      }
+    };
+
+    void persist();
   }, [isReady, seeds]);
 
   const refreshTodaySeed = React.useCallback(() => {
@@ -144,6 +154,10 @@ export default function App() {
   }, [isReady, seeds, todayKey, todaySeed, refreshTodaySeed]);
 
   const handleCreateSeed = (input: SeedCreateInput) => {
+    if (!input.body.trim()) {
+      return;
+    }
+
     const nextSeed = createSeed(input);
     triggerSuccessFeedback();
     setSeeds((current) => [nextSeed, ...current]);
@@ -153,6 +167,10 @@ export default function App() {
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
+    if (payload.body !== undefined && !payload.body.trim()) {
+      return;
+    }
+
     triggerSuccessFeedback();
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
     showToast('種を育てました ✨');
@@ -161,10 +179,19 @@ export default function App() {
   const handleDeleteSeed = (seedId: string) => {
     triggerWarningFeedback();
     setSeeds((current) => current.filter((seed) => seed.id !== seedId));
+    setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
   };
 
   const handleCreateTransform = (seedId: string, type: TransformType) => {
+    const key = `${seedId}:${type}`;
+    const now = Date.now();
+    const lastTapAt = transformTapMapRef.current[key] ?? 0;
+    if (now - lastTapAt < TRANSFORM_TAP_GUARD_MS) {
+      return;
+    }
+    transformTapMapRef.current[key] = now;
+
     triggerSuccessFeedback();
     setSeeds((current) =>
       current.map((seed) => {
@@ -181,6 +208,12 @@ export default function App() {
   };
 
   const selectedSeed = screen.kind === 'detail' ? seeds.find((seed) => seed.id === screen.seedId) : undefined;
+
+  React.useEffect(() => {
+    if (screen.kind === 'detail' && !selectedSeed) {
+      setScreen({ kind: screen.from });
+    }
+  }, [screen, selectedSeed]);
 
   const renderMainScreen = () => {
     if (!isReady) {

@@ -11,21 +11,39 @@ import {
 const SCORE_DECAY_DAYS = 14;
 
 const createId = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const DAY_MS = 1000 * 60 * 60 * 24;
+const FALLBACK_SCORE = 0;
 
 const cleanArray = (values: string[] | undefined): string[] =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
+const toTimestamp = (value: string | undefined): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : undefined;
+};
+
+const clampImportance = (value: number | undefined): 1 | 2 | 3 | 4 | 5 => {
+  if (value === 1 || value === 2 || value === 3 || value === 4 || value === 5) {
+    return value;
+  }
+  return 3;
+};
+
 export const createSeed = (input: SeedCreateInput): Seed => {
   const now = new Date().toISOString();
+  const body = input.body.trim();
 
   return {
     id: createId(),
     title: input.title?.trim() || undefined,
-    body: input.body.trim(),
+    body,
     createdAt: now,
     updatedAt: now,
     mood: input.mood,
-    importance: input.importance ?? 3,
+    importance: clampImportance(input.importance),
     growthState: input.growthState ?? 'seed',
     tags: cleanArray(input.tags),
     relatedSeedIds: cleanArray(input.relatedSeedIds),
@@ -38,7 +56,7 @@ export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => ({
   ...seed,
   ...patch,
   title: patch.title !== undefined ? patch.title?.trim() || undefined : seed.title,
-  body: patch.body !== undefined ? patch.body.trim() : seed.body,
+  body: patch.body !== undefined ? patch.body.trim() || seed.body : seed.body,
   tags: patch.tags !== undefined ? cleanArray(patch.tags) : seed.tags,
   relatedSeedIds: patch.relatedSeedIds !== undefined ? cleanArray(patch.relatedSeedIds) : seed.relatedSeedIds,
   transformOutputs: patch.transformOutputs ?? seed.transformOutputs ?? [],
@@ -63,11 +81,10 @@ export const parseTags = (raw: string): string[] =>
   );
 
 const buildResurfacingScore = (seed: Seed, now: Date): number => {
-  const updatedAt = new Date(seed.updatedAt).getTime();
-  const ageDays = Math.max(0, (now.getTime() - updatedAt) / (1000 * 60 * 60 * 24));
-  const lastResurfacedAt = seed.lastResurfacedAt ? new Date(seed.lastResurfacedAt).getTime() : 0;
-  const daysSinceResurfaced =
-    lastResurfacedAt > 0 ? Math.max(0, (now.getTime() - lastResurfacedAt) / (1000 * 60 * 60 * 24)) : SCORE_DECAY_DAYS;
+  const updatedAt = toTimestamp(seed.updatedAt);
+  const ageDays = updatedAt ? Math.max(0, (now.getTime() - updatedAt) / DAY_MS) : SCORE_DECAY_DAYS;
+  const lastResurfacedAt = toTimestamp(seed.lastResurfacedAt);
+  const daysSinceResurfaced = lastResurfacedAt ? Math.max(0, (now.getTime() - lastResurfacedAt) / DAY_MS) : SCORE_DECAY_DAYS;
 
   const stateWeight =
     seed.growthState === 'seed' ? 1.2 : seed.growthState === 'sprout' ? 1.1 : seed.growthState === 'tree' ? 1 : 0.3;
@@ -75,7 +92,8 @@ const buildResurfacingScore = (seed: Seed, now: Date): number => {
   const recencyFactor = Math.min(ageDays, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
   const resurfacingFactor = Math.min(daysSinceResurfaced, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
 
-  return seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight;
+  const score = seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight;
+  return Number.isFinite(score) ? score : FALLBACK_SCORE;
 };
 
 export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
@@ -91,8 +109,12 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
     .slice(0, 5);
 
   const picked = scored[Math.floor(Math.random() * scored.length)];
+  if (!picked) {
+    return undefined;
+  }
 
-  const days = Math.floor((now.getTime() - new Date(picked.seed.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
+  const updatedAt = toTimestamp(picked.seed.updatedAt) ?? now.getTime();
+  const days = Math.floor((now.getTime() - updatedAt) / DAY_MS);
   const reason =
     days >= 7
       ? 'しばらく見返していない種です'
@@ -125,6 +147,9 @@ export const buildTransformOutput = (seed: Seed, type: TransformType): Transform
 
 export const formatDate = (isoDate: string): string => {
   const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return '日付不明';
+  }
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${date
     .getHours()
     .toString()
