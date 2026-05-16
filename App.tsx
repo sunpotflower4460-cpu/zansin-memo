@@ -1,8 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { Alert, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppTabBar } from './src/components/AppTabBar';
+import { SaveToast } from './src/components/SaveToast';
 import { seedRepository } from './src/data/asyncStorageSeedRepository';
 import type {
   GrowthState,
@@ -20,7 +21,7 @@ import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
-import { triggerLightFeedback } from './src/utils/feedback';
+import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import {
   buildTransformOutput,
   createSeed,
@@ -67,6 +68,16 @@ export default function App() {
   const [stateFilter, setStateFilter] = React.useState<GrowthState | 'all'>('all');
   const [tagFilter, setTagFilter] = React.useState<string>('all');
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
+  const [toastKey, setToastKey] = React.useState(0);
+  const [toastMsg, setToastMsg] = React.useState('');
+  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = React.useCallback((msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg(msg);
+    setToastKey((k) => k + 1);
+    toastTimer.current = setTimeout(() => setToastMsg(''), 2500);
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -128,27 +139,27 @@ export default function App() {
 
   const handleCreateSeed = (input: SeedCreateInput) => {
     const nextSeed = createSeed(input);
-    triggerLightFeedback();
+    triggerSuccessFeedback();
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
-    setScreen({ kind: 'seeds' });
-    Alert.alert('保存しました', '種をやさしく保管しました。');
+    setScreen({ kind: 'home' });
+    showToast('種を保存しました 🌱');
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
-    triggerLightFeedback();
+    triggerSuccessFeedback();
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
-    Alert.alert('更新しました', '種を育てました。');
+    showToast('種を育てました ✨');
   };
 
   const handleDeleteSeed = (seedId: string) => {
-    triggerLightFeedback();
+    triggerWarningFeedback();
     setSeeds((current) => current.filter((seed) => seed.id !== seedId));
     setScreen({ kind: 'seeds' });
   };
 
   const handleCreateTransform = (seedId: string, type: TransformType) => {
-    triggerLightFeedback();
+    triggerSuccessFeedback();
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
@@ -235,7 +246,10 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
-        <View style={styles.app}>{renderMainScreen()}</View>
+        <View style={styles.app}>
+          {renderMainScreen()}
+          {toastMsg ? <SaveToast key={toastKey} message={toastMsg} /> : null}
+        </View>
         {screen.kind !== 'detail' ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
       </SafeAreaView>
     </SafeAreaProvider>

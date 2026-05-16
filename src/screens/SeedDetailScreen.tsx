@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
@@ -79,8 +80,14 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={onBack} style={({ pressed }) => [styles.backButton, pressedOpacity({ pressed })]}>
-          <Text style={styles.backButtonText}>← 戻る</Text>
+        <Pressable
+          onPress={onBack}
+          style={({ pressed }) => [styles.backButton, pressedOpacity({ pressed })]}
+          accessibilityRole="button"
+          accessibilityLabel="戻る"
+        >
+          <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
+          <Text style={styles.backButtonText}>戻る</Text>
         </Pressable>
 
         <Text style={styles.heading}>種の詳細</Text>
@@ -106,7 +113,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
           <Pressable onPress={() => setDetailsOpen((value) => !value)} style={({ pressed }) => [styles.toggle, pressedOpacity({ pressed })]}>
             <Text style={styles.toggleText}>詳細を編集する</Text>
-            <Text style={styles.toggleArrow}>{detailsOpen ? '▲' : '▼'}</Text>
+            <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
           </Pressable>
 
           {detailsOpen ? (
@@ -136,7 +143,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               />
 
               <View style={styles.fieldWrap}>
-                <Text style={styles.label}>カテゴリ（保存キー: tags）</Text>
+                <Text style={styles.label}>カテゴリ（任意）</Text>
                 <TextInput value={draft.tags} onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))} style={styles.input} />
               </View>
 
@@ -253,14 +260,18 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
     paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: '#eaf1ea',
+    gap: 2,
   },
   backButtonText: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
+    color: theme.colors.primary,
+    fontSize: 15,
+    fontWeight: '500',
   },
   heading: {
     fontSize: theme.typography.title,
@@ -299,10 +310,6 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: 14,
     fontWeight: '600',
-  },
-  toggleArrow: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
   },
   fieldWrap: {
     marginTop: 6,

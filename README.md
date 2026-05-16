@@ -1,6 +1,6 @@
 # Kizashi Notes / きざしノート
 
-思いつき・直感・違和感を「メモ」ではなく「種」として保存し、あとで再会し、育てるための iOS-first スマホアプリ（Expo + React Native）です。
+思いつき・直感・違和感を「メモ」ではなく「種」として保存し、あとで再会し、育てるための **iOS-first スマホアプリ**（Expo + React Native）です。
 
 ## コンセプト
 - 低圧で書ける（タイトル必須なし）
@@ -18,21 +18,54 @@
 - 今日の種（ランダム + 簡易スコア）
 - 変換アクション（問い / タスク / 記事案 / プロジェクト案）と保存
 
+## UI/UX Polish（World-Class iOS Polish Pass）
+- iOSアプリらしいタブバー・ヘッダー・カードUIに統一
+- デザイントークン（theme.ts）でカラー・余白・角丸・影を管理
+- 日本語UI統一（内部キーは英語のまま）
+- 保存時の画面内トーストで低圧なフィードバック
+- Safe Area / KeyboardAvoidingView 対応
+- ハプティクス（保存・更新・削除）
+- 空状態が上質（アイコン + メッセージ + CTA）
+- 庭（Garden）画面の育ち状態別カラーアクセント
+- accessibilityRole / accessibilityState 設定
+
 ## 技術スタック
-- Expo
+- Expo SDK 54
 - React Native
 - TypeScript
 - AsyncStorage（ローカル永続化）
+- expo-haptics（触感フィードバック）
+- @expo/vector-icons（Ionicons）
 
 ## はじめかた
 ```bash
 npm install
+npm run typecheck
 npm run start
+```
+
+iOSシミュレータで確認する場合:
+```bash
 npm run ios
-npm run android
 ```
 
 > iOSシミュレータ起動には macOS + Xcode が必要です。
+
+## 確認コマンド
+| コマンド | 説明 |
+|---|---|
+| `npm install` | 依存パッケージのインストール |
+| `npm run typecheck` | TypeScriptの型チェック |
+| `npm run start` | Expo DevServer起動 |
+| `npm run ios` | iOSシミュレータ起動 |
+
+## 未実装（将来フェーズ）
+- AI本接続（Phase 8）
+- 認証（未定）
+- 課金（未定）
+- クラウド同期（未定）
+- 通知（未定）
+- App Store提出作業
 
 ## 重要方針
 - 認証・課金・クラウド同期は未実装

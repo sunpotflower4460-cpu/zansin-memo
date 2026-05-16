@@ -22,6 +22,13 @@ const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
   archived: 'archive-outline',
 };
 
+const stateAccents: Record<GrowthState, string> = {
+  seed: '#a3c4a8',
+  sprout: '#5da36b',
+  tree: '#1f6b49',
+  archived: '#9aabb6',
+};
+
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
   const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
     if (seed.tags.length === 0) {
@@ -57,13 +64,13 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
         const bucket = seeds.filter((seed) => seed.growthState === state);
 
         return (
-          <SectionCard key={state} muted>
+          <SectionCard key={state} muted style={{ borderTopWidth: 3, borderTopColor: stateAccents[state] }}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleWrap}>
-                <Ionicons name={stateIcons[state]} size={17} color={theme.colors.primary} />
+                <Ionicons name={stateIcons[state]} size={17} color={stateAccents[state]} />
                 <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
               </View>
-              <Text style={styles.countText}>{bucket.length}</Text>
+              <Text style={[styles.countText, { color: stateAccents[state] }]}>{bucket.length}</Text>
             </View>
 
             {bucket.length === 0 ? (
@@ -71,7 +78,11 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
                 {bucket.map((seed) => (
-                  <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={({ pressed }) => [styles.card, pressedOpacity({ pressed })]}>
+                  <Pressable
+                    key={seed.id}
+                    onPress={() => onOpenSeed(seed.id)}
+                    style={({ pressed }) => [styles.card, { borderLeftColor: stateAccents[state], borderLeftWidth: 3 }, pressedOpacity({ pressed })]}
+                  >
                     <Text numberOfLines={3} style={styles.body}>
                       {seed.body}
                     </Text>
