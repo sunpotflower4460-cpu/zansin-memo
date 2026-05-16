@@ -1,6 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChipSelector } from '../components/ChipSelector';
+import { EmptyState } from '../components/EmptyState';
+import { IOSChip } from '../components/IOSChip';
+import { SectionCard } from '../components/SectionCard';
 import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
+import { pressedOpacity, theme } from '../styles/theme';
+import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { formatDate } from '../utils/seedUtils';
 
 type SortType = 'updated' | 'importance';
@@ -55,78 +61,67 @@ export function SeedsScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.heading}>Seeds</Text>
-      <Text style={styles.subheading}>見返しながら、必要な種をやさしく育てる。</Text>
+      <Text style={styles.heading}>種一覧</Text>
+      <Text style={styles.subheading}>検索や絞り込みで、いま見返したい種を見つけます。</Text>
 
-      <TextInput
-        value={search}
-        onChangeText={onChangeSearch}
-        style={styles.searchInput}
-        placeholder="種を検索（本文 / タイトル / カテゴリ）"
-        placeholderTextColor="#94a3b8"
-      />
+      <View style={styles.searchWrap}>
+        <Ionicons name="search-outline" size={18} color={theme.colors.textSoft} />
+        <TextInput
+          value={search}
+          onChangeText={onChangeSearch}
+          style={styles.searchInput}
+          placeholder="本文・タイトル・カテゴリで検索"
+          placeholderTextColor="#96a3ae"
+        />
+      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>状態フィルタ</Text>
-        <View style={styles.row}>
-          <Pressable
-            onPress={() => onChangeFilter('all')}
-            style={[styles.filterChip, stateFilter === 'all' && styles.filterChipSelected]}
-          >
-            <Text style={[styles.filterChipText, stateFilter === 'all' && styles.filterChipTextSelected]}>all</Text>
-          </Pressable>
+      <SectionCard muted>
+        <Text style={styles.label}>状態</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          <IOSChip label={allLabel} selected={stateFilter === 'all'} onPress={() => onChangeFilter('all')} />
           {GROWTH_STATE_OPTIONS.map((state) => (
-            <Pressable
+            <IOSChip
               key={state}
+              label={growthStateLabels[state]}
+              selected={stateFilter === state}
               onPress={() => onChangeFilter(state)}
-              style={[styles.filterChip, stateFilter === state && styles.filterChipSelected]}
-            >
-              <Text style={[styles.filterChipText, stateFilter === state && styles.filterChipTextSelected]}>{state}</Text>
-            </Pressable>
+            />
           ))}
-        </View>
-      </View>
+        </ScrollView>
 
-      <View style={styles.section}>
         <Text style={styles.label}>カテゴリ</Text>
-        <View style={styles.row}>
-          <Pressable
-            onPress={() => onChangeTagFilter('all')}
-            style={[styles.filterChip, tagFilter === 'all' && styles.filterChipSelected]}
-          >
-            <Text style={[styles.filterChipText, tagFilter === 'all' && styles.filterChipTextSelected]}>all</Text>
-          </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          <IOSChip label={allLabel} selected={tagFilter === 'all'} onPress={() => onChangeTagFilter('all')} />
           {tagOptions.map((tag) => (
-            <Pressable
-              key={tag}
-              onPress={() => onChangeTagFilter(tag)}
-              style={[styles.filterChip, tagFilter === tag && styles.filterChipSelected]}
-            >
-              <Text style={[styles.filterChipText, tagFilter === tag && styles.filterChipTextSelected]}>{tag}</Text>
-            </Pressable>
+            <IOSChip key={tag} label={tag} selected={tagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
           ))}
-        </View>
-      </View>
+        </ScrollView>
 
-      <ChipSelector<SortType>
-        label="並び替え"
-        options={['updated', 'importance']}
-        selectedValue={sortType}
-        onChange={(value) => onChangeSort(value ?? 'updated')}
-      />
+        <ChipSelector<SortType>
+          label="並び替え"
+          options={['updated', 'importance']}
+          selectedValue={sortType}
+          onChange={(value) => onChangeSort(value ?? 'updated')}
+          getLabel={(value) => sortLabels[value]}
+        />
+      </SectionCard>
 
       <View style={styles.listWrap}>
         {filteredSeeds.length === 0 ? (
-          <Text style={styles.emptyText}>条件に合う種が見つかりませんでした。</Text>
+          <EmptyState
+            icon="search-outline"
+            title="条件に合う種はありません"
+            description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
+          />
         ) : (
           filteredSeeds.map((seed) => (
-            <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={styles.seedCard}>
+            <Pressable key={seed.id} onPress={() => onOpenSeed(seed.id)} style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}>
               {seed.title ? <Text style={styles.title}>{seed.title}</Text> : null}
               <Text numberOfLines={3} style={styles.body}>
                 {seed.body}
               </Text>
               <Text style={styles.meta}>
-                {seed.growthState} ・ 重要度{seed.importance} ・ {formatDate(seed.updatedAt)}
+                {growthStateLabels[seed.growthState]} ・ 大切度{seed.importance} ・ {formatDate(seed.updatedAt)}
               </Text>
               {seed.tags.length > 0 ? <Text style={styles.tags}>カテゴリ: {seed.tags.join(', ')}</Text> : null}
             </Pressable>
@@ -139,93 +134,72 @@ export function SeedsScreen({
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 120,
-    gap: 12,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: 110,
+    gap: theme.spacing.sm,
   },
   heading: {
-    fontSize: 27,
+    fontSize: theme.typography.title,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   subheading: {
-    color: '#64748b',
+    color: theme.colors.textMuted,
     lineHeight: 22,
   },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#dbe3ed',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
+  searchWrap: {
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
     minHeight: 44,
     paddingHorizontal: 12,
-    fontSize: 16,
-    color: '#0f172a',
-  },
-  section: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.text,
+    minHeight: 44,
   },
   label: {
-    color: '#334155',
-    fontSize: 14,
+    color: theme.colors.textMuted,
+    fontSize: theme.typography.subbody,
   },
   row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-  },
-  filterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#dbe3ed',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  filterChipSelected: {
-    backgroundColor: '#d9efe6',
-    borderColor: '#8bc7af',
-  },
-  filterChipText: {
-    color: '#334155',
-    fontSize: 13,
-  },
-  filterChipTextSelected: {
-    color: '#163c2e',
-    fontWeight: '600',
+    paddingRight: 12,
   },
   listWrap: {
     gap: 10,
   },
   seedCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.sm,
     gap: 6,
   },
   title: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1e293b',
+    color: theme.colors.text,
   },
   body: {
     fontSize: 16,
-    color: '#0f172a',
+    color: theme.colors.text,
     lineHeight: 23,
   },
   meta: {
     fontSize: 12,
-    color: '#64748b',
+    color: theme.colors.textMuted,
   },
   tags: {
     fontSize: 12,
-    color: '#475569',
-  },
-  emptyText: {
-    color: '#64748b',
-    fontSize: 14,
-    lineHeight: 21,
+    color: theme.colors.textSoft,
   },
 });

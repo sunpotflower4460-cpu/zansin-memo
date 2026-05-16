@@ -1,6 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Alert, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppTabBar } from './src/components/AppTabBar';
 import { seedRepository } from './src/data/asyncStorageSeedRepository';
 import type {
   GrowthState,
@@ -17,6 +19,8 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
+import { theme } from './src/styles/theme';
+import { triggerLightFeedback } from './src/utils/feedback';
 import {
   buildTransformOutput,
   createSeed,
@@ -124,6 +128,7 @@ export default function App() {
 
   const handleCreateSeed = (input: SeedCreateInput) => {
     const nextSeed = createSeed(input);
+    triggerLightFeedback();
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'seeds' });
@@ -131,16 +136,19 @@ export default function App() {
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
+    triggerLightFeedback();
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
     Alert.alert('更新しました', '種を育てました。');
   };
 
   const handleDeleteSeed = (seedId: string) => {
+    triggerLightFeedback();
     setSeeds((current) => current.filter((seed) => seed.id !== seedId));
     setScreen({ kind: 'seeds' });
   };
 
   const handleCreateTransform = (seedId: string, type: TransformType) => {
+    triggerLightFeedback();
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
@@ -224,74 +232,23 @@ export default function App() {
   const activeTab: MainTab = screen.kind === 'detail' ? screen.from : screen.kind;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <View style={styles.app}>{renderMainScreen()}</View>
-      {screen.kind !== 'detail' ? (
-        <View style={styles.tabBar}>
-          {(
-            [
-              { id: 'home', label: 'Home' },
-              { id: 'write', label: 'Write' },
-              { id: 'seeds', label: 'Seeds' },
-              { id: 'garden', label: 'Garden' },
-            ] as const
-          ).map((tab) => {
-            const selected = activeTab === tab.id;
-
-            return (
-              <Pressable
-                key={tab.id}
-                style={[styles.tabButton, selected && styles.tabButtonSelected]}
-                onPress={() => setScreen({ kind: tab.id })}
-                accessibilityRole="button"
-                accessibilityLabel={`${tab.label} タブ`}
-              >
-                <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]}>{tab.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={styles.app}>{renderMainScreen()}</View>
+        {screen.kind !== 'detail' ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: theme.colors.background,
   },
   app: {
     flex: 1,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#dbe3ed',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 14,
-    gap: 8,
-  },
-  tabButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabButtonSelected: {
-    backgroundColor: '#d9efe6',
-  },
-  tabLabel: {
-    color: '#475569',
-    fontSize: 14,
-  },
-  tabLabelSelected: {
-    color: '#164e38',
-    fontWeight: '600',
   },
   loadingWrap: {
     flex: 1,
@@ -300,6 +257,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#64748b',
+    color: theme.colors.textMuted,
   },
 });
