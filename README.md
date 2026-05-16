@@ -1,24 +1,43 @@
 # Kizashi Notes / きざしノート
 
-思いつきを「メモ」ではなく「種」として保存し、時間・感情・関係性・行動によって育っていく、新しい発想のメモ帳。
+思いつき・直感・違和感を「メモ」ではなく「種」として保存し、あとで再会し、育てるための iOS-first スマホアプリ（Expo + React Native）です。
 
-## このアプリは何か
-Kizashi Notes は、断片的な言葉や直感を「種」として残し、後から見返し・接続・再発見しやすくするためのメモアプリです。  
-「書いて終わり」にせず、やさしく育てる体験を重視します。
+## コンセプト
+- 低圧で書ける（タイトル必須なし）
+- 後から再会できる（今日の種）
+- 育てられる（growthState / 変換アクション）
+- タスク管理アプリ化しない
 
-## MVP
-- 種を書く / 一覧で見る / 詳細を見る
-- 種の状態管理（seed / sprout / tree / archived）
-- 気分・カテゴリ・重要度の付与
-- 今日の種の再浮上（ランダム or スコア）
-- 変換アクション（問い / タスク / 記事案 / プロジェクト案）のUI土台
+## MVP実装範囲（iOS向け）
+- Home / Write / Seeds / Seed Detail / Garden
+- Seed CRUD（ローカル保存）
+- growthState: `seed | sprout | tree | archived`
+- mood: `calm | excited | uncertain | heavy | bright`（任意）
+- importance: `1..5`
+- カテゴリUI（保存キーは `tags`）
+- 今日の種（ランダム + 簡易スコア）
+- 変換アクション（問い / タスク / 記事案 / プロジェクト案）と保存
 
-## 主要画面
-- Home
-- Write
-- Seeds
-- Seed Detail
-- Garden
+## 技術スタック
+- Expo
+- React Native
+- TypeScript
+- AsyncStorage（ローカル永続化）
+
+## はじめかた
+```bash
+npm install
+npm run start
+npm run ios
+npm run android
+```
+
+> iOSシミュレータ起動には macOS + Xcode が必要です。
+
+## 重要方針
+- 認証・課金・クラウド同期は未実装
+- AI/API連携は未実装（Phase 8準備としてインターフェースのみ）
+- 秘密情報は保存しない
 
 ## Docs
 - [Concept](docs/concept.md)
@@ -29,24 +48,8 @@ Kizashi Notes は、断片的な言葉や直感を「種」として残し、後
 - [UX Design](docs/ux-design.md)
 - [Architecture](docs/architecture.md)
 - [Phase Roadmap](docs/phase-roadmap.md)
+- [Phase Contracts](docs/phase-contracts.md)
+- [Final Execution Plan](docs/final-execution-plan.md)
 - [Non-Goals](docs/non-goals.md)
 - [Review Policy](docs/review-policy.md)
-
-## 開発方針
-- 実装より先に思想と設計を固定する
-- 書くハードルを上げない UX を優先する
-- 小さく段階的に進める（Phase 契約）
-- MVP外の重い機能は後回しにする
-
-## Phase roadmap 概要
-- Phase 0: Docs Foundation
-- Phase 1: App Shell
-- Phase 2: Seed Data Model
-- Phase 3: Write Experience
-- Phase 4: Seed List & Detail
-- Phase 5: Gentle Resurfacing
-- Phase 6: Transform Actions
-- Phase 7: Garden View
-- Phase 8: AI Assist Preparation
-
-詳細は [docs/phase-roadmap.md](docs/phase-roadmap.md) を参照してください。
+- [App Store Readiness](docs/app-store-readiness.md)
