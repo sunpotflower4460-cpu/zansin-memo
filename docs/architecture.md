@@ -15,6 +15,15 @@ type Mood = "calm" | "excited" | "uncertain" | "heavy" | "bright";
 
 type Importance = 1 | 2 | 3 | 4 | 5;
 
+type TransformOutputType = "question" | "task" | "article" | "project";
+
+type TransformOutput = {
+  id: string;
+  type: TransformOutputType;
+  content: string;
+  createdAt: string;
+};
+
 type Seed = {
   id: string;
   title?: string;
@@ -30,6 +39,11 @@ type Seed = {
 };
 ```
 
+補足:
+- UI文脈の「カテゴリ」は保存上 `tags` として扱う（分類の強制はしない）。
+- 実装時の変数名・型名・コメントは `tags` を基準にし、UIラベルのみ「カテゴリ」を使う。
+- `importance` は入力時に任意扱いでもよく、未指定時は既定値（例: 3）で保存する。
+
 ## Tag / Mood / Importance / GrowthState の考え方
 - **Tag**: 厳密分類ではなく再発見の補助。複数付与可。
 - **Mood**: 記録時の感情文脈。検索・再浮上ヒントに利用。
@@ -44,6 +58,16 @@ type Seed = {
 例（概念）:
 - `LocalSeedRepository`
 - `CloudSeedRepository`
+
+## Phase 5〜7に向けた追加候補（必要時のみ）
+MVPを重くしない前提で、次の項目は将来拡張候補として扱う。
+
+- `lastResurfacedAt?: string`
+- `archivedAt?: string`
+- `sourceType?: "manual" | "import" | "transform"`
+- `transformOutputs?: TransformOutput[]`
+- `softDeletedAt?: string`
+- `schemaVersion?: number`
 
 ## AI連携を後から追加できる構成
 - Transform / Resurfacing の判定ロジックをユースケース層に分離
