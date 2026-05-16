@@ -114,7 +114,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
               return (
                 <View key={tag} style={styles.tagCard}>
                   <Text style={styles.tagTitle}>
-                    {tag} ・ {bucket.length}
+                    {tag} ({bucket.length})
                   </Text>
                   {bucket.slice(0, 2).map((seed) => (
                     <Pressable

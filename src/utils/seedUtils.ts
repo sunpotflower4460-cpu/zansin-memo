@@ -9,6 +9,7 @@ import {
 } from '../domain/types';
 
 const SCORE_DECAY_DAYS = 14;
+const RECOVERY_BODY_FALLBACK = '（復元できなかった種）';
 
 const createId = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -52,16 +53,21 @@ export const createSeed = (input: SeedCreateInput): Seed => {
   };
 };
 
-export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => ({
-  ...seed,
-  ...patch,
-  title: patch.title !== undefined ? patch.title?.trim() || undefined : seed.title,
-  body: patch.body !== undefined ? patch.body.trim() || seed.body : seed.body,
-  tags: patch.tags !== undefined ? cleanArray(patch.tags) : seed.tags,
-  relatedSeedIds: patch.relatedSeedIds !== undefined ? cleanArray(patch.relatedSeedIds) : seed.relatedSeedIds,
-  transformOutputs: patch.transformOutputs ?? seed.transformOutputs ?? [],
-  updatedAt: new Date().toISOString(),
-});
+export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => {
+  const currentBody = seed.body.trim() || RECOVERY_BODY_FALLBACK;
+  const nextBody = patch.body !== undefined ? patch.body.trim() : currentBody;
+
+  return {
+    ...seed,
+    ...patch,
+    title: patch.title !== undefined ? patch.title?.trim() || undefined : seed.title,
+    body: nextBody || currentBody,
+    tags: patch.tags !== undefined ? cleanArray(patch.tags) : seed.tags,
+    relatedSeedIds: patch.relatedSeedIds !== undefined ? cleanArray(patch.relatedSeedIds) : seed.relatedSeedIds,
+    transformOutputs: patch.transformOutputs ?? seed.transformOutputs ?? [],
+    updatedAt: new Date().toISOString(),
+  };
+};
 
 export const updateSeedResurfacingMeta = (
   seed: Seed,

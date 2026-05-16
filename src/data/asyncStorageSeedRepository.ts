@@ -4,6 +4,7 @@ import { SEED_SCHEMA_VERSION } from '../domain/types';
 import type { SeedRepository } from './seedRepository';
 
 const STORAGE_KEY = 'kizashi-notes:seeds:v1';
+const RECOVERY_BODY_FALLBACK = '（復元できなかった種）';
 const GROWTH_STATES: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const MOODS: Mood[] = ['calm', 'excited', 'uncertain', 'heavy', 'bright'];
 const TRANSFORM_TYPES: TransformType[] = ['question', 'task', 'article', 'project'];
@@ -76,11 +77,12 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
 
   const growthState = asString(data.growthState);
   const mood = asString(data.mood);
+  const lastResurfacedAt = asString(data.lastResurfacedAt);
 
   return {
     id: asString(data.id)?.trim() || createId(),
     title: asString(data.title)?.trim() || undefined,
-    body: asString(data.body)?.trim() || '（復元できなかった種）',
+    body: asString(data.body)?.trim() || RECOVERY_BODY_FALLBACK,
     createdAt,
     updatedAt,
     mood: mood && MOODS.includes(mood as Mood) ? (mood as Mood) : undefined,
@@ -89,7 +91,7 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
     tags: normalizeStringArray(data.tags),
     relatedSeedIds: normalizeStringArray(data.relatedSeedIds),
     resurfacingScore: typeof data.resurfacingScore === 'number' && Number.isFinite(data.resurfacingScore) ? data.resurfacingScore : undefined,
-    lastResurfacedAt: isValidIsoDate(asString(data.lastResurfacedAt) ?? '') ? new Date(asString(data.lastResurfacedAt) as string).toISOString() : undefined,
+    lastResurfacedAt: lastResurfacedAt && isValidIsoDate(lastResurfacedAt) ? new Date(lastResurfacedAt).toISOString() : undefined,
     transformOutputs: normalizeTransformOutputs(data.transformOutputs, updatedAt),
     schemaVersion: typeof data.schemaVersion === 'number' ? data.schemaVersion : SEED_SCHEMA_VERSION,
   };

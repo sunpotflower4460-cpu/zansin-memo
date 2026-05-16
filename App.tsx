@@ -41,6 +41,8 @@ type ScreenState =
       from: MainTab;
     };
 
+const TRANSFORM_DOUBLE_TAP_GUARD_MS = 700;
+
 const initialWriteDraft: {
   title: string;
   body: string;
@@ -58,7 +60,6 @@ const initialWriteDraft: {
 };
 
 export default function App() {
-  const TRANSFORM_TAP_GUARD_MS = 700;
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
   const [isReady, setIsReady] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
@@ -187,7 +188,7 @@ export default function App() {
     const key = `${seedId}:${type}`;
     const now = Date.now();
     const lastTapAt = transformTapMapRef.current[key] ?? 0;
-    if (now - lastTapAt < TRANSFORM_TAP_GUARD_MS) {
+    if (now - lastTapAt < TRANSFORM_DOUBLE_TAP_GUARD_MS) {
       return;
     }
     transformTapMapRef.current[key] = now;

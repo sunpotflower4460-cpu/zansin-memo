@@ -197,7 +197,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                 }
 
                 const nextRelatedSeedIds = Array.from(
-                  new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id) && id !== seed.id)),
+                  new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
                 );
                 onSave(seed.id, {
                   title: draft.title,
