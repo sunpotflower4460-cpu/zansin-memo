@@ -72,7 +72,7 @@ export function AnimatedPressable({
       accessibilityState={{ ...accessibilityState, disabled: disabled ?? false }}
     >
       <Animated.View
-        style={[style, pressed && pressedStyle, { transform: [{ scale }], opacity: pressed ? motion.pressOpacity : 1 }]}
+        style={[style, { transform: [{ scale }], opacity: pressed ? motion.pressOpacity : 1 }, pressed && pressedStyle]}
       >
         {children}
       </Animated.View>

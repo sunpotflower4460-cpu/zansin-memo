@@ -80,7 +80,6 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
           <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
             style={styles.detailToggle}
-            pressedStyle={styles.detailTogglePressed}
             haptic="light"
           >
             <View style={styles.detailLabelWrap}>
@@ -203,9 +202,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 2,
-  },
-  detailTogglePressed: {
-    opacity: 0.92,
   },
   detailLabelWrap: {
     flexDirection: 'row',

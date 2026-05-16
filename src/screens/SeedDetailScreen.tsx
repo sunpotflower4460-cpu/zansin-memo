@@ -126,7 +126,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
           <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
             style={styles.toggle}
-            pressedStyle={styles.togglePressed}
             haptic="light"
             accessibilityRole="button"
             accessibilityState={{ expanded: detailsOpen }}
@@ -341,9 +340,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 2,
     paddingVertical: 2,
-  },
-  togglePressed: {
-    opacity: 0.92,
   },
   toggleText: {
     color: theme.colors.primary,
