@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
+import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
-import { theme, pressedOpacity } from '../styles/theme';
+import { theme } from '../styles/theme';
 import { formatDate } from '../utils/seedUtils';
 import { toGrowthLabel } from '../utils/displayLabels';
 
@@ -27,32 +29,37 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
       <Text style={styles.heading}>Kizashi Notes</Text>
       <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
 
-      <SectionCard>
+      <FadeInView delayMs={40}>
+        <SectionCard>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>今日の種</Text>
           {todaySeed ? (
-            <Pressable
+            <AnimatedPressable
               onPress={onRefreshToday}
-              style={({ pressed }) => [styles.secondaryButton, pressedOpacity({ pressed })]}
+              style={styles.secondaryButton}
+              pressedStyle={styles.secondaryButtonPressed}
+              haptic="light"
               accessibilityRole="button"
               accessibilityLabel="今日の種を切り替える"
             >
               <Text style={styles.secondaryButtonText}>別の種を見る</Text>
-            </Pressable>
+            </AnimatedPressable>
           ) : null}
         </View>
 
         {todaySeed ? (
-          <Pressable
+          <AnimatedPressable
             onPress={() => onOpenSeed(todaySeed.seed.id)}
-            style={({ pressed }) => [styles.seedCard, pressedOpacity({ pressed })]}
+            style={styles.seedCard}
+            pressedStyle={styles.seedCardPressed}
+            haptic="light"
             accessibilityRole="button"
             accessibilityLabel="今日の種の詳細を開く"
           >
             <Text style={styles.seedBody}>{todaySeed.seed.body}</Text>
             <Text style={styles.seedMeta}>理由: {todaySeed.reason}</Text>
             <Text style={styles.seedMeta}>更新: {formatDate(todaySeed.seed.updatedAt)}</Text>
-          </Pressable>
+          </AnimatedPressable>
         ) : (
           <EmptyState
             icon="leaf-outline"
@@ -62,16 +69,19 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
             onAction={onOpenWrite}
           />
         )}
-      </SectionCard>
+        </SectionCard>
+      </FadeInView>
 
-      <SectionCard muted>
+      <FadeInView delayMs={90}>
+        <SectionCard muted>
         <Text style={styles.cardTitle}>最近の種</Text>
         {recent.length > 0 ? (
           recent.map((seed) => (
-            <Pressable
+            <AnimatedPressable
               key={seed.id}
               onPress={() => onOpenSeed(seed.id)}
-              style={({ pressed }) => [styles.listItem, pressedOpacity({ pressed })]}
+              style={styles.listItem}
+              haptic="light"
               accessibilityRole="button"
               accessibilityLabel="最近の種の詳細を開く"
             >
@@ -84,12 +94,13 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
                   {toGrowthLabel(seed.growthState)} ・ 大切度{seed.importance}
                 </Text>
               </View>
-            </Pressable>
+            </AnimatedPressable>
           ))
         ) : (
           <EmptyState icon="sparkles-outline" title="種の記録はこれからです" description="書いた種はここに静かに並んでいきます。" />
         )}
-      </SectionCard>
+        </SectionCard>
+      </FadeInView>
 
       <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} />
     </ScrollView>
@@ -99,9 +110,9 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    paddingBottom: 110,
-    gap: theme.spacing.sm,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: 124,
+    gap: theme.spacing.md,
   },
   todayMeta: {
     fontSize: theme.typography.caption,
@@ -117,8 +128,8 @@ const styles = StyleSheet.create({
   subheading: {
     fontSize: theme.typography.subbody,
     color: theme.colors.textMuted,
-    lineHeight: 21,
-    marginBottom: 2,
+    lineHeight: 22,
+    marginBottom: 4,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -137,6 +148,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.full,
     backgroundColor: '#dceee1',
   },
+  secondaryButtonPressed: {
+    backgroundColor: '#d3e7d9',
+  },
   secondaryButtonText: {
     color: theme.colors.primary,
     fontSize: 13,
@@ -148,6 +162,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceMuted,
     gap: theme.spacing.xs,
   },
+  seedCardPressed: {
+    backgroundColor: '#e9f1eb',
+  },
   seedBody: {
     fontSize: 17,
     color: theme.colors.text,
@@ -158,10 +175,10 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
   },
   listItem: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#dfe8e0',
-    gap: 4,
+    gap: 6,
   },
   listBody: {
     fontSize: theme.typography.body,

@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
-import { pressedOpacity, theme } from '../styles/theme';
+import { StyleSheet, Text } from 'react-native';
+import { AnimatedPressable } from './AnimatedPressable';
+import { theme } from '../styles/theme';
 
 type IOSChipProps = {
   label: string;
@@ -9,14 +10,16 @@ type IOSChipProps = {
 
 export function IOSChip({ label, selected, onPress }: IOSChipProps) {
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={onPress}
+      haptic="light"
       accessibilityRole="button"
       accessibilityState={{ selected: selected ?? false }}
-      style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressedOpacity({ pressed })]}
+      style={[styles.chip, selected && styles.chipSelected]}
+      pressedStyle={styles.chipPressed}
     >
       <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -30,6 +33,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minHeight: 36,
     justifyContent: 'center',
+  },
+  chipPressed: {
+    backgroundColor: '#e4eee7',
   },
   chipSelected: {
     borderColor: '#8dbca2',

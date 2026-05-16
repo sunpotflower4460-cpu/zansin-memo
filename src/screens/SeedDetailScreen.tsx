@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
+import { FadeInView } from '../components/FadeInView';
 import { IOSChip } from '../components/IOSChip';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
@@ -20,7 +22,7 @@ import {
   type TransformOutput,
   type TransformType,
 } from '../domain/types';
-import { pressedOpacity, theme } from '../styles/theme';
+import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
 import { growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
 import { formatDate, parseTags } from '../utils/seedUtils';
@@ -87,20 +89,23 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
-        <Pressable
+        <AnimatedPressable
           onPress={onBack}
-          style={({ pressed }) => [styles.backButton, pressedOpacity({ pressed })]}
+          style={styles.backButton}
+          pressedStyle={styles.backButtonPressed}
+          haptic="light"
           accessibilityRole="button"
           accessibilityLabel="戻る"
         >
           <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
           <Text style={styles.backButtonText}>戻る</Text>
-        </Pressable>
+        </AnimatedPressable>
 
         <Text style={styles.heading}>種の詳細</Text>
         <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
 
-        <SectionCard>
+        <FadeInView delayMs={40}>
+          <SectionCard>
           <TextInput
             value={draft.body}
             onChangeText={(body) => setDraft((prev) => ({ ...prev, body }))}
@@ -118,16 +123,18 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             placeholderTextColor="#9ca8b3"
           />
 
-          <Pressable
+          <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
-            style={({ pressed }) => [styles.toggle, pressedOpacity({ pressed })]}
+            style={styles.toggle}
+            pressedStyle={styles.togglePressed}
+            haptic="light"
             accessibilityRole="button"
             accessibilityState={{ expanded: detailsOpen }}
             accessibilityLabel="詳細編集を開閉"
           >
             <Text style={styles.toggleText}>詳細を編集する</Text>
             <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
-          </Pressable>
+          </AnimatedPressable>
 
           {detailsOpen ? (
             <View>
@@ -210,9 +217,11 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                 });
               }}
             />
-        </SectionCard>
+          </SectionCard>
+        </FadeInView>
 
-        <SectionCard muted>
+        <FadeInView delayMs={80}>
+          <SectionCard muted>
           <Text style={styles.sectionTitle}>この種を育てる</Text>
           <Text style={styles.hintText}>問いや行動の候補として、やさしく変換します。</Text>
           <View style={styles.rowWrap}>
@@ -241,9 +250,10 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                 </View>
               ))
           )}
-        </SectionCard>
+          </SectionCard>
+        </FadeInView>
 
-        <Pressable
+        <AnimatedPressable
           onPress={() =>
             Alert.alert('種を削除しますか？', 'この操作は元に戻せません。', [
               { text: 'キャンセル', style: 'cancel' },
@@ -257,12 +267,14 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               },
             ])
           }
-          style={({ pressed }) => [styles.deleteButton, pressedOpacity({ pressed })]}
+          style={styles.deleteButton}
+          pressedStyle={styles.deleteButtonPressed}
+          haptic="light"
           accessibilityRole="button"
           accessibilityLabel="種を削除"
         >
           <Text style={styles.deleteButtonText}>種を削除</Text>
-        </Pressable>
+        </AnimatedPressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -272,9 +284,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    paddingBottom: 110,
-    gap: 12,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: 124,
+    gap: theme.spacing.md,
   },
   backButton: {
     alignSelf: 'flex-start',
@@ -285,6 +297,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#eaf1ea',
     gap: 2,
+  },
+  backButtonPressed: {
+    backgroundColor: '#dde9dd',
   },
   backButtonText: {
     color: theme.colors.primary,
@@ -301,14 +316,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   bodyInput: {
-    minHeight: 140,
+    minHeight: 160,
     borderRadius: theme.radius.md,
-    backgroundColor: '#f9fbf8',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    backgroundColor: '#fbfcfa',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     fontSize: 17,
     color: theme.colors.text,
     lineHeight: 24,
+    borderWidth: 1,
+    borderColor: '#e2e9e3',
   },
   titleInput: {
     borderRadius: theme.radius.sm,
@@ -323,6 +340,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
+    paddingVertical: 2,
+  },
+  togglePressed: {
+    opacity: 0.92,
   },
   toggleText: {
     color: theme.colors.primary,
@@ -394,6 +415,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f4b0b7',
     backgroundColor: theme.colors.dangerBg,
+  },
+  deleteButtonPressed: {
+    backgroundColor: '#fee4e8',
   },
   deleteButtonText: {
     color: theme.colors.dangerText,

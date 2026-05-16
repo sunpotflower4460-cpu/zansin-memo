@@ -4,6 +4,7 @@ export const theme = {
   colors: {
     background: '#f7f8f4',
     surface: '#ffffff',
+    surfaceElevated: '#fcfdfb',
     surfaceMuted: '#f0f5ef',
     surfaceSoft: '#f4f8f3',
     text: '#1f2933',
@@ -27,6 +28,7 @@ export const theme = {
     lg: 20,
     xl: 24,
     xxl: 32,
+    xxxl: 40,
   },
   radius: {
     sm: 10,
@@ -36,8 +38,8 @@ export const theme = {
     full: 999,
   },
   typography: {
-    largeTitle: 30,
-    title: 24,
+    largeTitle: 32,
+    title: 26,
     sectionTitle: 18,
     body: 16,
     subbody: 14,
