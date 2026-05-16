@@ -9,7 +9,12 @@ type IOSChipProps = {
 
 export function IOSChip({ label, selected, onPress }: IOSChipProps) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressedOpacity({ pressed })]}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: selected ?? false }}
+      style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressedOpacity({ pressed })]}
+    >
       <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
     </Pressable>
   );

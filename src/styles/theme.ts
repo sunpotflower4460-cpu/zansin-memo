@@ -5,6 +5,7 @@ export const theme = {
     background: '#f7f8f4',
     surface: '#ffffff',
     surfaceMuted: '#f0f5ef',
+    surfaceSoft: '#f4f8f3',
     text: '#1f2933',
     textMuted: '#5f6b76',
     textSoft: '#7a8794',
@@ -16,6 +17,7 @@ export const theme = {
     chipBg: '#edf3ee',
     dangerBg: '#fff1f2',
     dangerText: '#b42318',
+    warning: '#d97706',
   },
   spacing: {
     xxs: 4,
@@ -24,11 +26,13 @@ export const theme = {
     md: 16,
     lg: 20,
     xl: 24,
+    xxl: 32,
   },
   radius: {
     sm: 10,
     md: 14,
     lg: 18,
+    xl: 24,
     full: 999,
   },
   typography: {
@@ -46,6 +50,13 @@ export const theme = {
       shadowRadius: 10,
       shadowOffset: { width: 0, height: 4 },
       elevation: 2,
+    },
+    floating: {
+      shadowColor: '#0f172a',
+      shadowOpacity: 0.14,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
     },
   }),
 };

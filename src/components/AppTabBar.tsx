@@ -35,8 +35,9 @@ export function AppTabBar({ activeTab, onChangeTab }: AppTabBarProps) {
               onChangeTab(tabId);
             }}
             style={({ pressed }) => [styles.tabButton, pressedOpacity({ pressed })]}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={`${tabLabels[tabId]} ${tabLabelSuffix}`}
+            accessibilityState={{ selected }}
           >
             <Ionicons name={tabIcons[tabId]} size={22} color={selected ? theme.colors.primary : '#758392'} />
             <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]}>{tabLabels[tabId]}</Text>

@@ -153,11 +153,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     minHeight: 44,
     paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    ...theme.shadows.card,
   },
   searchInput: {
     flex: 1,
@@ -179,10 +178,9 @@ const styles = StyleSheet.create({
   seedCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     padding: theme.spacing.sm,
     gap: 6,
+    ...theme.shadows.card,
   },
   title: {
     fontSize: 14,

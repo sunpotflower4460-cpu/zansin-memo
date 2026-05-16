@@ -107,7 +107,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               />
 
               <View style={styles.fieldWrap}>
-                <Text style={styles.label}>カテゴリ（保存キー: tags）</Text>
+                <Text style={styles.label}>カテゴリ（任意）</Text>
                 <TextInput
                   value={draft.tags}
                   onChangeText={(tags) => onChange({ tags })}
