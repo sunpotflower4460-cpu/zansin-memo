@@ -30,6 +30,9 @@
     },
     "extra": {
       "appStoreTodo": "Replace bundle/package identifiers and assets for production submission"
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
