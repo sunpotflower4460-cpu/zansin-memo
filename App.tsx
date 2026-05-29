@@ -44,6 +44,7 @@ type ScreenState =
     };
 
 const TRANSFORM_DOUBLE_TAP_GUARD_MS = 700;
+const STORAGE_LOCKED_MESSAGE = '保存データの読み込みに問題があるため、変更を停止しています。';
 
 const initialWriteDraft: {
   title: string;
@@ -87,6 +88,15 @@ export default function App() {
     setToastKey((k) => k + 1);
     toastTimer.current = setTimeout(() => setToastMsg(''), 2500);
   }, []);
+
+  const blockIfStorageLocked = React.useCallback((): boolean => {
+    if (canPersistSeeds) {
+      return false;
+    }
+
+    showToast(STORAGE_LOCKED_MESSAGE);
+    return true;
+  }, [canPersistSeeds, showToast]);
 
   React.useEffect(() => {
     return () => {
@@ -193,13 +203,12 @@ export default function App() {
   }, [isReady, seeds, todayKey, todaySeed, refreshTodaySeed]);
 
   const handleCreateSeed = (input: SeedCreateInput) => {
-    if (!input.body.trim()) {
+    if (!input.body.trim() || blockIfStorageLocked()) {
       return;
     }
 
     const nextSeed = createSeed(input);
     triggerSuccessFeedback();
-    setCanPersistSeeds(true);
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'home' });
@@ -207,25 +216,31 @@ export default function App() {
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
-    if (payload.body !== undefined && !payload.body.trim()) {
+    if ((payload.body !== undefined && !payload.body.trim()) || blockIfStorageLocked()) {
       return;
     }
 
     triggerSuccessFeedback();
-    setCanPersistSeeds(true);
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
     showToast('種を育てました ✨');
   };
 
   const handleDeleteSeed = (seedId: string) => {
+    if (blockIfStorageLocked()) {
+      return;
+    }
+
     triggerWarningFeedback();
-    setCanPersistSeeds(true);
     setSeeds((current) => current.filter((seed) => seed.id !== seedId));
     setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
   };
 
   const handleCreateTransform = (seedId: string, type: TransformType) => {
+    if (blockIfStorageLocked()) {
+      return;
+    }
+
     const key = `${seedId}:${type}`;
     const now = Date.now();
     const lastTapAt = transformTapMapRef.current[key] ?? 0;
@@ -235,7 +250,6 @@ export default function App() {
     transformTapMapRef.current[key] = now;
 
     triggerSuccessFeedback();
-    setCanPersistSeeds(true);
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
