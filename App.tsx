@@ -64,6 +64,7 @@ const initialWriteDraft: {
 export default function App() {
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
   const [isReady, setIsReady] = React.useState(false);
+  const [canPersistSeeds, setCanPersistSeeds] = React.useState(false);
   const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
@@ -117,12 +118,25 @@ export default function App() {
     let active = true;
 
     const load = async () => {
-      const loadedSeeds = await seedRepository.getAll();
+      const loadResult = await seedRepository.getAll();
       if (!active) {
         return;
       }
-      setSeeds(loadedSeeds);
+
+      if (!loadResult.ok) {
+        setCanPersistSeeds(false);
+        setIsReady(true);
+        showToast('保存データを読み込めませんでした。自動保存を停止しています。');
+        return;
+      }
+
+      setSeeds(loadResult.seeds);
+      setCanPersistSeeds(true);
       setIsReady(true);
+
+      if (loadResult.recoveredFromBackup) {
+        showToast('バックアップから種を復元しました。');
+      }
     };
 
     void load();
@@ -130,23 +144,22 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [showToast]);
 
   React.useEffect(() => {
-    if (!isReady) {
+    if (!isReady || !canPersistSeeds) {
       return;
     }
 
     const persist = async () => {
-      try {
-        await seedRepository.saveAll(seeds);
-      } catch {
-        return;
+      const saveResult = await seedRepository.saveAll(seeds);
+      if (!saveResult.ok) {
+        showToast('保存できませんでした。端末の空き容量などを確認してください。');
       }
     };
 
     void persist();
-  }, [isReady, seeds]);
+  }, [canPersistSeeds, isReady, seeds, showToast]);
 
   const refreshTodaySeed = React.useCallback(() => {
     const picked = pickTodaySeed(seeds);
@@ -186,6 +199,7 @@ export default function App() {
 
     const nextSeed = createSeed(input);
     triggerSuccessFeedback();
+    setCanPersistSeeds(true);
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'home' });
@@ -198,12 +212,14 @@ export default function App() {
     }
 
     triggerSuccessFeedback();
+    setCanPersistSeeds(true);
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
     showToast('種を育てました ✨');
   };
 
   const handleDeleteSeed = (seedId: string) => {
     triggerWarningFeedback();
+    setCanPersistSeeds(true);
     setSeeds((current) => current.filter((seed) => seed.id !== seedId));
     setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
@@ -219,6 +235,7 @@ export default function App() {
     transformTapMapRef.current[key] = now;
 
     triggerSuccessFeedback();
+    setCanPersistSeeds(true);
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
