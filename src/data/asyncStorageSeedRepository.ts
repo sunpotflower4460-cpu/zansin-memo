@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GrowthState, Mood, Seed, TransformOutput, TransformType } from '../domain/types';
 import { SEED_SCHEMA_VERSION } from '../domain/types';
-import type { SeedRepository } from './seedRepository';
+import type { SeedLoadResult, SeedRepository, SeedSaveResult } from './seedRepository';
 
 const STORAGE_KEY = 'kizashi-notes:seeds:v1';
+const LAST_GOOD_STORAGE_KEY = 'kizashi-notes:seeds:v1:lastGood';
+const CORRUPT_BACKUP_PREFIX = 'kizashi-notes:seeds:v1:corruptBackup';
 const RECOVERY_BODY_FALLBACK = '（復元できなかった種）';
 const GROWTH_STATES: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const MOODS: Mood[] = ['calm', 'excited', 'uncertain', 'heavy', 'bright'];
@@ -97,35 +99,82 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
   };
 };
 
+const parseSeeds = (raw: string): Seed[] | undefined => {
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  return parsed.map(normalizeSeed).filter((seed): seed is Seed => Boolean(seed));
+};
+
+const buildErrorMessage = (error: unknown): string | undefined => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return undefined;
+};
+
+const backupCorruptRaw = async (raw: string): Promise<void> => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  try {
+    await AsyncStorage.setItem(`${CORRUPT_BACKUP_PREFIX}:${timestamp}`, raw);
+  } catch {
+    // Best-effort only. Never let backup failure trigger destructive writes.
+  }
+};
+
 export class AsyncStorageSeedRepository implements SeedRepository {
-  async getAll(): Promise<Seed[]> {
+  async getAll(): Promise<SeedLoadResult> {
     let raw: string | null = null;
     try {
       raw = await AsyncStorage.getItem(STORAGE_KEY);
-    } catch {
-      return [];
+    } catch (error) {
+      return { ok: false, reason: 'read_error', message: buildErrorMessage(error) };
     }
+
     if (!raw) {
-      return [];
+      return { ok: true, seeds: [] };
     }
 
     try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) {
-        return [];
+      const seeds = parseSeeds(raw);
+      if (seeds) {
+        return { ok: true, seeds };
       }
-      return parsed.map(normalizeSeed).filter((seed): seed is Seed => Boolean(seed));
     } catch {
-      return [];
+      // Continue to corrupt backup + lastGood recovery below.
+    }
+
+    await backupCorruptRaw(raw);
+
+    try {
+      const lastGoodRaw = await AsyncStorage.getItem(LAST_GOOD_STORAGE_KEY);
+      if (!lastGoodRaw) {
+        return { ok: false, reason: 'parse_error', message: '保存データの形式を復元できませんでした。' };
+      }
+
+      const recoveredSeeds = parseSeeds(lastGoodRaw);
+      if (!recoveredSeeds) {
+        await backupCorruptRaw(lastGoodRaw);
+        return { ok: false, reason: 'parse_error', message: 'バックアップデータの形式を復元できませんでした。' };
+      }
+
+      return { ok: true, seeds: recoveredSeeds, recoveredFromBackup: true };
+    } catch (error) {
+      return { ok: false, reason: 'parse_error', message: buildErrorMessage(error) };
     }
   }
 
-  async saveAll(seeds: Seed[]): Promise<void> {
+  async saveAll(seeds: Seed[]): Promise<SeedSaveResult> {
     const normalized = seeds.map(normalizeSeed).filter((seed): seed is Seed => Boolean(seed));
+    const serialized = JSON.stringify(normalized);
+
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-    } catch {
-      return;
+      await AsyncStorage.setItem(STORAGE_KEY, serialized);
+      await AsyncStorage.setItem(LAST_GOOD_STORAGE_KEY, serialized);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: 'write_error', message: buildErrorMessage(error) };
     }
   }
 }
