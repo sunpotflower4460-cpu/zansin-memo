@@ -7,7 +7,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "check": "npm run typecheck",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run test",
     "build:ios": "eas build --platform ios --profile production",
     "submit:ios": "eas submit --platform ios --profile production",
     "test": "node --import tsx --test src/**/*.test.ts",
@@ -31,9 +32,13 @@
     "react-native-web": "~0.21.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/react": "~19.1.0",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.2",
+    "typescript-eslint": "^8.60.1",
     "wrangler": "^4.92.0"
   },
   "private": true

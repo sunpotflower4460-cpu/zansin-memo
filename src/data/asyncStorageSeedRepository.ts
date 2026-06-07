@@ -127,7 +127,7 @@ const backupCorruptRaw = async (raw: string): Promise<void> => {
 
 export class AsyncStorageSeedRepository implements SeedRepository {
   async getAll(): Promise<SeedLoadResult> {
-    let raw: string | null = null;
+    let raw: string | null;
     try {
       raw = await AsyncStorage.getItem(STORAGE_KEY);
     } catch (error) {
