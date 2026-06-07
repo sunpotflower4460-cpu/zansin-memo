@@ -25,6 +25,7 @@ import { theme } from './src/styles/theme';
 import { motion } from './src/utils/motion';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
+import { exportSeeds } from './src/utils/exportUtils';
 import {
   buildTransformOutput,
   createSeed,
@@ -329,6 +330,20 @@ export default function App() {
     );
   };
 
+  const handleExportJson = React.useCallback(async () => {
+    const result = await exportSeeds(seeds, 'json');
+    if (!result.ok) {
+      showToast(result.message);
+    }
+  }, [seeds, showToast]);
+
+  const handleExportText = React.useCallback(async () => {
+    const result = await exportSeeds(seeds, 'text');
+    if (!result.ok) {
+      showToast(result.message);
+    }
+  }, [seeds, showToast]);
+
   const openExternalUrl = React.useCallback(
     async (url: string, failureMessage: string) => {
       try {
@@ -443,6 +458,8 @@ export default function App() {
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
         onClearAllData={handleClearAllData}
+        onExportJson={() => { void handleExportJson(); }}
+        onExportText={() => { void handleExportText(); }}
       />
     );
   };
