@@ -31,4 +31,5 @@ test('restoreSeed clears deletedAt', () => {
 
   assert.equal(isSoftDeletedSeed(restored), false);
   assert.equal(restored.deletedAt, undefined);
+  assert.equal('deletedAt' in restored, false);
 });

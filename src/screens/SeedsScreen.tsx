@@ -12,6 +12,7 @@ import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels'
 import { formatDate } from '../utils/seedUtils';
 
 type SortType = 'updated' | 'importance';
+const MAX_RECENTLY_DELETED_SEEDS = 10;
 
 type SeedsScreenProps = {
   seeds: Seed[];
@@ -154,14 +155,14 @@ export function SeedsScreen({
             <Text style={styles.deletedHint}>削除した種はまだありません。</Text>
           ) : (
             <View style={styles.deletedList}>
-              {deletedSeeds.slice(0, 10).map((seed) => (
+              {deletedSeeds.slice(0, MAX_RECENTLY_DELETED_SEEDS).map((seed) => (
                 <View key={seed.id} style={styles.deletedItem}>
                   <Text numberOfLines={2} style={styles.deletedBody}>
                     {seed.body}
                   </Text>
                   <View style={styles.deletedMetaWrap}>
                     <Text style={styles.deletedMeta}>
-                      削除: {seed.deletedAt ? formatDate(seed.deletedAt) : '日時不明'} ・ 完全削除は今後対応予定
+                      削除: {seed.deletedAt ? formatDate(seed.deletedAt) : '日時不明'}
                     </Text>
                     <IOSChip label="復元する" onPress={() => onRestoreSeed(seed.id)} />
                   </View>

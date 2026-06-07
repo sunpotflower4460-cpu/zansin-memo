@@ -76,10 +76,10 @@ export const softDeleteSeed = (seed: Seed, deletedAt = new Date().toISOString())
     deletedAt,
   });
 
-export const restoreSeed = (seed: Seed): Seed =>
-  updateSeed(seed, {
-    deletedAt: undefined,
-  });
+export const restoreSeed = (seed: Seed): Seed => {
+  const { deletedAt: _deletedAt, ...restored } = updateSeed(seed, {});
+  return restored;
+};
 
 export const updateSeedResurfacingMeta = (
   seed: Seed,
