@@ -458,8 +458,8 @@ export default function App() {
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
         onClearAllData={handleClearAllData}
-        onExportJson={() => { void handleExportJson(); }}
-        onExportText={() => { void handleExportText(); }}
+        onExportJson={handleExportJson}
+        onExportText={handleExportText}
       />
     );
   };

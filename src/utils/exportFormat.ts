@@ -7,12 +7,11 @@ export type ExportFormat = 'json' | 'text';
 const EXPORT_SCHEMA_VERSION = SEED_SCHEMA_VERSION;
 
 const formatDate = (iso: string): string => {
-  try {
-    const d = new Date(iso);
-    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-  } catch {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
     return iso;
   }
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 };
 
 export const buildJsonExport = (seeds: Seed[]): string => {
