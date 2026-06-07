@@ -64,7 +64,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             placeholderTextColor="#8f9ba6"
             multiline
             textAlignVertical="top"
-            accessibilityLabel="今の種"
+            accessibilityLabel="種のことば"
           />
 
           <TextInput
@@ -86,7 +86,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             haptic="light"
             accessibilityRole="button"
             accessibilityState={{ expanded: detailsOpen }}
-            accessibilityLabel="気分やカテゴリの詳細を開閉"
+            accessibilityLabel="気分やカテゴリの詳細"
           >
             <View style={styles.detailLabelWrap}>
               <Ionicons name="options-outline" size={18} color={theme.colors.primary} />
