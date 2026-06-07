@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo } from 'react';
+import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
@@ -43,32 +44,40 @@ export function SeedsScreen({
   onRestoreSeed,
   onOpenSeed,
 }: SeedsScreenProps) {
-  const tagOptions = Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b));
-  const normalizedSearch = search.trim().toLowerCase();
+  const tagOptions = useMemo(
+    () => Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b)),
+    [seeds],
+  );
 
-  const filteredSeeds = seeds
-    .filter((seed) => {
-      if (stateFilter !== 'all' && seed.growthState !== stateFilter) {
-        return false;
-      }
-      if (tagFilter !== 'all' && !seed.tags.includes(tagFilter)) {
-        return false;
-      }
-      if (!normalizedSearch) {
-        return true;
-      }
-      const target = `${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`.toLowerCase();
-      return target.includes(normalizedSearch);
-    })
-    .sort((a, b) => {
-      if (sortType === 'importance') {
-        return b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt);
-      }
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
+  const normalizedSearch = useMemo(() => search.trim().toLowerCase(), [search]);
 
-  return (
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  const filteredSeeds = useMemo(
+    () =>
+      seeds
+        .filter((seed) => {
+          if (stateFilter !== 'all' && seed.growthState !== stateFilter) {
+            return false;
+          }
+          if (tagFilter !== 'all' && !seed.tags.includes(tagFilter)) {
+            return false;
+          }
+          if (!normalizedSearch) {
+            return true;
+          }
+          const target = `${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`.toLowerCase();
+          return target.includes(normalizedSearch);
+        })
+        .sort((a, b) => {
+          if (sortType === 'importance') {
+            return b.importance - a.importance || b.updatedAt.localeCompare(a.updatedAt);
+          }
+          return b.updatedAt.localeCompare(a.updatedAt);
+        }),
+    [seeds, stateFilter, tagFilter, normalizedSearch, sortType],
+  );
+
+  const listHeader = (
+    <View style={styles.listHeader}>
       <Text style={styles.heading}>種一覧</Text>
       <Text style={styles.subheading}>検索や絞り込みで、いま見返したい種を見つけます。</Text>
 
@@ -86,93 +95,104 @@ export function SeedsScreen({
 
       <FadeInView delayMs={40}>
         <SectionCard muted>
-        <Text style={styles.label}>状態</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-          <IOSChip label={allLabel} selected={stateFilter === 'all'} onPress={() => onChangeFilter('all')} />
-          {GROWTH_STATE_OPTIONS.map((state) => (
-            <IOSChip
-              key={state}
-              label={growthStateLabels[state]}
-              selected={stateFilter === state}
-              onPress={() => onChangeFilter(state)}
-            />
-          ))}
-        </ScrollView>
+          <Text style={styles.label}>状態</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            <IOSChip label={allLabel} selected={stateFilter === 'all'} onPress={() => onChangeFilter('all')} />
+            {GROWTH_STATE_OPTIONS.map((state) => (
+              <IOSChip
+                key={state}
+                label={growthStateLabels[state]}
+                selected={stateFilter === state}
+                onPress={() => onChangeFilter(state)}
+              />
+            ))}
+          </ScrollView>
 
-        <Text style={styles.label}>カテゴリ</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-          <IOSChip label={allLabel} selected={tagFilter === 'all'} onPress={() => onChangeTagFilter('all')} />
-          {tagOptions.map((tag) => (
-            <IOSChip key={tag} label={tag} selected={tagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
-          ))}
-        </ScrollView>
+          <Text style={styles.label}>カテゴリ</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            <IOSChip label={allLabel} selected={tagFilter === 'all'} onPress={() => onChangeTagFilter('all')} />
+            {tagOptions.map((tag) => (
+              <IOSChip key={tag} label={tag} selected={tagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
+            ))}
+          </ScrollView>
 
-        <ChipSelector<SortType>
-          label="並び替え"
-          options={['updated', 'importance']}
-          selectedValue={sortType}
-          onChange={(value) => onChangeSort(value ?? 'updated')}
-          getLabel={(value) => sortLabels[value]}
-        />
-        </SectionCard>
-      </FadeInView>
-
-      <View style={styles.listWrap}>
-        {filteredSeeds.length === 0 ? (
-          <EmptyState
-            icon="search-outline"
-            title="条件に合う種はありません"
-            description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
+          <ChipSelector<SortType>
+            label="並び替え"
+            options={['updated', 'importance']}
+            selectedValue={sortType}
+            onChange={(value) => onChangeSort(value ?? 'updated')}
+            getLabel={(value) => sortLabels[value]}
           />
-        ) : (
-          filteredSeeds.map((seed) => (
-            <AnimatedPressable
-              key={seed.id}
-              onPress={() => onOpenSeed(seed.id)}
-              style={styles.seedCard}
-              pressedStyle={styles.seedCardPressed}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="種の詳細を開く"
-            >
-              {seed.title ? <Text style={styles.title}>{seed.title}</Text> : null}
-              <Text numberOfLines={3} style={styles.body}>
-                {seed.body}
-              </Text>
-              <Text style={styles.meta}>
-                {growthStateLabels[seed.growthState]} ・ 大切度{seed.importance} ・ {formatDate(seed.updatedAt)}
-              </Text>
-              {seed.tags.length > 0 ? <Text style={styles.tags}>カテゴリ: {seed.tags.join(', ')}</Text> : null}
-            </AnimatedPressable>
-          ))
-        )}
-      </View>
-
-      <FadeInView delayMs={90}>
-        <SectionCard muted>
-          <Text style={styles.label}>最近削除した種</Text>
-          {deletedSeeds.length === 0 ? (
-            <Text style={styles.deletedHint}>削除した種はまだありません。</Text>
-          ) : (
-            <View style={styles.deletedList}>
-              {deletedSeeds.slice(0, MAX_RECENTLY_DELETED_SEEDS).map((seed) => (
-                <View key={seed.id} style={styles.deletedItem}>
-                  <Text numberOfLines={2} style={styles.deletedBody}>
-                    {seed.body}
-                  </Text>
-                  <View style={styles.deletedMetaWrap}>
-                    <Text style={styles.deletedMeta}>
-                      削除: {seed.deletedAt ? formatDate(seed.deletedAt) : '日時不明'}
-                    </Text>
-                    <IOSChip label="復元する" onPress={() => onRestoreSeed(seed.id)} />
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
         </SectionCard>
       </FadeInView>
-    </ScrollView>
+    </View>
+  );
+
+  const listFooter = (
+    <View style={styles.listFooter}>
+      <FadeInView delayMs={90}>
+      <SectionCard muted>
+        <Text style={styles.label}>最近削除した種</Text>
+        {deletedSeeds.length === 0 ? (
+          <Text style={styles.deletedHint}>削除した種はまだありません。</Text>
+        ) : (
+          <View style={styles.deletedList}>
+            {deletedSeeds.slice(0, MAX_RECENTLY_DELETED_SEEDS).map((seed) => (
+              <View key={seed.id} style={styles.deletedItem}>
+                <Text numberOfLines={2} style={styles.deletedBody}>
+                  {seed.body}
+                </Text>
+                <View style={styles.deletedMetaWrap}>
+                  <Text style={styles.deletedMeta}>
+                    削除: {seed.deletedAt ? formatDate(seed.deletedAt) : '日時不明'}
+                  </Text>
+                  <IOSChip label="復元する" onPress={() => onRestoreSeed(seed.id)} />
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </SectionCard>
+    </FadeInView>
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={filteredSeeds}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={listHeader}
+      ListEmptyComponent={
+        <EmptyState
+          icon="search-outline"
+          title="条件に合う種はありません"
+          description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
+        />
+      }
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ListFooterComponent={listFooter}
+      renderItem={({ item: seed }) => (
+        <AnimatedPressable
+          onPress={() => onOpenSeed(seed.id)}
+          style={styles.seedCard}
+          pressedStyle={styles.seedCardPressed}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel="種の詳細を開く"
+        >
+          {seed.title ? <Text style={styles.title}>{seed.title}</Text> : null}
+          <Text numberOfLines={3} style={styles.body}>
+            {seed.body}
+          </Text>
+          <Text style={styles.meta}>
+            {growthStateLabels[seed.growthState]} ・ 大切度{seed.importance} ・ {formatDate(seed.updatedAt)}
+          </Text>
+          {seed.tags.length > 0 ? <Text style={styles.tags}>カテゴリ: {seed.tags.join(', ')}</Text> : null}
+        </AnimatedPressable>
+      )}
+    />
   );
 }
 
@@ -181,7 +201,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.lg,
     paddingBottom: 124,
+  },
+  listHeader: {
     gap: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  listFooter: {
+    marginTop: theme.spacing.md,
+  },
+  separator: {
+    height: 12,
   },
   heading: {
     fontSize: theme.typography.title,
@@ -216,9 +245,6 @@ const styles = StyleSheet.create({
   row: {
     gap: 8,
     paddingRight: 16,
-  },
-  listWrap: {
-    gap: 12,
   },
   deletedList: {
     gap: 10,

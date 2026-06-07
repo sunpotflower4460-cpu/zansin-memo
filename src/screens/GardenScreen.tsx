@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
@@ -36,32 +37,50 @@ const stateAccents: Record<GrowthState, string> = {
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
-  const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
-    if (seed.tags.length === 0) {
-      if (!acc[untaggedLabel]) {
-        acc[untaggedLabel] = [];
-      }
-      acc[untaggedLabel].push(seed);
-      return acc;
-    }
 
-    seed.tags.forEach((tag) => {
-      if (!acc[tag]) {
-        acc[tag] = [];
-      }
-      acc[tag].push(seed);
-    });
-    return acc;
-  }, {});
-  const orderedTags = Object.keys(groupedByTag).sort((a, b) => {
-    if (a === untaggedLabel) {
-      return 1;
+  const stateBuckets = useMemo(() => {
+    const buckets: Record<GrowthState, Seed[]> = { seed: [], sprout: [], tree: [], archived: [] };
+    for (const seed of seeds) {
+      buckets[seed.growthState].push(seed);
     }
-    if (b === untaggedLabel) {
-      return -1;
-    }
-    return a.localeCompare(b);
-  });
+    return buckets;
+  }, [seeds]);
+
+  const groupedByTag = useMemo(
+    () =>
+      seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
+        if (seed.tags.length === 0) {
+          if (!acc[untaggedLabel]) {
+            acc[untaggedLabel] = [];
+          }
+          acc[untaggedLabel].push(seed);
+          return acc;
+        }
+
+        seed.tags.forEach((tag) => {
+          if (!acc[tag]) {
+            acc[tag] = [];
+          }
+          acc[tag].push(seed);
+        });
+        return acc;
+      }, {}),
+    [seeds],
+  );
+
+  const orderedTags = useMemo(
+    () =>
+      Object.keys(groupedByTag).sort((a, b) => {
+        if (a === untaggedLabel) {
+          return 1;
+        }
+        if (b === untaggedLabel) {
+          return -1;
+        }
+        return a.localeCompare(b);
+      }),
+    [groupedByTag],
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
@@ -73,7 +92,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
       ) : null}
 
       {orderedStates.map((state) => {
-        const bucket = seeds.filter((seed) => seed.growthState === state);
+        const bucket = stateBuckets[state];
 
         return (
           <FadeInView key={state} delayMs={40}>
