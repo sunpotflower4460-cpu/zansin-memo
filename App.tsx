@@ -24,6 +24,7 @@ import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
 import { motion } from './src/utils/motion';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
+import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
 import {
   buildTransformOutput,
   createSeed,
@@ -77,10 +78,14 @@ export default function App() {
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
   const [toastKey, setToastKey] = React.useState(0);
   const [toastMsg, setToastMsg] = React.useState('');
+  const [saveState, setSaveState] = React.useState<SaveState>('idle');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveStateTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchedAtRef = React.useRef(Date.now());
   const transformTapMapRef = React.useRef<Record<string, number>>({});
+  const saveProgressRef = React.useRef<SaveProgress>({ requestId: 0, state: 'idle' });
+  const didHydrateSeedsRef = React.useRef(false);
 
   const showToast = React.useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -101,6 +106,7 @@ export default function App() {
   React.useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (saveStateTimer.current) clearTimeout(saveStateTimer.current);
       if (launchTimer.current) clearTimeout(launchTimer.current);
     };
   }, []);
@@ -143,6 +149,7 @@ export default function App() {
       setSeeds(loadResult.seeds);
       setCanPersistSeeds(true);
       setIsReady(true);
+      didHydrateSeedsRef.current = true;
 
       if (loadResult.recoveredFromBackup) {
         showToast('バックアップから種を復元しました。');
@@ -161,15 +168,43 @@ export default function App() {
       return;
     }
 
+    if (!didHydrateSeedsRef.current) {
+      return;
+    }
+
     const persist = async () => {
+      if (saveStateTimer.current) {
+        clearTimeout(saveStateTimer.current);
+      }
+
+      const started = beginSave(saveProgressRef.current.requestId);
+      saveProgressRef.current = started;
+      setSaveState(started.state);
+
       const saveResult = await seedRepository.saveAll(seeds);
-      if (!saveResult.ok) {
-        showToast('保存できませんでした。端末の空き容量などを確認してください。');
+      const finished = finishSave(saveProgressRef.current, started.requestId, saveResult);
+      if (finished.requestId !== saveProgressRef.current.requestId || finished.state === saveProgressRef.current.state) {
+        return;
+      }
+
+      saveProgressRef.current = finished;
+      setSaveState(finished.state);
+
+      if (finished.state === 'saved') {
+        saveStateTimer.current = setTimeout(() => {
+          const settled = settleSaved(saveProgressRef.current, started.requestId);
+          if (settled.state === saveProgressRef.current.state) {
+            return;
+          }
+
+          saveProgressRef.current = settled;
+          setSaveState(settled.state);
+        }, 1400);
       }
     };
 
     void persist();
-  }, [canPersistSeeds, isReady, seeds, showToast]);
+  }, [canPersistSeeds, isReady, seeds]);
 
   const refreshTodaySeed = React.useCallback(() => {
     const picked = pickTodaySeed(seeds);
@@ -212,7 +247,7 @@ export default function App() {
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'home' });
-    showToast('種を保存しました 🌱');
+    showToast('種を追加しました 🌱');
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
@@ -222,7 +257,7 @@ export default function App() {
 
     triggerSuccessFeedback();
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
-    showToast('種を育てました ✨');
+    showToast('種を更新しました ✨');
   };
 
   const handleDeleteSeed = (seedId: string) => {
@@ -333,6 +368,8 @@ export default function App() {
   };
 
   const activeTab: MainTab = screen.kind === 'detail' ? screen.from : screen.kind;
+  const saveStateMessage = getSaveStateMessage(saveState);
+  const statusToastMessage = toastMsg || saveStateMessage;
 
   return (
     <SafeAreaProvider>
@@ -340,7 +377,13 @@ export default function App() {
         <StatusBar style="dark" />
         <View style={styles.app}>
           {renderMainScreen()}
-          {toastMsg ? <SaveToast key={toastKey} message={toastMsg} /> : null}
+          {statusToastMessage ? (
+            <SaveToast
+              key={toastKey}
+              message={statusToastMessage}
+              tone={toastMsg ? 'default' : saveState === 'error' ? 'error' : 'default'}
+            />
+          ) : null}
           <AppLaunchIntro visible={!isReady || showLaunchIntro} />
         </View>
         {screen.kind !== 'detail' && isReady ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
