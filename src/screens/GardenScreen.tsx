@@ -15,6 +15,7 @@ type GardenScreenProps = {
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const untaggedLabel = '未分類';
+const GARDEN_CARD_WIDTH_RATIO = 0.72;
 const GARDEN_CARD_MIN_WIDTH = 210;
 const GARDEN_CARD_MAX_WIDTH = 280;
 
@@ -34,7 +35,7 @@ const stateAccents: Record<GrowthState, string> = {
 
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
   const { width } = useWindowDimensions();
-  const cardWidth = Math.min(Math.max(width * 0.72, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
+  const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
   const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
     if (seed.tags.length === 0) {
       if (!acc[untaggedLabel]) {

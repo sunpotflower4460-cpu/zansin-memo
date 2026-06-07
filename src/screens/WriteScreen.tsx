@@ -40,7 +40,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
   const insets = useSafeAreaInsets();
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const saveAccessibilityHint = saveDisabled ? '今の種を入力すると保存できます。' : '今の内容で種を保存します。';
+  const saveAccessibilityHint = saveDisabled ? '種のことばを入力すると保存できます。' : '今の内容で種を保存します。';
   const contentStyle = [styles.content, { paddingBottom: Math.max(MIN_SCROLL_BOTTOM_PADDING, insets.bottom + BOTTOM_BAR_OVERLAY_OFFSET) }];
   const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
 
