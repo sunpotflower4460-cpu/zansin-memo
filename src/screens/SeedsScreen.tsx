@@ -15,6 +15,10 @@ import { formatDate } from '../utils/seedUtils';
 type SortType = 'updated' | 'importance';
 const MAX_RECENTLY_DELETED_SEEDS = 10;
 
+function SeedSeparator() {
+  return <View style={styles.separator} />;
+}
+
 type SeedsScreenProps = {
   seeds: Seed[];
   deletedSeeds: Seed[];
@@ -171,7 +175,7 @@ export function SeedsScreen({
           description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
         />
       }
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={SeedSeparator}
       ListFooterComponent={listFooter}
       renderItem={({ item: seed }) => (
         <AnimatedPressable
@@ -210,7 +214,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md,
   },
   separator: {
-    height: 12,
+    height: theme.spacing.sm,
   },
   heading: {
     fontSize: theme.typography.title,
