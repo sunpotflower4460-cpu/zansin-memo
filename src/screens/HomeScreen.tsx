@@ -117,8 +117,10 @@ export function HomeScreen({
       <FadeInView delayMs={120}>
         <SectionCard muted>
           <Text style={styles.cardTitle}>このアプリについて</Text>
-          <Text style={styles.aboutText}>このアプリは端末内のローカル保存を中心に動作します。</Text>
-          <Text style={styles.aboutText}>現時点で、ログイン・AI送信・広告・トラッキングはありません。</Text>
+          <Text style={styles.aboutText}>
+            このアプリは端末内のローカル保存を中心に動作します。{'\n'}
+            現時点で、ログイン・AI送信・広告・トラッキングはありません。
+          </Text>
 
           <AnimatedPressable
             onPress={onOpenPrivacyPolicy}
@@ -252,14 +254,14 @@ const styles = StyleSheet.create({
   linkButton: {
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: '#d4e1d6',
-    backgroundColor: '#f8fbf9',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSoft,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
   linkButtonPressed: {
-    backgroundColor: '#eef5f0',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   linkButtonText: {
     fontSize: theme.typography.body,
@@ -269,18 +271,18 @@ const styles = StyleSheet.create({
   deleteButton: {
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: '#f2d2d2',
-    backgroundColor: '#fff7f7',
+    borderColor: theme.colors.dangerBg,
+    backgroundColor: theme.colors.dangerBg,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     marginTop: theme.spacing.sm,
   },
   deleteButtonPressed: {
-    backgroundColor: '#ffecec',
+    backgroundColor: theme.colors.surface,
   },
   deleteButtonText: {
     fontSize: theme.typography.body,
-    color: '#b0413e',
+    color: theme.colors.dangerText,
     fontWeight: '600',
   },
 });
