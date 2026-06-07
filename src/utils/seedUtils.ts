@@ -69,6 +69,18 @@ export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => {
   };
 };
 
+export const isSoftDeletedSeed = (seed: Seed): boolean => Boolean(seed.deletedAt);
+
+export const softDeleteSeed = (seed: Seed, deletedAt = new Date().toISOString()): Seed =>
+  updateSeed(seed, {
+    deletedAt,
+  });
+
+export const restoreSeed = (seed: Seed): Seed =>
+  updateSeed(seed, {
+    deletedAt: undefined,
+  });
+
 export const updateSeedResurfacingMeta = (
   seed: Seed,
   meta: Pick<Seed, 'lastResurfacedAt' | 'resurfacingScore'>,

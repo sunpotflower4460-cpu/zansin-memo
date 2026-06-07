@@ -254,7 +254,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
         <AnimatedPressable
           onPress={() =>
-            Alert.alert('種を削除しますか？', 'この操作は元に戻せません。', [
+            Alert.alert('種を削除しますか？', '種一覧の「最近削除した種」から復元できます。', [
               { text: 'キャンセル', style: 'cancel' },
               {
                 text: '削除',
