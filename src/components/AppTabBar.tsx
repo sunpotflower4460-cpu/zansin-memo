@@ -62,11 +62,13 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
-    minHeight: 60,
+    minHeight: 64,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
     borderRadius: theme.radius.md,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
   },
   tabButtonSelected: {
     backgroundColor: theme.colors.primarySoft,
@@ -77,6 +79,8 @@ const styles = StyleSheet.create({
   tabLabel: {
     color: '#758392',
     fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   tabLabelSelected: {
     color: theme.colors.primary,

@@ -20,6 +20,7 @@ type AnimatedPressableProps = {
   haptic?: 'none' | 'light';
   accessibilityRole?: AccessibilityRole;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   accessibilityState?: { selected?: boolean; expanded?: boolean; disabled?: boolean };
 };
 
@@ -33,6 +34,7 @@ export function AnimatedPressable({
   haptic = 'none',
   accessibilityRole,
   accessibilityLabel,
+  accessibilityHint,
   accessibilityState,
 }: AnimatedPressableProps) {
   const scale = React.useRef(new Animated.Value(1)).current;
@@ -73,6 +75,7 @@ export function AnimatedPressable({
       }}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ ...accessibilityState, disabled: disabled ?? false }}
     >
       <Animated.View style={[style, animatedStyle, pressed && pressedStyle]}>
