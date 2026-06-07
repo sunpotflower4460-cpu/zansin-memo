@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sunpotflower4460.kizashinotes"
+      "bundleIdentifier": "com.sunpotflower4460.kizashinotes",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,9 +28,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "appStoreTodo": "Replace bundle/package identifiers and assets for production submission"
     },
     "plugins": [
       "expo-font"
