@@ -19,6 +19,8 @@ type HomeScreenProps = {
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
   onClearAllData: () => void;
+  onExportJson: () => void;
+  onExportText: () => void;
 };
 
 export function HomeScreen({
@@ -30,6 +32,8 @@ export function HomeScreen({
   onOpenPrivacyPolicy,
   onOpenSupport,
   onClearAllData,
+  onExportJson,
+  onExportText,
 }: HomeScreenProps) {
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const today = new Date();
@@ -142,6 +146,29 @@ export function HomeScreen({
           >
             <Text style={styles.linkButtonText}>サポート連絡先</Text>
           </AnimatedPressable>
+
+          <Text style={styles.exportLabel}>データのバックアップ</Text>
+          <AnimatedPressable
+            onPress={onExportJson}
+            style={styles.linkButton}
+            pressedStyle={styles.linkButtonPressed}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="JSONでエクスポートする"
+          >
+            <Text style={styles.linkButtonText}>JSON形式でエクスポート</Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={onExportText}
+            style={styles.linkButton}
+            pressedStyle={styles.linkButtonPressed}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="テキストでエクスポートする"
+          >
+            <Text style={styles.linkButtonText}>テキスト形式でエクスポート</Text>
+          </AnimatedPressable>
+
           <AnimatedPressable
             onPress={onClearAllData}
             style={styles.deleteButton}
@@ -284,5 +311,12 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.body,
     color: theme.colors.dangerText,
     fontWeight: '600',
+  },
+  exportLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    fontWeight: '600',
+    marginTop: theme.spacing.sm,
+    letterSpacing: 0.3,
   },
 });
