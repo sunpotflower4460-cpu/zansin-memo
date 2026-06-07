@@ -26,6 +26,7 @@ export type Seed = {
   relatedSeedIds: string[];
   resurfacingScore?: number;
   lastResurfacedAt?: string;
+  deletedAt?: string;
   transformOutputs?: TransformOutput[];
   schemaVersion: number;
 };

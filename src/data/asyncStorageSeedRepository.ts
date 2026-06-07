@@ -80,6 +80,7 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
   const growthState = asString(data.growthState);
   const mood = asString(data.mood);
   const lastResurfacedAt = asString(data.lastResurfacedAt);
+  const deletedAt = asString(data.deletedAt);
 
   return {
     id: asString(data.id)?.trim() || createId(),
@@ -94,6 +95,7 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
     relatedSeedIds: normalizeStringArray(data.relatedSeedIds),
     resurfacingScore: typeof data.resurfacingScore === 'number' && Number.isFinite(data.resurfacingScore) ? data.resurfacingScore : undefined,
     lastResurfacedAt: lastResurfacedAt && isValidIsoDate(lastResurfacedAt) ? new Date(lastResurfacedAt).toISOString() : undefined,
+    deletedAt: deletedAt && isValidIsoDate(deletedAt) ? new Date(deletedAt).toISOString() : undefined,
     transformOutputs: normalizeTransformOutputs(data.transformOutputs, updatedAt),
     schemaVersion: typeof data.schemaVersion === 'number' ? data.schemaVersion : SEED_SCHEMA_VERSION,
   };

@@ -12,9 +12,11 @@ import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels'
 import { formatDate } from '../utils/seedUtils';
 
 type SortType = 'updated' | 'importance';
+const MAX_RECENTLY_DELETED_SEEDS = 10;
 
 type SeedsScreenProps = {
   seeds: Seed[];
+  deletedSeeds: Seed[];
   search: string;
   stateFilter: GrowthState | 'all';
   tagFilter: string;
@@ -23,11 +25,13 @@ type SeedsScreenProps = {
   onChangeFilter: (value: GrowthState | 'all') => void;
   onChangeTagFilter: (value: string) => void;
   onChangeSort: (value: SortType) => void;
+  onRestoreSeed: (seedId: string) => void;
   onOpenSeed: (seedId: string) => void;
 };
 
 export function SeedsScreen({
   seeds,
+  deletedSeeds,
   search,
   stateFilter,
   tagFilter,
@@ -36,6 +40,7 @@ export function SeedsScreen({
   onChangeFilter,
   onChangeTagFilter,
   onChangeSort,
+  onRestoreSeed,
   onOpenSeed,
 }: SeedsScreenProps) {
   const tagOptions = Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b));
@@ -142,6 +147,31 @@ export function SeedsScreen({
           ))
         )}
       </View>
+
+      <FadeInView delayMs={90}>
+        <SectionCard muted>
+          <Text style={styles.label}>最近削除した種</Text>
+          {deletedSeeds.length === 0 ? (
+            <Text style={styles.deletedHint}>削除した種はまだありません。</Text>
+          ) : (
+            <View style={styles.deletedList}>
+              {deletedSeeds.slice(0, MAX_RECENTLY_DELETED_SEEDS).map((seed) => (
+                <View key={seed.id} style={styles.deletedItem}>
+                  <Text numberOfLines={2} style={styles.deletedBody}>
+                    {seed.body}
+                  </Text>
+                  <View style={styles.deletedMetaWrap}>
+                    <Text style={styles.deletedMeta}>
+                      削除: {seed.deletedAt ? formatDate(seed.deletedAt) : '日時不明'}
+                    </Text>
+                    <IOSChip label="復元する" onPress={() => onRestoreSeed(seed.id)} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </SectionCard>
+      </FadeInView>
     </ScrollView>
   );
 }
@@ -189,6 +219,36 @@ const styles = StyleSheet.create({
   },
   listWrap: {
     gap: 12,
+  },
+  deletedList: {
+    gap: 10,
+  },
+  deletedItem: {
+    borderTopWidth: 1,
+    borderTopColor: '#dfe8e0',
+    paddingTop: 10,
+    gap: 8,
+  },
+  deletedBody: {
+    fontSize: 14,
+    color: theme.colors.textMuted,
+    lineHeight: 20,
+  },
+  deletedMetaWrap: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deletedMeta: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.colors.textSoft,
+    lineHeight: 17,
+  },
+  deletedHint: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
   },
   seedCard: {
     backgroundColor: theme.colors.surface,

@@ -30,6 +30,9 @@ import {
   createSeed,
   getLocalDateKey,
   pickTodaySeed,
+  restoreSeed,
+  softDeleteSeed,
+  isSoftDeletedSeed,
   updateSeed,
   updateSeedResurfacingMeta,
 } from './src/utils/seedUtils';
@@ -210,8 +213,17 @@ export default function App() {
     void persist();
   }, [canPersistSeeds, isReady, seeds]);
 
+  const activeSeeds = React.useMemo(() => seeds.filter((seed) => !isSoftDeletedSeed(seed)), [seeds]);
+  const deletedSeeds = React.useMemo(
+    () =>
+      seeds
+        .filter((seed) => isSoftDeletedSeed(seed))
+        .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')),
+    [seeds],
+  );
+
   const refreshTodaySeed = React.useCallback(() => {
-    const picked = pickTodaySeed(seeds);
+    const picked = pickTodaySeed(activeSeeds);
     setTodaySeed(picked);
     setTodayKey(getLocalDateKey());
 
@@ -229,17 +241,17 @@ export default function App() {
           : seed,
       ),
     );
-  }, [seeds]);
+  }, [activeSeeds]);
 
   React.useEffect(() => {
     if (!isReady) {
       return;
     }
 
-    if (todayKey !== getLocalDateKey() || !todaySeed || !seeds.some((seed) => seed.id === todaySeed.seed.id)) {
+    if (todayKey !== getLocalDateKey() || !todaySeed || !activeSeeds.some((seed) => seed.id === todaySeed.seed.id)) {
       refreshTodaySeed();
     }
-  }, [isReady, seeds, todayKey, todaySeed, refreshTodaySeed]);
+  }, [activeSeeds, isReady, todayKey, todaySeed, refreshTodaySeed]);
 
   const handleCreateSeed = (input: SeedCreateInput) => {
     if (!input.body.trim() || blockIfStorageLocked()) {
@@ -270,10 +282,24 @@ export default function App() {
     }
 
     triggerWarningFeedback();
-    setSeeds((current) => current.filter((seed) => seed.id !== seedId));
+    setSeeds((current) => current.map((seed) => (seed.id === seedId ? softDeleteSeed(seed) : seed)));
     setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
+    showToast('種を削除しました（あとで復元できます）');
   };
+
+  const handleRestoreSeed = React.useCallback(
+    (seedId: string) => {
+      if (blockIfStorageLocked()) {
+        return;
+      }
+
+      triggerSuccessFeedback();
+      setSeeds((current) => current.map((seed) => (seed.id === seedId ? restoreSeed(seed) : seed)));
+      showToast('種を復元しました 🌱');
+    },
+    [blockIfStorageLocked, showToast],
+  );
 
   const handleCreateTransform = (seedId: string, type: TransformType) => {
     if (blockIfStorageLocked()) {
@@ -348,7 +374,7 @@ export default function App() {
     ]);
   }, [blockIfStorageLocked, showToast]);
 
-  const selectedSeed = screen.kind === 'detail' ? seeds.find((seed) => seed.id === screen.seedId) : undefined;
+  const selectedSeed = screen.kind === 'detail' ? activeSeeds.find((seed) => seed.id === screen.seedId) : undefined;
 
   React.useEffect(() => {
     if (screen.kind === 'detail' && !selectedSeed) {
@@ -365,7 +391,7 @@ export default function App() {
       return (
         <SeedDetailScreen
           seed={selectedSeed}
-          allSeeds={seeds}
+          allSeeds={activeSeeds}
           onBack={() => setScreen({ kind: screen.from })}
           onSave={handleUpdateSeed}
           onDelete={handleDeleteSeed}
@@ -387,7 +413,8 @@ export default function App() {
     if (screen.kind === 'seeds') {
       return (
         <SeedsScreen
-          seeds={seeds}
+          seeds={activeSeeds}
+          deletedSeeds={deletedSeeds}
           search={seedsSearch}
           stateFilter={stateFilter}
           tagFilter={tagFilter}
@@ -396,18 +423,19 @@ export default function App() {
           onChangeFilter={setStateFilter}
           onChangeTagFilter={setTagFilter}
           onChangeSort={setSortType}
+          onRestoreSeed={handleRestoreSeed}
           onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'seeds' })}
         />
       );
     }
 
     if (screen.kind === 'garden') {
-      return <GardenScreen seeds={seeds} onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })} />;
+      return <GardenScreen seeds={activeSeeds} onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })} />;
     }
 
     return (
       <HomeScreen
-        seeds={seeds}
+        seeds={activeSeeds}
         todaySeed={todaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
