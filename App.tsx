@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { SafeAreaView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, SafeAreaView, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
@@ -46,6 +46,10 @@ type ScreenState =
 
 const TRANSFORM_DOUBLE_TAP_GUARD_MS = 700;
 const STORAGE_LOCKED_MESSAGE = '保存データの読み込みに問題があるため、変更を停止しています。';
+const PRIVACY_POLICY_URL = 'https://github.com/sunpotflower4460-cpu/zansin-memo/blob/main/docs/privacy-policy.md';
+const SUPPORT_URL = 'https://github.com/sunpotflower4460-cpu/zansin-memo/issues/new';
+const CLEAR_ALL_DATA_ALERT_TITLE = 'すべてのデータを削除しますか？';
+const CLEAR_ALL_DATA_ALERT_MESSAGE = '保存されたすべての種（メモ）が削除されます。この操作は元に戻せません。';
 
 const initialWriteDraft: {
   title: string;
@@ -299,6 +303,51 @@ export default function App() {
     );
   };
 
+  const openExternalUrl = React.useCallback(
+    async (url: string, failureMessage: string) => {
+      try {
+        const canOpen = await Linking.canOpenURL(url);
+        if (!canOpen) {
+          showToast(failureMessage);
+          return;
+        }
+        await Linking.openURL(url);
+      } catch {
+        showToast(failureMessage);
+      }
+    },
+    [showToast],
+  );
+
+  const handleOpenPrivacyPolicy = React.useCallback(() => {
+    void openExternalUrl(PRIVACY_POLICY_URL, 'プライバシーポリシーを開けませんでした。');
+  }, [openExternalUrl]);
+
+  const handleOpenSupport = React.useCallback(() => {
+    void openExternalUrl(SUPPORT_URL, 'サポート連絡先を開けませんでした。');
+  }, [openExternalUrl]);
+
+  const handleClearAllData = React.useCallback(() => {
+    if (blockIfStorageLocked()) {
+      return;
+    }
+
+    Alert.alert(CLEAR_ALL_DATA_ALERT_TITLE, CLEAR_ALL_DATA_ALERT_MESSAGE, [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: 'すべて削除',
+        style: 'destructive',
+        onPress: () => {
+          triggerWarningFeedback();
+          setSeeds([]);
+          setTodaySeed(undefined);
+          setScreen({ kind: 'home' });
+          showToast('すべてのデータを削除しました。');
+        },
+      },
+    ]);
+  }, [blockIfStorageLocked, showToast]);
+
   const selectedSeed = screen.kind === 'detail' ? seeds.find((seed) => seed.id === screen.seedId) : undefined;
 
   React.useEffect(() => {
@@ -363,6 +412,9 @@ export default function App() {
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
         onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'home' })}
+        onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
+        onOpenSupport={handleOpenSupport}
+        onClearAllData={handleClearAllData}
       />
     );
   };

@@ -16,9 +16,21 @@ type HomeScreenProps = {
   onRefreshToday: () => void;
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
+  onOpenPrivacyPolicy: () => void;
+  onOpenSupport: () => void;
+  onClearAllData: () => void;
 };
 
-export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpenWrite }: HomeScreenProps) {
+export function HomeScreen({
+  seeds,
+  todaySeed,
+  onRefreshToday,
+  onOpenSeed,
+  onOpenWrite,
+  onOpenPrivacyPolicy,
+  onOpenSupport,
+  onClearAllData,
+}: HomeScreenProps) {
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日`;
@@ -74,31 +86,72 @@ export function HomeScreen({ seeds, todaySeed, onRefreshToday, onOpenSeed, onOpe
 
       <FadeInView delayMs={90}>
         <SectionCard muted>
-        <Text style={styles.cardTitle}>最近の種</Text>
-        {recent.length > 0 ? (
-          recent.map((seed) => (
-            <AnimatedPressable
-              key={seed.id}
-              onPress={() => onOpenSeed(seed.id)}
-              style={styles.listItem}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="最近の種の詳細を開く"
-            >
-              <Text style={styles.listBody} numberOfLines={2}>
-                {seed.body}
-              </Text>
-              <View style={styles.listMetaRow}>
-                <Ionicons name="leaf-outline" size={14} color={theme.colors.textSoft} />
-                <Text style={styles.listMeta}>
-                  {toGrowthLabel(seed.growthState)} ・ 大切度{seed.importance}
+          <Text style={styles.cardTitle}>最近の種</Text>
+          {recent.length > 0 ? (
+            recent.map((seed) => (
+              <AnimatedPressable
+                key={seed.id}
+                onPress={() => onOpenSeed(seed.id)}
+                style={styles.listItem}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="最近の種の詳細を開く"
+              >
+                <Text style={styles.listBody} numberOfLines={2}>
+                  {seed.body}
                 </Text>
-              </View>
-            </AnimatedPressable>
-          ))
-        ) : (
-          <EmptyState icon="sparkles-outline" title="種の記録はこれからです" description="書いた種はここに静かに並んでいきます。" />
-        )}
+                <View style={styles.listMetaRow}>
+                  <Ionicons name="leaf-outline" size={14} color={theme.colors.textSoft} />
+                  <Text style={styles.listMeta}>
+                    {toGrowthLabel(seed.growthState)} ・ 大切度{seed.importance}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+            ))
+          ) : (
+            <EmptyState icon="sparkles-outline" title="種の記録はこれからです" description="書いた種はここに静かに並んでいきます。" />
+          )}
+        </SectionCard>
+      </FadeInView>
+
+      <FadeInView delayMs={120}>
+        <SectionCard muted>
+          <Text style={styles.cardTitle}>このアプリについて</Text>
+          <Text style={styles.aboutText}>
+            このアプリは端末内のローカル保存を中心に動作します。{'\n'}
+            現時点で、ログイン・AI送信・広告・トラッキングはありません。
+          </Text>
+
+          <AnimatedPressable
+            onPress={onOpenPrivacyPolicy}
+            style={styles.linkButton}
+            pressedStyle={styles.linkButtonPressed}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="プライバシーポリシーを開く"
+          >
+            <Text style={styles.linkButtonText}>プライバシーポリシーを開く</Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={onOpenSupport}
+            style={styles.linkButton}
+            pressedStyle={styles.linkButtonPressed}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="サポート連絡先を開く"
+          >
+            <Text style={styles.linkButtonText}>サポート連絡先</Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={onClearAllData}
+            style={styles.deleteButton}
+            pressedStyle={styles.deleteButtonPressed}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="すべてのデータを削除する"
+          >
+            <Text style={styles.deleteButtonText}>すべてのデータを削除</Text>
+          </AnimatedPressable>
         </SectionCard>
       </FadeInView>
 
@@ -192,5 +245,44 @@ const styles = StyleSheet.create({
   listMeta: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted,
+  },
+  aboutText: {
+    fontSize: theme.typography.body,
+    color: theme.colors.textMuted,
+    lineHeight: 22,
+  },
+  linkButton: {
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSoft,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+  },
+  linkButtonPressed: {
+    backgroundColor: theme.colors.surfaceMuted,
+  },
+  linkButtonText: {
+    fontSize: theme.typography.body,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.dangerBg,
+    backgroundColor: theme.colors.dangerBg,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  deleteButtonPressed: {
+    backgroundColor: theme.colors.surface,
+  },
+  deleteButtonText: {
+    fontSize: theme.typography.body,
+    color: theme.colors.dangerText,
+    fontWeight: '600',
   },
 });
