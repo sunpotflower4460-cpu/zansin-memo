@@ -40,6 +40,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
   const insets = useSafeAreaInsets();
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const saveAccessibilityHint = saveDisabled ? '種のことばを入力すると保存できます。' : '今の内容で種を保存します。';
   const contentStyle = [styles.content, { paddingBottom: Math.max(MIN_SCROLL_BOTTOM_PADDING, insets.bottom + BOTTOM_BAR_OVERLAY_OFFSET) }];
   const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
 
@@ -63,6 +64,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             placeholderTextColor="#8f9ba6"
             multiline
             textAlignVertical="top"
+            accessibilityLabel="種のことば"
           />
 
           <TextInput
@@ -71,6 +73,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             style={styles.titleInput}
             placeholder="タイトル（任意）"
             placeholderTextColor="#9aa6b2"
+            accessibilityLabel="タイトル"
           />
           </SectionCard>
         </FadeInView>
@@ -81,6 +84,9 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             onPress={() => setDetailsOpen((value) => !value)}
             style={styles.detailToggle}
             haptic="light"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+            accessibilityLabel="気分やカテゴリの詳細"
           >
             <View style={styles.detailLabelWrap}>
               <Ionicons name="options-outline" size={18} color={theme.colors.primary} />
@@ -124,6 +130,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
                   placeholder="例: 企画, 感覚, 執筆"
                   placeholderTextColor="#9aa6b2"
                   autoCapitalize="none"
+                  accessibilityLabel="カテゴリ"
                 />
                 <Text style={styles.hint}>カンマ区切りで複数入力できます。空でもOKです。</Text>
               </View>
@@ -137,6 +144,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         <PrimaryButton
           label="種を保存する"
           disabled={saveDisabled}
+          accessibilityHint={saveAccessibilityHint}
           onPress={() =>
             onSave({
               title: draft.title,
@@ -175,7 +183,7 @@ const styles = StyleSheet.create({
   bodyLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.typography.subbody,
-    marginBottom: 2,
+    marginBottom: 6,
   },
   bodyInput: {
     minHeight: 220,
@@ -183,6 +191,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fbfcfa',
     paddingHorizontal: 14,
     paddingVertical: 14,
+    paddingBottom: 18,
     fontSize: 17,
     color: theme.colors.text,
     lineHeight: 24,
@@ -193,6 +202,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     minHeight: 42,
     paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: '#f5f8f4',
     fontSize: 14,
     color: theme.colors.text,
@@ -201,7 +211,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   detailLabelWrap: {
     flexDirection: 'row',
@@ -241,6 +251,6 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: 12,
+    paddingTop: 14,
   },
 });

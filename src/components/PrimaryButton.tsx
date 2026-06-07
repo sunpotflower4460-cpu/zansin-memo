@@ -6,13 +6,16 @@ type PrimaryButtonProps = {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 };
 
-export function PrimaryButton({ label, onPress, disabled }: PrimaryButtonProps) {
+export function PrimaryButton({ label, onPress, disabled, accessibilityLabel = label, accessibilityHint }: PrimaryButtonProps) {
   return (
     <AnimatedPressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       onPress={onPress}
       disabled={disabled}
       haptic="light"
@@ -32,6 +35,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
     ...theme.shadows.floating,
   },
   buttonPressed: {
@@ -45,6 +49,8 @@ const styles = StyleSheet.create({
   label: {
     color: '#ffffff',
     fontSize: theme.typography.body,
+    lineHeight: 22,
     fontWeight: '600',
+    textAlign: 'center',
   },
 });

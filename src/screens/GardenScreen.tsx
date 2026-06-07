@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
@@ -15,7 +15,9 @@ type GardenScreenProps = {
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const untaggedLabel = '未分類';
-const GARDEN_CARD_WIDTH = 210;
+const GARDEN_CARD_WIDTH_RATIO = 0.72;
+const GARDEN_CARD_MIN_WIDTH = 210;
+const GARDEN_CARD_MAX_WIDTH = 280;
 
 const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
   seed: 'leaf-outline',
@@ -32,6 +34,8 @@ const stateAccents: Record<GrowthState, string> = {
 };
 
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
   const groupedByTag = seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
     if (seed.tags.length === 0) {
       if (!acc[untaggedLabel]) {
@@ -90,13 +94,13 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                   <AnimatedPressable
                     key={seed.id}
                     onPress={() => onOpenSeed(seed.id)}
-                    style={[styles.card, { borderLeftColor: stateAccents[state], borderLeftWidth: 3 }]}
+                    style={[styles.card, { width: cardWidth, borderLeftColor: stateAccents[state], borderLeftWidth: 3 }]}
                     pressedStyle={styles.cardPressed}
                     haptic="light"
                     accessibilityRole="button"
                     accessibilityLabel={`${growthStateLabels[state]}の種の詳細を開く`}
                   >
-                    <Text numberOfLines={3} style={styles.body}>
+                    <Text numberOfLines={4} style={styles.body}>
                       {seed.body}
                     </Text>
                     <Text style={styles.meta}>大切度{seed.importance}</Text>
@@ -190,9 +194,9 @@ const styles = StyleSheet.create({
   horizontalRow: {
     gap: 10,
     paddingRight: 14,
+    paddingBottom: 2,
   },
   card: {
-    width: GARDEN_CARD_WIDTH,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -206,8 +210,8 @@ const styles = StyleSheet.create({
   body: {
     color: theme.colors.text,
     fontSize: 15,
-    lineHeight: 21,
-    minHeight: 64,
+    lineHeight: 22,
+    paddingBottom: 2,
   },
   meta: {
     color: theme.colors.textMuted,

@@ -71,6 +71,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   const relatedCandidateIds = React.useMemo(() => new Set(relatedCandidates.map((item) => item.id)), [relatedCandidates]);
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
   const canSave = draft.body.trim().length > 0;
+  const saveAccessibilityHint = canSave ? '現在の変更内容を保存します。' : '種のことばを入力すると保存できます。';
   const contentStyle = React.useMemo(
     () => [styles.content, { paddingBottom: Math.max(110, insets.bottom + 80) }],
     [insets.bottom],
@@ -114,6 +115,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             textAlignVertical="top"
             placeholder="種のことば"
             placeholderTextColor="#95a1ac"
+            accessibilityLabel="種のことば"
           />
           <TextInput
             value={draft.title}
@@ -121,6 +123,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             style={styles.titleInput}
             placeholder="タイトル（任意）"
             placeholderTextColor="#9ca8b3"
+            accessibilityLabel="タイトル"
           />
 
           <AnimatedPressable
@@ -163,7 +166,12 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
-                <TextInput value={draft.tags} onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))} style={styles.input} />
+                <TextInput
+                  value={draft.tags}
+                  onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))}
+                  style={styles.input}
+                  accessibilityLabel="カテゴリ"
+                />
               </View>
 
               <View style={styles.fieldWrap}>
@@ -196,26 +204,27 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
           <PrimaryButton
             label="変更を保存"
             disabled={!canSave}
-              onPress={() => {
-                if (!canSave) {
-                  Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
-                  return;
-                }
+            accessibilityHint={saveAccessibilityHint}
+            onPress={() => {
+              if (!canSave) {
+                Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
+                return;
+              }
 
-                const nextRelatedSeedIds = Array.from(
-                  new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
-                );
-                onSave(seed.id, {
-                  title: draft.title,
-                  body: draft.body,
+              const nextRelatedSeedIds = Array.from(
+                new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
+              );
+              onSave(seed.id, {
+                title: draft.title,
+                body: draft.body,
                 mood: draft.mood,
-                  importance: draft.importance,
-                  growthState: draft.growthState,
-                  tags: parseTags(draft.tags),
-                  relatedSeedIds: nextRelatedSeedIds,
-                });
-              }}
-            />
+                importance: draft.importance,
+                growthState: draft.growthState,
+                tags: parseTags(draft.tags),
+                relatedSeedIds: nextRelatedSeedIds,
+              });
+            }}
+          />
           </SectionCard>
         </FadeInView>
 
@@ -320,6 +329,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fbfcfa',
     paddingHorizontal: 14,
     paddingVertical: 14,
+    paddingBottom: 18,
     fontSize: 17,
     color: theme.colors.text,
     lineHeight: 24,
@@ -330,6 +340,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     minHeight: 40,
     paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: '#f5f8f4',
     fontSize: 14,
     color: theme.colors.text,
