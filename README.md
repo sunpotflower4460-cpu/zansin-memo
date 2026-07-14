@@ -16,6 +16,7 @@
 - importance: `1..5`
 - カテゴリUI（保存キーは `tags`）
 - 今日の種（ランダム + 簡易スコア）
+- 7日間の庭便り（新しい種・手入れ・変換・重なるテーマ）
 - 変換アクション（問い / タスク / 記事案 / プロジェクト案）と保存
 
 ## UI/UX Polish（World-Class iOS Polish Pass）
@@ -86,3 +87,4 @@ npm run ios
 - [Non-Goals](docs/non-goals.md)
 - [Review Policy](docs/review-policy.md)
 - [App Store Readiness](docs/app-store-readiness.md)
+- [Product Quality & Subscription Blueprint](docs/product-quality-subscription-blueprint.md)
