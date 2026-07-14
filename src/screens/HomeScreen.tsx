@@ -3,10 +3,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { GardenLetterCard } from '../components/GardenLetterCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
 import { theme } from '../styles/theme';
+import { buildGardenLetter } from '../utils/gardenLetter';
 import { formatDate } from '../utils/seedUtils';
 import { toGrowthLabel } from '../utils/displayLabels';
 
@@ -16,6 +18,7 @@ type HomeScreenProps = {
   onRefreshToday: () => void;
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
+  onOpenGarden: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
   onClearAllData: () => void;
@@ -29,6 +32,7 @@ export function HomeScreen({
   onRefreshToday,
   onOpenSeed,
   onOpenWrite,
+  onOpenGarden,
   onOpenPrivacyPolicy,
   onOpenSupport,
   onClearAllData,
@@ -36,6 +40,7 @@ export function HomeScreen({
   onExportText,
 }: HomeScreenProps) {
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+  const gardenLetter = buildGardenLetter(seeds);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日`;
 
@@ -87,6 +92,18 @@ export function HomeScreen({
         )}
         </SectionCard>
       </FadeInView>
+
+      <PrimaryButton
+        label="新しい種を書く"
+        onPress={onOpenWrite}
+        accessibilityHint="新しい種を置く入力画面を開きます"
+      />
+
+      {seeds.length > 0 ? (
+        <FadeInView delayMs={70}>
+          <GardenLetterCard letter={gardenLetter} onOpenGarden={onOpenGarden} />
+        </FadeInView>
+      ) : null}
 
       <FadeInView delayMs={90}>
         <SectionCard muted>
@@ -181,8 +198,6 @@ export function HomeScreen({
           </AnimatedPressable>
         </SectionCard>
       </FadeInView>
-
-      <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} />
     </ScrollView>
   );
 }

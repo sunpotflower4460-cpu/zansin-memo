@@ -454,6 +454,7 @@ export default function App() {
         todaySeed={todaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
+        onOpenGarden={() => setScreen({ kind: 'garden' })}
         onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'home' })}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
