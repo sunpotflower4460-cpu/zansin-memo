@@ -25,7 +25,7 @@ import {
 import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
 import { growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
-import { formatDate, parseTags } from '../utils/seedUtils';
+import { formatDate, parseTags, pickRelatedCandidates } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
   seed: Seed;
@@ -57,6 +57,7 @@ const toDraft = (seed: Seed): DraftState => ({
 });
 
 const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
+const MAX_RELATED_CANDIDATES = 20;
 
 export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
@@ -67,7 +68,10 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
     setDraft(toDraft(seed));
   }, [seed]);
 
-  const relatedCandidates = allSeeds.filter((item) => item.id !== seed.id).slice(0, 20);
+  const relatedCandidates = React.useMemo(
+    () => pickRelatedCandidates(allSeeds, seed.id, seed.relatedSeedIds, MAX_RELATED_CANDIDATES),
+    [allSeeds, seed.id, seed.relatedSeedIds],
+  );
   const relatedCandidateIds = React.useMemo(() => new Set(relatedCandidates.map((item) => item.id)), [relatedCandidates]);
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
   const canSave = draft.body.trim().length > 0;

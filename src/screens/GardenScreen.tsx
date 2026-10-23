@@ -8,6 +8,7 @@ import { SectionCard } from '../components/SectionCard';
 import type { GrowthState, Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { growthStateLabels } from '../utils/displayLabels';
+import { getTagGroupKey, getTagGroupLabel, groupSeedsByTag } from '../utils/seedUtils';
 
 type GardenScreenProps = {
   seeds: Seed[];
@@ -15,7 +16,6 @@ type GardenScreenProps = {
 };
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
-const untaggedLabel = '未分類';
 const GARDEN_CARD_WIDTH_RATIO = 0.72;
 const GARDEN_CARD_MIN_WIDTH = 210;
 const GARDEN_CARD_MAX_WIDTH = 280;
@@ -46,35 +46,15 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
     return buckets;
   }, [seeds]);
 
-  const groupedByTag = useMemo(
-    () =>
-      seeds.reduce<Record<string, Seed[]>>((acc, seed) => {
-        if (seed.tags.length === 0) {
-          if (!acc[untaggedLabel]) {
-            acc[untaggedLabel] = [];
-          }
-          acc[untaggedLabel].push(seed);
-          return acc;
-        }
-
-        seed.tags.forEach((tag) => {
-          if (!acc[tag]) {
-            acc[tag] = [];
-          }
-          acc[tag].push(seed);
-        });
-        return acc;
-      }, {}),
-    [seeds],
-  );
+  const groupedByTag = useMemo(() => groupSeedsByTag(seeds), [seeds]);
 
   const orderedTags = useMemo(
     () =>
-      Object.keys(groupedByTag).sort((a, b) => {
-        if (a === untaggedLabel) {
+      Array.from(groupedByTag.keys()).sort((a, b) => {
+        if (a === undefined) {
           return 1;
         }
-        if (b === untaggedLabel) {
+        if (b === undefined) {
           return -1;
         }
         return a.localeCompare(b);
@@ -140,11 +120,11 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
         ) : (
           <View style={styles.tagList}>
             {orderedTags.map((tag) => {
-              const bucket = groupedByTag[tag];
+              const bucket = groupedByTag.get(tag) ?? [];
               return (
-                <View key={tag} style={styles.tagCard}>
+                <View key={getTagGroupKey(tag)} style={styles.tagCard}>
                   <Text style={styles.tagTitle}>
-                    {tag} ({bucket.length})
+                    {getTagGroupLabel(tag)} ({bucket.length})
                   </Text>
                   {bucket.slice(0, 2).map((seed) => (
                     <AnimatedPressable

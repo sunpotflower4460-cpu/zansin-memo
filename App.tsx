@@ -34,6 +34,7 @@ import {
   restoreSeed,
   softDeleteSeed,
   isSoftDeletedSeed,
+  syncResurfacedSeed,
   updateSeed,
   updateSeedResurfacingMeta,
 } from './src/utils/seedUtils';
@@ -82,7 +83,7 @@ export default function App() {
   const [todayKey, setTodayKey] = React.useState('');
   const [seedsSearch, setSeedsSearch] = React.useState('');
   const [stateFilter, setStateFilter] = React.useState<GrowthState | 'all'>('all');
-  const [tagFilter, setTagFilter] = React.useState<string>('all');
+  const [tagFilter, setTagFilter] = React.useState<string | null>(null);
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
   const [toastKey, setToastKey] = React.useState(0);
   const [toastMsg, setToastMsg] = React.useState('');
@@ -244,15 +245,18 @@ export default function App() {
     );
   }, [activeSeeds]);
 
+  const displayedTodaySeed = React.useMemo(() => syncResurfacedSeed(todaySeed, activeSeeds), [todaySeed, activeSeeds]);
+
   React.useEffect(() => {
     if (!isReady) {
       return;
     }
 
-    if (todayKey !== getLocalDateKey() || !todaySeed || !activeSeeds.some((seed) => seed.id === todaySeed.seed.id)) {
+    // 表示中の今日の種が消えた・アーカイブされた場合も選び直す。表示と同じ判定を使う。
+    if (todayKey !== getLocalDateKey() || !displayedTodaySeed) {
       refreshTodaySeed();
     }
-  }, [activeSeeds, isReady, todayKey, todaySeed, refreshTodaySeed]);
+  }, [displayedTodaySeed, isReady, todayKey, refreshTodaySeed]);
 
   const handleCreateSeed = (input: SeedCreateInput) => {
     if (!input.body.trim() || blockIfStorageLocked()) {
@@ -451,7 +455,7 @@ export default function App() {
     return (
       <HomeScreen
         seeds={activeSeeds}
-        todaySeed={todaySeed}
+        todaySeed={displayedTodaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
         onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'home' })}

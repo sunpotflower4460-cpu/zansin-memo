@@ -114,8 +114,11 @@ const buildResurfacingScore = (seed: Seed, now: Date): number => {
   return Number.isFinite(score) ? score : FALLBACK_SCORE;
 };
 
+// 今日の種の候補にできるのはアーカイブされていない種だけ。pickTodaySeed と syncResurfacedSeed で同じ条件を使う。
+const isResurfacableSeed = (seed: Seed): boolean => seed.growthState !== 'archived';
+
 export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
-  const candidates = seeds.filter((seed) => seed.growthState !== 'archived');
+  const candidates = seeds.filter(isResurfacableSeed);
   if (candidates.length === 0) {
     return undefined;
   }
@@ -149,6 +152,19 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
   };
 };
 
+// 今日の種は表示時点のコピーを持つため、編集後も古いままになる。現在の種データで差し替え、アーカイブされた種は外す。
+export const syncResurfacedSeed = (
+  resurfaced: ResurfacedSeed | undefined,
+  activeSeeds: Seed[],
+): ResurfacedSeed | undefined => {
+  if (!resurfaced) {
+    return undefined;
+  }
+
+  const latest = activeSeeds.find((seed) => seed.id === resurfaced.seed.id);
+  return latest && isResurfacableSeed(latest) ? { ...resurfaced, seed: latest } : undefined;
+};
+
 const transformTemplates: Record<TransformType, (seed: Seed) => string> = {
   question: (seed) => `問い: 「${seed.body}」を深めるために、次に確かめたいことは何だろう？`,
   task: (seed) => `タスク案: 「${seed.body}」に向けて、最初の小さな一歩を1つ書き出す。`,
@@ -180,3 +196,55 @@ export const getLocalDateKey = (date = new Date()): string => {
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
+
+// 未タグの種は undefined の束にまとめる。タグ名をオブジェクトのキーにすると constructor などと衝突するため Map を使う。
+export const groupSeedsByTag = (seeds: Seed[]): Map<string | undefined, Seed[]> => {
+  const groups = new Map<string | undefined, Seed[]>();
+  const addTo = (key: string | undefined, seed: Seed) => {
+    const bucket = groups.get(key);
+    if (bucket) {
+      bucket.push(seed);
+    } else {
+      groups.set(key, [seed]);
+    }
+  };
+
+  for (const seed of seeds) {
+    if (seed.tags.length === 0) {
+      addTo(undefined, seed);
+      continue;
+    }
+    for (const tag of seed.tags) {
+      addTo(tag, seed);
+    }
+  }
+  return groups;
+};
+
+// 関連候補は先頭 limit 件だけを表示する。すでに選ばれている種は上限の外でも残し、保存時に黙って外れないようにする。
+export const pickRelatedCandidates = (allSeeds: Seed[], seedId: string, selectedIds: string[], limit: number): Seed[] => {
+  const others = allSeeds.filter((seed) => seed.id !== seedId);
+  const visible = others.slice(0, limit);
+  const visibleIds = new Set(visible.map((seed) => seed.id));
+  const selected = new Set(selectedIds);
+  const selectedBeyondLimit = others.filter((seed) => !visibleIds.has(seed.id) && selected.has(seed.id));
+  return [...visible, ...selectedBeyondLimit];
+};
+
+const UNTAGGED_GROUP_KEY = 'untagged';
+const UNTAGGED_GROUP_LABEL = 'カテゴリなし';
+
+// タグ名とは別の名前空間の key にする。未分類グループと「未分類」というタグが同じ key にならないようにする。
+export const getTagGroupKey = (tag: string | undefined): string =>
+  tag === undefined ? UNTAGGED_GROUP_KEY : `tag:${tag}`;
+
+// 未分類グループは「カテゴリなし」と表示し、ユーザーのタグ「未分類」と見分けられるようにする。
+export const getTagGroupLabel = (tag: string | undefined): string => tag ?? UNTAGGED_GROUP_LABEL;
+
+// タグ絞り込みは null で「すべて」を表す。'all' という名前のタグと衝突しない。
+export const matchesTagFilter = (seed: Seed, tagFilter: string | null): boolean =>
+  tagFilter === null || seed.tags.includes(tagFilter);
+
+// 選択中のタグが一覧から消えていたら絞り込みを解除する。
+export const resolveTagFilter = (tagFilter: string | null, tagOptions: string[]): string | null =>
+  tagFilter !== null && tagOptions.includes(tagFilter) ? tagFilter : null;

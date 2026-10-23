@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
@@ -10,7 +10,7 @@ import { SectionCard } from '../components/SectionCard';
 import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
-import { formatDate } from '../utils/seedUtils';
+import { formatDate, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
 
 type SortType = 'updated' | 'importance';
 const MAX_RECENTLY_DELETED_SEEDS = 10;
@@ -24,11 +24,11 @@ type SeedsScreenProps = {
   deletedSeeds: Seed[];
   search: string;
   stateFilter: GrowthState | 'all';
-  tagFilter: string;
+  tagFilter: string | null;
   sortType: SortType;
   onChangeSearch: (value: string) => void;
   onChangeFilter: (value: GrowthState | 'all') => void;
-  onChangeTagFilter: (value: string) => void;
+  onChangeTagFilter: (value: string | null) => void;
   onChangeSort: (value: SortType) => void;
   onRestoreSeed: (seedId: string) => void;
   onOpenSeed: (seedId: string) => void;
@@ -53,6 +53,15 @@ export function SeedsScreen({
     [seeds],
   );
 
+  const activeTagFilter = useMemo(() => resolveTagFilter(tagFilter, tagOptions), [tagFilter, tagOptions]);
+
+  // 選択中のタグが消えたら絞り込みを解除し、見えないフィルタが残らないようにする。
+  useEffect(() => {
+    if (activeTagFilter !== tagFilter) {
+      onChangeTagFilter(activeTagFilter);
+    }
+  }, [activeTagFilter, tagFilter, onChangeTagFilter]);
+
   const normalizedSearch = useMemo(() => search.trim().toLowerCase(), [search]);
 
   const filteredSeeds = useMemo(
@@ -62,7 +71,7 @@ export function SeedsScreen({
           if (stateFilter !== 'all' && seed.growthState !== stateFilter) {
             return false;
           }
-          if (tagFilter !== 'all' && !seed.tags.includes(tagFilter)) {
+          if (!matchesTagFilter(seed, activeTagFilter)) {
             return false;
           }
           if (!normalizedSearch) {
@@ -77,7 +86,7 @@ export function SeedsScreen({
           }
           return b.updatedAt.localeCompare(a.updatedAt);
         }),
-    [seeds, stateFilter, tagFilter, normalizedSearch, sortType],
+    [seeds, stateFilter, activeTagFilter, normalizedSearch, sortType],
   );
 
   const listHeader = (
@@ -114,9 +123,9 @@ export function SeedsScreen({
 
           <Text style={styles.label}>カテゴリ</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            <IOSChip label={allLabel} selected={tagFilter === 'all'} onPress={() => onChangeTagFilter('all')} />
+            <IOSChip label={allLabel} selected={activeTagFilter === null} onPress={() => onChangeTagFilter(null)} />
             {tagOptions.map((tag) => (
-              <IOSChip key={tag} label={tag} selected={tagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
+              <IOSChip key={tag} label={tag} selected={activeTagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
             ))}
           </ScrollView>
 
