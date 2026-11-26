@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import banner from '../../assets/banner-field.png';
+import soilTexture from '../../assets/soil.png';
+import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
@@ -19,6 +22,14 @@ const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const GARDEN_CARD_WIDTH_RATIO = 0.72;
 const GARDEN_CARD_MIN_WIDTH = 210;
 const GARDEN_CARD_MAX_WIDTH = 280;
+
+// 育ちごとに、土の色から若草・深緑へと畝の色を変える。
+const bedTints: Record<GrowthState, string> = {
+  seed: '#efe3cb',
+  sprout: '#e8eed6',
+  tree: '#dde9d4',
+  archived: '#ece7db',
+};
 
 const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
   seed: 'leaf-outline',
@@ -64,13 +75,14 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.heading} accessibilityRole="header">
-        庭
-      </Text>
+      <View style={styles.banner} accessible accessibilityRole="header" accessibilityLabel="庭">
+        <Image source={banner} style={styles.bannerImage} resizeMode="cover" accessibilityIgnoresInvertColors />
+        <Text style={styles.heading}>庭</Text>
+      </View>
       <Text style={styles.subheading}>種から芽へ、芽から木へ。育ちの流れを、静かに見渡せる場所です。</Text>
 
       {seeds.length === 0 ? (
-        <EmptyState icon="flower-outline" title="この場所は、これから育っていきます。" description="書いた種が増えると、庭に少しずつ並びます。" />
+        <EmptyState image={stageImages.seed} title="この場所は、これから育っていきます。" description="書いた種が増えると、土の上に少しずつ並びます。" />
       ) : null}
 
       {orderedStates.map((state) => {
@@ -78,12 +90,17 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 
         return (
           <FadeInView key={state} delayMs={40}>
-            <SectionCard muted style={{ borderTopWidth: 2, borderTopColor: stateAccents[state] }}>
+            <View style={[styles.bed, { backgroundColor: bedTints[state] }]}>
+            <View style={styles.furrow}>
+              <Image source={soilTexture} resizeMode="repeat" style={styles.soilImage} />
+            </View>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleWrap}>
-                <Ionicons name={stateIcons[state]} size={18} color={stateAccents[state]} />
-                <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
-                <Text style={styles.sectionHint}>{growthStateHints[state]}</Text>
+                <Image source={stageImages[state]} style={styles.stageIcon} accessibilityIgnoresInvertColors />
+                <View style={styles.sectionTitleText}>
+                  <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
+                  <Text style={styles.sectionHint}>{growthStateHints[state]}</Text>
+                </View>
               </View>
               <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>{bucket.length}</Text>
             </View>
@@ -105,12 +122,15 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                     <Text numberOfLines={4} style={styles.body}>
                       {seed.body}
                     </Text>
-                    <Text style={styles.meta}>大切度{seed.importance}</Text>
+                    <View style={styles.cardFooter}>
+                      <Ionicons name={stateIcons[state]} size={14} color={stateAccents[state]} />
+                      <Text style={styles.meta}>大切度{seed.importance}</Text>
+                    </View>
                   </AnimatedPressable>
                 ))}
               </ScrollView>
             )}
-            </SectionCard>
+            </View>
           </FadeInView>
         );
       })}
@@ -155,6 +175,10 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 }
 
 const styles = StyleSheet.create({
+  soilImage: {
+    width: '100%',
+    height: '100%',
+  },
   content: {
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.lg,
@@ -172,6 +196,51 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 2,
   },
+  banner: {
+    height: 150,
+    borderRadius: theme.radius.xl,
+    overflow: 'hidden',
+    backgroundColor: '#f1e4c3',
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+    padding: 18,
+  },
+  bannerImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  bed: {
+    borderRadius: theme.radius.lg,
+    overflow: 'hidden',
+    padding: theme.spacing.md,
+    paddingTop: theme.spacing.lg,
+    gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+  },
+  furrow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 8,
+    backgroundColor: '#80603f',
+    overflow: 'hidden',
+  },
+  stageIcon: {
+    width: 52,
+    height: 52,
+    marginVertical: -8,
+  },
+  sectionTitleText: {
+    flex: 1,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -184,7 +253,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionHint: {
-    flex: 1,
     fontSize: 12,
     color: theme.colors.textSoft,
   },

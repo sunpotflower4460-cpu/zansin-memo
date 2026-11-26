@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import banner from '../../assets/banner-field.png';
+import { FieldRow } from '../components/FieldRow';
+import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
@@ -21,6 +24,8 @@ type HomeScreenProps = {
   onRefreshToday: () => void;
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
+  onOpenGarden: () => void;
+  onShowIntro: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
   onClearAllData: () => void;
@@ -37,6 +42,8 @@ export function HomeScreen({
   onRefreshToday,
   onOpenSeed,
   onOpenWrite,
+  onOpenGarden,
+  onShowIntro,
   onOpenPrivacyPolicy,
   onOpenSupport,
   onClearAllData,
@@ -50,16 +57,25 @@ export function HomeScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.todayMeta}>今日の種 · {dateLabel}</Text>
-      <Text style={styles.heading} accessibilityRole="header" accessibilityLabel="きざしノート">
-        きざしノート
-      </Text>
+      <View style={styles.banner} accessible accessibilityRole="header" accessibilityLabel={`きざしノート。${dateLabel}`}>
+        <Image source={banner} style={styles.bannerImage} resizeMode="cover" accessibilityIgnoresInvertColors />
+        <View style={styles.bannerText}>
+          <Text style={styles.todayMeta}>{dateLabel}</Text>
+          <Text style={styles.heading}>きざしノート</Text>
+        </View>
+      </View>
       <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
 
       <FadeInView delayMs={40}>
         <SectionCard>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>今日の種</Text>
+          <View>
+            <View style={styles.titleRow}>
+              <Ionicons name="sunny-outline" size={20} color={theme.colors.accent} />
+              <Text style={styles.cardTitle}>今日の種</Text>
+            </View>
+            <Text style={styles.cardCaption}>今日、光をあてる種です</Text>
+          </View>
           {todaySeed ? (
             <AnimatedPressable
               onPress={onRefreshToday}
@@ -94,9 +110,9 @@ export function HomeScreen({
           </AnimatedPressable>
         ) : (
           <EmptyState
-            icon="leaf-outline"
-            title="まだ種はありません"
-            description="ひとことだけ、ここに置いてみましょう。"
+            image={stageImages.seed}
+            title="ここに、最初の種をまきましょう"
+            description="ひとことで大丈夫です。書いた種は、数日後に「今日の種」としてここに戻ってきます。"
             actionLabel="最初の種を書く"
             onAction={onOpenWrite}
           />
@@ -106,6 +122,19 @@ export function HomeScreen({
 
       {seeds.length > 0 ? <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} /> : null}
 
+      {seeds.length > 0 ? (
+        <FadeInView delayMs={70}>
+          <SectionCard>
+            <View style={styles.titleRow}>
+              <Ionicons name="leaf-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.cardTitle}>あなたの畑</Text>
+            </View>
+            <FieldRow seeds={seeds} onPress={onOpenGarden} />
+          </SectionCard>
+        </FadeInView>
+      ) : null}
+
+      {seeds.length > 0 ? (
       <FadeInView delayMs={90}>
         <SectionCard muted>
           <Text style={styles.cardTitle}>最近の種</Text>
@@ -130,11 +159,10 @@ export function HomeScreen({
                 </View>
               </AnimatedPressable>
             ))
-          ) : (
-            <EmptyState icon="sparkles-outline" title="種の記録はこれからです" description="書いた種はここに静かに並んでいきます。" />
-          )}
+          ) : null}
         </SectionCard>
       </FadeInView>
+      ) : null}
 
       <FadeInView delayMs={120}>
         <SectionCard muted>
@@ -156,6 +184,17 @@ export function HomeScreen({
 
           {settingsOpen ? (
             <View style={styles.settingsBody}>
+              <AnimatedPressable
+                onPress={onShowIntro}
+                style={styles.linkButton}
+                pressedStyle={styles.linkButtonPressed}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="はじめかたの案内をもう一度見る"
+              >
+                <Text style={styles.linkButtonText}>はじめかたをもう一度見る</Text>
+              </AnimatedPressable>
+
               <Text style={styles.exportLabel}>種の育ち方</Text>
               {GROWTH_STATE_OPTIONS.map((state) => (
                 <View key={state} style={styles.howtoRow}>
@@ -245,9 +284,38 @@ const styles = StyleSheet.create({
     paddingBottom: 124,
     gap: theme.spacing.md,
   },
-  todayMeta: {
-    fontSize: theme.typography.caption,
+  banner: {
+    height: 196,
+    borderRadius: theme.radius.xl,
+    overflow: 'hidden',
+    backgroundColor: '#f1e4c3',
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+  },
+  bannerImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  bannerText: {
+    position: 'absolute',
+    top: 18,
+    left: 20,
+    gap: 2,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardCaption: {
+    marginTop: 2,
+    fontSize: 13,
     color: theme.colors.textSoft,
+  },
+  todayMeta: {
+    fontSize: 13,
+    color: theme.colors.textMuted,
     fontWeight: '600',
     letterSpacing: 0.4,
   },

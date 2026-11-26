@@ -216,11 +216,12 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               />
 
               <ChipSelector<Importance>
-                label="大切度"
+                label="大切度（1〜5）"
                 options={IMPORTANCE_OPTIONS}
                 selectedValue={draft.importance}
                 onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
               />
+              <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
 
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
@@ -277,8 +278,13 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
         <FadeInView delayMs={80}>
           <SectionCard muted>
-          <Text style={styles.sectionTitle}>この種を育てる</Text>
-          <Text style={styles.hintText}>問いや行動の候補として、やさしく変換します。</Text>
+          <View style={styles.waterTitleRow}>
+            <Ionicons name="water-outline" size={20} color="#4f7f93" />
+            <Text style={styles.sectionTitle}>この種に水をあげる</Text>
+          </View>
+          <Text style={styles.hintText}>
+            ボタンを押すと、この種から「問い」や「小さな行動」などの候補が、この端末の中で作られます。使うかどうかは自由です。
+          </Text>
           <View style={styles.rowWrap}>
             {TRANSFORM_TYPES.map((type) => (
               <IOSChip
@@ -433,6 +439,11 @@ const styles = StyleSheet.create({
   relatedList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 8,
+  },
+  waterTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   sectionTitle: {

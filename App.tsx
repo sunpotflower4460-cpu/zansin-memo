@@ -9,6 +9,7 @@ import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
 import { seedRepository } from './src/data/asyncStorageSeedRepository';
 import { EMPTY_WRITE_DRAFT, loadDraft, saveDraft } from './src/data/draftStorage';
+import { hasSeenOnboarding, markOnboardingSeen } from './src/data/onboardingStorage';
 import type {
   GrowthState,
   ResurfacedSeed,
@@ -20,6 +21,7 @@ import type {
 } from './src/domain/types';
 import { GardenScreen } from './src/screens/GardenScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
@@ -64,6 +66,7 @@ export default function App() {
   const [isReady, setIsReady] = React.useState(false);
   const [canPersistSeeds, setCanPersistSeeds] = React.useState(false);
   const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
+  const [onboardingVisible, setOnboardingVisible] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
   const [todaySeed, setTodaySeed] = React.useState<ResurfacedSeed | undefined>();
@@ -132,7 +135,11 @@ export default function App() {
     let active = true;
 
     const load = async () => {
-      const [loadResult, savedDraft] = await Promise.all([seedRepository.getAll(), loadDraft()]);
+      const [loadResult, savedDraft, seenOnboarding] = await Promise.all([
+        seedRepository.getAll(),
+        loadDraft(),
+        hasSeenOnboarding(),
+      ]);
       if (!active) {
         return;
       }
@@ -148,6 +155,15 @@ export default function App() {
         setIsReady(true);
         showToast('保存データを読み込めませんでした。自動保存を停止しています。');
         return;
+      }
+
+      // はじめて使う人にだけ、短い案内を見せる。すでに種がある人（更新前から使っている人）には出さない。
+      if (!seenOnboarding) {
+        if (loadResult.seeds.length === 0) {
+          setOnboardingVisible(true);
+        } else {
+          void markOnboardingSeen();
+        }
       }
 
       setSeeds(loadResult.seeds);
@@ -282,7 +298,7 @@ export default function App() {
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'home' });
-    showToast('種を追加しました 🌱');
+    showToast('種をまきました 🌱');
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
@@ -334,7 +350,7 @@ export default function App() {
     transformTapMapRef.current[key] = now;
 
     triggerSuccessFeedback();
-    showToast('候補を追加しました 🌱');
+    showToast('水をあげました 💧 候補を追加しました');
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
@@ -387,6 +403,12 @@ export default function App() {
     void openExternalUrl(SUPPORT_URL, 'サポート連絡先を開けませんでした。');
   }, [openExternalUrl]);
 
+  const handleFinishOnboarding = React.useCallback((destination: 'write' | 'home') => {
+    void markOnboardingSeen();
+    setOnboardingVisible(false);
+    setScreen({ kind: destination });
+  }, []);
+
   const handleClearAllData = React.useCallback(() => {
     if (blockIfStorageLocked()) {
       return;
@@ -414,6 +436,8 @@ export default function App() {
             setStateFilter('all');
             setTagFilter(null);
             setScreen({ kind: 'home' });
+            // 経験者が削除のたびに最初の案内を見ないよう、案内済みの印だけは残す。
+            void markOnboardingSeen();
             showToast('すべてのデータを削除しました。');
           })();
         },
@@ -487,6 +511,8 @@ export default function App() {
         todaySeed={displayedTodaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
+        onOpenGarden={() => setScreen({ kind: 'garden' })}
+        onShowIntro={() => setOnboardingVisible(true)}
         onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'home' })}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
@@ -501,7 +527,7 @@ export default function App() {
   // 保存の「保存中…」「保存しました」は頻繁に出て気が散るため表示しない。失敗したときだけ知らせる。
   const saveStateMessage = saveState === 'error' ? getSaveStateMessage(saveState) : '';
   const statusToastMessage = toastMsg || saveStateMessage;
-  const tabBarVisible = screen.kind !== 'detail' && isReady;
+  const tabBarVisible = screen.kind !== 'detail' && isReady && !onboardingVisible;
 
   return (
     <SafeAreaProvider>
@@ -518,6 +544,7 @@ export default function App() {
               aboveTabBar={tabBarVisible}
             />
           ) : null}
+          {onboardingVisible && isReady ? <OnboardingScreen onFinish={handleFinishOnboarding} /> : null}
           <AppLaunchIntro visible={!isReady || showLaunchIntro} />
         </View>
         {tabBarVisible ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}

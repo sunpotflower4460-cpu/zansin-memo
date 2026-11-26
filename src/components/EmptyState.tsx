@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from './AnimatedPressable';
 import { theme } from '../styles/theme';
 
 type EmptyStateProps = {
   icon?: keyof typeof Ionicons.glyphMap;
+  /** 指定すると、アイコンの代わりに大きなイラストを表示する。 */
+  image?: ImageSourcePropType;
   title: string;
   description: string;
   actionLabel?: string;
@@ -13,6 +15,7 @@ type EmptyStateProps = {
 
 export function EmptyState({
   icon = 'leaf-outline',
+  image,
   title,
   description,
   actionLabel,
@@ -25,9 +28,13 @@ export function EmptyState({
       accessible={!(actionLabel && onAction)}
       accessibilityLabel={`${title}。${description}`}
     >
-      <View style={styles.iconWrap}>
-        <Ionicons name={icon} size={20} color={theme.colors.primary} />
-      </View>
+      {image ? (
+        <Image source={image} style={styles.image} accessibilityIgnoresInvertColors />
+      ) : (
+        <View style={styles.iconWrap}>
+          <Ionicons name={icon} size={20} color={theme.colors.primary} />
+        </View>
+      )}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
       {actionLabel && onAction ? (
@@ -46,6 +53,11 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     alignItems: 'center',
     gap: theme.spacing.sm,
+  },
+  image: {
+    width: 132,
+    height: 132,
+    marginBottom: -theme.spacing.xs,
   },
   iconWrap: {
     width: 36,

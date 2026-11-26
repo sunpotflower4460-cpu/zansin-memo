@@ -35,7 +35,7 @@ type WriteScreenProps = {
 export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const saveAccessibilityHint = saveDisabled ? '種のことばを入力すると保存できます。' : '今の内容で種を保存します。';
+  const saveAccessibilityHint = saveDisabled ? '種のことばを入力するとまけます。' : '今の内容で種をまきます。';
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -45,18 +45,20 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         <Text style={styles.heading} accessibilityRole="header">
-          種を書く
+          種をまく
         </Text>
-        <Text style={styles.subheading}>きれいにまとめなくても大丈夫です。</Text>
+        <Text style={styles.subheading}>
+          思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
+        </Text>
 
         <FadeInView delayMs={40}>
           <SectionCard>
-          <Text style={styles.bodyLabel}>今の種</Text>
+          <Text style={styles.bodyLabel}>いま浮かんでいること</Text>
           <TextInput
             value={draft.body}
             onChangeText={(body) => onChange({ body })}
             style={styles.bodyInput}
-            placeholder="今浮かんだことを、そのまま置いてください。"
+            placeholder="例：朝の光の中だと、考えがまとまりやすい気がする"
             placeholderTextColor={theme.colors.placeholder}
             multiline
             autoFocus
@@ -105,11 +107,12 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               />
 
               <ChipSelector<Importance>
-                label="大切度"
+                label="大切度（1〜5）"
                 options={IMPORTANCE_OPTIONS}
                 selectedValue={draft.importance}
                 onChange={(importance) => onChange({ importance })}
               />
+              <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
 
               <ChipSelector<GrowthState>
                 label="育ち方"
@@ -141,7 +144,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
 
       <View style={styles.bottomBar}>
         <PrimaryButton
-          label="種を保存する"
+          label="種をまく"
           disabled={saveDisabled}
           accessibilityHint={saveAccessibilityHint}
           onPress={() =>
