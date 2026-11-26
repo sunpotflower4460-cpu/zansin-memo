@@ -29,6 +29,8 @@ type ConnectionsPanelProps = {
   onUnlink: (otherId: string) => void;
   onSetNote: (otherId: string, note: string) => void;
   onAddMemo: () => void;
+  /** 練習など、「メモを足す」を出せない場面で隠す。 */
+  hideAddMemo?: boolean;
 };
 
 const LIST_PAGE = 20;
@@ -52,6 +54,7 @@ export function ConnectionsPanel({
   onUnlink,
   onSetNote,
   onAddMemo,
+  hideAddMemo,
 }: ConnectionsPanelProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | undefined>();
@@ -244,6 +247,7 @@ export function ConnectionsPanel({
       )}
 
       <View style={styles.actions}>
+        {hideAddMemo ? null : (
         <AnimatedPressable
           onPress={onAddMemo}
           containerStyle={styles.actionContainer}
@@ -255,6 +259,7 @@ export function ConnectionsPanel({
           <Ionicons name="create-outline" size={18} color="#ffffff" />
           <Text style={styles.actionPrimaryText}>メモを足す</Text>
         </AnimatedPressable>
+        )}
         <AnimatedPressable
           onPress={() => setPickerOpen(true)}
           containerStyle={styles.actionContainer}

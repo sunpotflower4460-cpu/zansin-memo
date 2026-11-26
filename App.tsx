@@ -8,7 +8,6 @@ import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
 import { useGarden } from './src/data/useGarden';
-import { hasSeenOnboarding, markOnboardingSeen } from './src/data/onboardingStorage';
 import {
   addTransformOutput,
   captureAndConnect,
@@ -33,7 +32,7 @@ import { SynthesisScreen, type SynthesisSaveInput } from './src/screens/Synthesi
 import type { ConnectionsViewMode } from './src/components/ConnectionsPanel';
 import { GardenScreen } from './src/screens/GardenScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
-import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { PracticeScreen } from './src/screens/PracticeScreen';
 import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen, type SeedsView } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
@@ -106,7 +105,7 @@ export default function App() {
   const isReady = garden.phase.kind !== 'loading';
   const isBlocked = garden.phase.kind === 'blocked';
   const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
-  const [onboardingVisible, setOnboardingVisible] = React.useState(false);
+  const [practiceOpen, setPracticeOpen] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
   /** 「メモを足す」の接続先（中心）。 */
@@ -239,16 +238,6 @@ export default function App() {
       setWriteStandalone(Boolean(restorable.standalone));
     }
 
-    void (async () => {
-      const seen = await hasSeenOnboarding();
-      if (!seen) {
-        if (store.seeds.length === 0) {
-          setOnboardingVisible(true);
-        } else {
-          void markOnboardingSeen();
-        }
-      }
-    })();
   }, [garden.phase, showToast, store.drafts, store.seeds.length]);
 
   const activeSeeds = React.useMemo(() => seeds.filter((seed) => !seed.deletedAt), [seeds]);
@@ -545,12 +534,6 @@ export default function App() {
     void openExternalUrl(SUPPORT_URL, 'サポート連絡先を開けませんでした。');
   }, [openExternalUrl]);
 
-  const handleFinishOnboarding = React.useCallback((destination: 'write' | 'home') => {
-    void markOnboardingSeen();
-    setOnboardingVisible(false);
-    setScreen({ kind: destination });
-  }, []);
-
   const handleClearAllData = React.useCallback(() => {
     Alert.alert(CLEAR_ALL_DATA_ALERT_TITLE, CLEAR_ALL_DATA_ALERT_MESSAGE, [
       { text: 'キャンセル', style: 'cancel' },
@@ -574,8 +557,6 @@ export default function App() {
             setStateFilter('all');
             setTagFilter(null);
             setScreen({ kind: 'home' });
-            // 経験者が削除のたびに最初の案内を見ないよう、案内済みの印だけは残す。
-            void markOnboardingSeen();
             showToast('すべてのデータを削除しました。');
           })();
         },
@@ -906,7 +887,7 @@ export default function App() {
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
         onOpenGarden={() => setScreen({ kind: 'garden' })}
-        onShowIntro={() => setOnboardingVisible(true)}
+        onShowPractice={() => setPracticeOpen(true)}
         onOpenSeed={(seedId) => openDetail(seedId, 'home', true)}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
@@ -920,7 +901,7 @@ export default function App() {
   const activeTab: MainTab = screen.kind === 'detail' || screen.kind === 'synthesis' ? screen.from : screen.kind;
   // 成功の通知は時間で消える。失敗・読込停止は、解決するまで消えない。
   const statusToastMessage = toastMsg || persistentError;
-  const tabBarVisible = screen.kind !== 'detail' && screen.kind !== 'synthesis' && isReady && !onboardingVisible;
+  const tabBarVisible = screen.kind !== 'detail' && screen.kind !== 'synthesis' && isReady && !practiceOpen;
 
   return (
     <SafeAreaProvider>
@@ -954,7 +935,17 @@ export default function App() {
               onClose={() => setSavedPickerOpen(false)}
             />
           ) : null}
-          {onboardingVisible && isReady ? <OnboardingScreen onFinish={handleFinishOnboarding} /> : null}
+          {practiceOpen && isReady ? (
+            <View style={styles.practice}>
+              <PracticeScreen
+                onClose={() => setPracticeOpen(false)}
+                onStartWriting={() => {
+                  setPracticeOpen(false);
+                  setScreen({ kind: 'write' });
+                }}
+              />
+            </View>
+          ) : null}
           <AppLaunchIntro visible={!isReady || showLaunchIntro} />
         </View>
         {tabBarVisible ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
@@ -985,5 +976,10 @@ const styles = StyleSheet.create({
   },
   app: {
     flex: 1,
+  },
+  practice: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    backgroundColor: theme.colors.background,
   },
 });

@@ -44,6 +44,8 @@ type SynthesisScreenProps = {
   onPostpone: () => void;
   onBack: () => void;
   onOpenSeed: (seedId: string) => void;
+  /** 練習用の完成例。「完成例を見る」で入力欄に入れられる（保存はしない）。 */
+  exampleStatement?: string;
 };
 
 type Pick = { seedId: string; part: 'body' | 'synthesis' };
@@ -65,6 +67,7 @@ export function SynthesisScreen({
   onPostpone,
   onBack,
   onOpenSeed,
+  exampleStatement,
 }: SynthesisScreenProps) {
   const insets = useSafeAreaInsets();
   const existing = center.synthesis;
@@ -303,6 +306,12 @@ export function SynthesisScreen({
           <Text style={styles.sectionTitle}>{question}</Text>
           <Text style={styles.note}>「なら、○○できるかも」のように、一言から。</Text>
           {reviewing && existing ? <Text style={styles.currentSprout}>いまの芽: {existing.statement}</Text> : null}
+          {exampleStatement ? (
+            <AnimatedPressable onPress={() => setStatement(exampleStatement)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="完成例を入力欄に入れて見る">
+              <Ionicons name="bulb-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.linkButtonText}>完成例を見る</Text>
+            </AnimatedPressable>
+          ) : null}
           <TextInput
             value={statement}
             onChangeText={setStatement}
