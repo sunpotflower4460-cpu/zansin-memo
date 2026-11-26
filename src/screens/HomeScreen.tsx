@@ -165,7 +165,7 @@ export function HomeScreen({
         </SectionCard>
       </FadeInView>
 
-      {seeds.length > 0 ? <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} /> : null}
+      {seeds.length > 0 ? <PrimaryButton label="メモを書く" onPress={onOpenWrite} /> : null}
 
       {seeds.length > 0 ? (
         <FadeInView delayMs={70}>

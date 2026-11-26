@@ -41,10 +41,31 @@ type WriteScreenProps = {
   saving: boolean;
   onToggleStandalone: () => void;
   onClearTarget: () => void;
+  /** 直前に保存したメモ。あれば「保存しました」のカードを出す。 */
+  savedMemo?: Seed;
+  /** はじめて保存したときだけ、あとからつなげられることを一言添える。 */
+  isFirstSave: boolean;
+  onConnectSaved: () => void;
+  onDismissSaved: () => void;
+  onOpenSaved: () => void;
   onSave: (input: SeedCreateInput) => void | Promise<void>;
 };
 
-export function WriteScreen({ draft, onChange, addTo, standalone, saving, onToggleStandalone, onClearTarget, onSave }: WriteScreenProps) {
+export function WriteScreen({
+  draft,
+  onChange,
+  addTo,
+  standalone,
+  saving,
+  onToggleStandalone,
+  onClearTarget,
+  savedMemo,
+  isFirstSave,
+  onConnectSaved,
+  onDismissSaved,
+  onOpenSaved,
+  onSave,
+}: WriteScreenProps) {
   const saveDisabled = draft.body.trim().length === 0 || saving;
   const connecting = Boolean(addTo) && !standalone;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -59,13 +80,58 @@ export function WriteScreen({ draft, onChange, addTo, standalone, saving, onTogg
       >
         <View style={styles.headingRow}>
           <Text style={styles.heading} accessibilityRole="header">
-            種をまく
+            メモを書く
           </Text>
           <HelpButton content={helpTexts.write} />
         </View>
-        <Text style={styles.subheading}>
-          思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
-        </Text>
+        <Text style={styles.subheading}>なんとなくでも、そのままで大丈夫。</Text>
+
+        {savedMemo ? (
+          <View style={styles.savedCard} accessible={false}>
+            <View style={styles.savedTitleRow}>
+              <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+              <Text style={styles.savedTitle} accessibilityLiveRegion="polite">
+                保存しました
+              </Text>
+            </View>
+            <AnimatedPressable
+              onPress={onOpenSaved}
+              style={styles.savedBody}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`保存したメモを開く。${toSeedSnippet(savedMemo, 40)}`}
+            >
+              <Text style={styles.savedText} numberOfLines={3}>
+                {toSeedSnippet(savedMemo, 80)}
+              </Text>
+            </AnimatedPressable>
+            {isFirstSave ? <Text style={styles.savedHint}>関係することを思いついたら、あとからつなげられます。</Text> : null}
+            <View style={styles.savedActions}>
+              <AnimatedPressable
+                onPress={onConnectSaved}
+                containerStyle={styles.savedActionContainer}
+                style={styles.savedAction}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="保存したメモを、別のメモとつなぐ"
+              >
+                <Ionicons name="link-outline" size={18} color={theme.colors.primary} />
+                <Text style={styles.savedActionText}>別のメモとつなぐ</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={onDismissSaved}
+                containerStyle={styles.savedActionContainer}
+                style={styles.savedAction}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="続けて書く"
+              >
+                <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
+                <Text style={styles.savedActionText}>続けて書く</Text>
+              </AnimatedPressable>
+            </View>
+          </View>
+        ) : null}
 
         {addTo ? (
           <View style={styles.continuation}>
@@ -109,7 +175,7 @@ export function WriteScreen({ draft, onChange, addTo, standalone, saving, onTogg
             multiline
             autoFocus
             textAlignVertical="top"
-            accessibilityLabel="種のことば"
+            accessibilityLabel="メモの本文"
           />
 
           <TextInput
@@ -189,10 +255,10 @@ export function WriteScreen({ draft, onChange, addTo, standalone, saving, onTogg
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「種をまく」を押せるようになります。</Text> : null}
+        {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「保存する」を押せるようになります。</Text> : null}
         <PrimaryButton
-          label={saving ? '保存しています…' : connecting ? '保存してつなぐ' : '種をまく'}
-          accessibilityLabel={connecting ? '保存してつなぐ' : '種をまく'}
+          label={saving ? '保存しています…' : connecting ? '保存してつなぐ' : '保存する'}
+          accessibilityLabel={connecting ? '保存してつなぐ' : '保存する'}
           disabled={saveDisabled}
           accessibilityHint={saveAccessibilityHint}
           onPress={() =>
@@ -268,6 +334,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  savedCard: {
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  savedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  savedTitle: { fontSize: theme.typography.body, fontWeight: '700', color: theme.colors.primary },
+  savedBody: { minHeight: 44, justifyContent: 'center' },
+  savedText: { fontSize: 15, lineHeight: 23, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  savedHint: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
+  savedActions: { flexDirection: 'row', gap: theme.spacing.xs },
+  savedActionContainer: { flex: 1 },
+  savedAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  savedActionText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
   headingRow: {
     flexDirection: 'row',
     alignItems: 'center',
