@@ -18,12 +18,15 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
     await p.getByLabel('書くタブ').click(); await p.waitForTimeout(300);
     await p.getByLabel('メモの本文').fill(text);
     await p.getByRole('button', { name: '保存する' }).click(); await p.waitForTimeout(700);
-    if (text.startsWith('散歩')) await p.screenshot({ path: `${RAW}/p102-saved.png` });
+    if (text.startsWith('散歩')) {
+      await p.screenshot({ path: `${RAW}/p102-saved.png` });
+      // 「続けて書く」でカードが閉じる前に確かめる。
+      ok('saved-card shown after save (stayed on write screen)', await p.getByText('保存しました').first().isVisible());
+    }
     await p.getByRole('button', { name: '続けて書く' }).click().catch(() => {});
   }
   let st = await store();
   ok('D: 3 memos saved, no connections, no categories', st.seeds.length === 3 && st.connections.length === 0 && st.seeds.every((s) => s.tags.length === 0), `seeds=${st.seeds.length}`);
-  ok('saved-card shown after save (stayed on write screen)', (await p.getByText('保存しました').count()) >= 0);
 
   // 2) 一覧で 2つ選んで つなぐ
   await p.getByLabel('種一覧タブ').click(); await p.waitForTimeout(500);

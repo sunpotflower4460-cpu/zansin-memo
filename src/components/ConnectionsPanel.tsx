@@ -27,7 +27,8 @@ type ConnectionsPanelProps = {
   onOpenSeed: (seedId: string) => void;
   onLink: (otherId: string) => void;
   onUnlink: (otherId: string) => void;
-  onSetNote: (otherId: string, note: string) => void;
+  /** false を返したら保存できていないので、入力欄を閉じない。 */
+  onSetNote: (otherId: string, note: string) => void | Promise<boolean>;
   onAddMemo: () => void;
   /** 練習など、「メモを足す」を出せない場面で隠す。 */
   hideAddMemo?: boolean;
@@ -144,8 +145,9 @@ export function ConnectionsPanel({
                 label="保存"
                 primary
                 onPress={() => {
-                  onSetNote(seed.id, noteText);
-                  setNoteEditing(undefined);
+                  void Promise.resolve(onSetNote(seed.id, noteText)).then((ok) => {
+                    if (ok !== false) setNoteEditing((current) => (current === seed.id ? undefined : current));
+                  });
                 }}
               />
               <SmallButton label="やめる" onPress={() => setNoteEditing(undefined)} />
@@ -225,7 +227,7 @@ export function ConnectionsPanel({
             </>
           ) : (
             <>
-              {neighbors.length > LIST_PAGE ? (
+              {neighbors.length > LIST_PAGE || listQuery ? (
                 <TextInput
                   value={listQuery}
                   onChangeText={(text) => {

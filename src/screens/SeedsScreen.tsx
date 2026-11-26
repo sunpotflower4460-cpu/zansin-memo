@@ -17,7 +17,7 @@ import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
 import { findConnection, getLinkCounts } from '../utils/links';
-import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
+import { buildMatchExcerpt, isLongText, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { formatDate, formatRelativeDay, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
 
 export type SeedsView = 'all' | 'unconnected' | 'connected' | 'sprout';
@@ -359,7 +359,7 @@ export function SeedsScreen({
           const order = selectedIds.indexOf(seed.id) + 1;
           const isExpanded = expanded.has(seed.id);
           const excerpt = normalizedSearch ? buildMatchExcerpt(seed, normalizedSearch) : undefined;
-          const long = seed.body.length > 90;
+          const long = isLongText(seed.body, 90);
           return (
             <View style={[styles.seedCard, picked && styles.seedCardPicked]}>
               <AnimatedPressable
@@ -472,7 +472,6 @@ export function SeedsScreen({
                 accessibilityHint="選んだ2つのメモの間に線を引きます。メモの内容は変わりません。"
                 onPress={() => {
                   const [a, b] = selectedSeeds;
-                  cancelSelecting();
                   onConnectPair(a.id, b.id);
                 }}
               />
@@ -505,7 +504,6 @@ export function SeedsScreen({
         onClose={() => setPlanOpen(false)}
         onConfirm={(centerId, targetIds) => {
           setPlanOpen(false);
-          cancelSelecting();
           onConnectFromCenter(centerId, targetIds);
         }}
       />

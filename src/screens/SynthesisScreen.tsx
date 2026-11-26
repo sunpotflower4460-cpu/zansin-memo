@@ -11,7 +11,7 @@ import type { MaterialRef } from '../domain/gardenCommands';
 import { theme } from '../styles/theme';
 import { createId } from '../utils/ids';
 import { buildAdjacency } from '../utils/links';
-import { toSeedSnippet } from '../utils/seedText';
+import { isLongText, toSeedSnippet } from '../utils/seedText';
 import { formatRelativeDay } from '../utils/seedUtils';
 import { describeSource, sourcePartLabel } from '../utils/synthesis';
 
@@ -29,6 +29,8 @@ type SynthesisScreenProps = {
   center: Seed;
   /** 削除されていないメモ全体。 */
   seeds: Seed[];
+  /** 削除済みのメモ。材料が削除されたことを伝え、本文を出さないために使う。 */
+  deletedSeeds?: Seed[];
   connections: SeedConnection[];
   /** 一覧で一緒に選んだメモなど、最初から材料にしておくメモ。 */
   initialMaterialIds?: string[];
@@ -43,7 +45,8 @@ type SynthesisScreenProps = {
   onSwitchToReview: () => void;
   onPostpone: () => void;
   onBack: () => void;
-  onOpenSeed: (seedId: string) => void;
+  /** 無ければ「このメモを開く」を出さない（練習）。 */
+  onOpenSeed?: (seedId: string) => void;
   /** 練習用の完成例。「完成例を見る」で入力欄に入れられる（保存はしない）。 */
   exampleStatement?: string;
 };
@@ -55,6 +58,7 @@ export function SynthesisScreen({
   mode,
   center,
   seeds,
+  deletedSeeds,
   connections,
   initialMaterialIds,
   draft,
@@ -78,9 +82,10 @@ export function SynthesisScreen({
     draftId: draft?.id ?? createId(),
     synthesisId: reviewing && existing ? existing.id : (draft?.plannedId ?? createId()),
   });
-  const [statement, setStatement] = React.useState(draft?.body ?? '');
+  // 見直し・芽にし直しは、いまの芽の文から書き始める。下書きがあれば下書きを優先する。
+  const [statement, setStatement] = React.useState(draft?.body ?? (reviewing && existing ? existing.statement : ''));
   /** 見直しで材料を選び直すか。選び直さなければ、確定済みのスナップショットを保持する。 */
-  const [reselect, setReselect] = React.useState(!reviewing);
+  const [reselect, setReselect] = React.useState(!reviewing || Boolean(draft?.reselect));
   const [picked, setPicked] = React.useState<Pick[]>(() => {
     const fromDraft = draft?.materials?.map((m) => ({ seedId: m.seedId, part: m.sourcePart })) ?? [];
     const fromList = (initialMaterialIds ?? []).filter((id) => id !== center.id).map((id) => ({ seedId: id, part: 'body' as const }));
@@ -91,6 +96,7 @@ export function SynthesisScreen({
   const [centerPickerOpen, setCenterPickerOpen] = React.useState(false);
 
   const byId = React.useMemo(() => new Map(seeds.map((seed) => [seed.id, seed])), [seeds]);
+  const sourceById = React.useMemo(() => new Map([...seeds, ...(deletedSeeds ?? [])].map((seed) => [seed.id, seed])), [seeds, deletedSeeds]);
   const neighborIds = React.useMemo(() => buildAdjacency(seeds, connections).get(center.id) ?? new Set<string>(), [seeds, connections, center.id]);
   const pickedKeys = React.useMemo(() => new Set(picked.map(pickKey)), [picked]);
   const pickedSeedIds = React.useMemo(() => new Set(picked.map((p) => p.seedId)), [picked]);
@@ -116,7 +122,9 @@ export function SynthesisScreen({
 
   // 入力・選択の途中は、下書きとして残す（writer側でまとめて保存）。
   React.useEffect(() => {
-    if (!statement.trim() && picked.length === 0) {
+    // 開いただけ・何も変えていないときは、下書きを作らない。
+    const unchangedReview = reviewing && !reselect && statement === existing?.statement;
+    if (unchangedReview || (!statement.trim() && picked.length === 0 && !(reviewing && reselect))) {
       onDraftChange(null, idsRef.current.draftId);
       return;
     }
@@ -128,11 +136,12 @@ export function SynthesisScreen({
         plannedId: idsRef.current.synthesisId,
         body: statement,
         materials: picked.map((p) => ({ seedId: p.seedId, sourcePart: p.part })),
+        reselect: reselect && (reviewing || picked.length > 0) ? true : undefined,
         updatedAt: new Date().toISOString(),
       },
       idsRef.current.draftId,
     );
-  }, [statement, picked, center.id]);
+  }, [statement, picked, reselect, center.id]);
 
   // 芽を残すメモを変えたとき、新しい中心を材料の選択から外す（中心の原文は常に含まれる）。
   React.useEffect(() => {
@@ -232,7 +241,7 @@ export function SynthesisScreen({
             <Text style={styles.materialText} numberOfLines={expanded.has('center') ? undefined : 3}>
               {center.body}
             </Text>
-            {center.body.length > 60 ? (
+            {isLongText(center.body, 60) ? (
               <SmallToggle label={expanded.has('center') ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded('center')} />
             ) : null}
           </View>
@@ -243,11 +252,17 @@ export function SynthesisScreen({
               {sourcesToShow
                 .filter((source) => !(source.seedId === center.id && source.sourcePart === 'body'))
                 .map((source) => {
-                  const state = describeSource(source, byId);
+                  const state = describeSource(source, sourceById);
                   return (
                     <View key={`${source.seedId}-${source.sourcePart}`} style={styles.material}>
                       <Text style={styles.materialLabel}>{sourcePartLabel(source.sourcePart)}</Text>
-                      <Text style={styles.materialText}>{state.kind === 'deleted' ? '（元のメモは「最近削除した種」にあります）' : source.textSnapshot}</Text>
+                      <Text style={styles.materialText}>
+                        {state.kind === 'deleted'
+                          ? '（元のメモは「最近削除した種」にあります）'
+                          : state.kind === 'missing'
+                            ? '（元のメモが見つかりません）'
+                            : source.textSnapshot}
+                      </Text>
                       {state.kind === 'changed' ? <Text style={styles.changed}>材料に更新あり（現在の文: {toSeedSnippet({ body: state.currentText }, 40)}）</Text> : null}
                     </View>
                   );
@@ -270,8 +285,9 @@ export function SynthesisScreen({
                   <View key={id} style={[styles.material, (bodyOn || synthOn) && styles.materialOn]}>
                     <CheckRow
                       on={bodyOn}
-                      label={`元のメモ${neighborIds.has(id) ? '（つながっています）' : ''}`}
-                      text={open ? origin.body : toSeedSnippet(origin, 70)}
+                      label={`元のメモ${origin.title ? `「${origin.title}」` : ''}${neighborIds.has(id) ? '（つながっています）' : ''}`}
+                      // 材料として採用するのは本文なので、題名があっても本文を読めるようにする。
+                      text={open ? origin.body : toSeedSnippet({ body: origin.body }, 70)}
                       onPress={() => toggle(id, 'body')}
                       a11y={`${bodyOn ? '材料にしている' : '材料にしていない'}。元のメモ。${toSeedSnippet(origin, 30)}`}
                     />
@@ -285,8 +301,8 @@ export function SynthesisScreen({
                       />
                     ) : null}
                     <View style={styles.row}>
-                      {origin.body.length > 60 ? <SmallToggle label={open ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded(id)} /> : null}
-                      <SmallToggle label="このメモを開く" onPress={() => onOpenSeed(id)} />
+                      {isLongText(origin.body, 60) ? <SmallToggle label={open ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded(id)} /> : null}
+                      {onOpenSeed ? <SmallToggle label="このメモを開く" onPress={() => onOpenSeed(id)} /> : null}
                       <Text style={styles.meta}>{formatRelativeDay(origin.updatedAt)}</Text>
                     </View>
                   </View>

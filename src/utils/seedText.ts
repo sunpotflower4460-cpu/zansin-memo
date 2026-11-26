@@ -8,6 +8,10 @@ export const toSeedSnippet = (seed: Pick<Seed, 'title' | 'body'>, maxLength = DE
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 };
 
+/** 数行だけの表示では読み切れず、「全文」の切り替えが要る長さか。改行が多い短文も含む。 */
+export const isLongText = (text: string, maxLength: number, maxLines = 3): boolean =>
+  text.length > maxLength || text.split('\n').length > maxLines;
+
 /** 検索用の正規化。全角/半角・大文字/小文字・互換文字の違いで見つからなくならないようにする。 */
 export const normalizeSearchText = (text: string): string => text.normalize('NFKC').toLowerCase();
 

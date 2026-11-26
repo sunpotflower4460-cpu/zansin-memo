@@ -399,6 +399,8 @@ export const undoPromotion = (args: {
   /** 保存した芽（これと一致するときだけ戻す）。 */
   savedSynthesisId: string;
   savedSynthesisUpdatedAt: string;
+  /** 保存した直後の育ち方。その後に本人が変えていたら戻さない。 */
+  savedGrowthState: Seed['growthState'];
   previous: { growthState: Seed['growthState']; synthesis?: SeedSynthesis };
   /** 戻したあとに残す、書いた文章の下書き。 */
   keepDraft?: Draft;
@@ -407,7 +409,14 @@ export const undoPromotion = (args: {
   apply: (store) => {
     const seed = findSeed(store, args.seedId);
     if (!seed) return { rejected: 'missing_seed' };
-    if (!seed.synthesis || seed.synthesis.id !== args.savedSynthesisId || seed.synthesis.updatedAt !== args.savedSynthesisUpdatedAt) {
+    if (
+      !seed.synthesis ||
+      seed.synthesis.id !== args.savedSynthesisId ||
+      seed.synthesis.updatedAt !== args.savedSynthesisUpdatedAt ||
+      seed.growthState !== args.savedGrowthState ||
+      // 保存のあとに書き始めた芽の下書きがあれば、それと取り違えないよう戻さない。
+      store.drafts.some((draft) => draft.kind === 'synthesis' && draft.targetSeedId === seed.id)
+    ) {
       return { rejected: 'changed_since_save' };
     }
     const { synthesis: _current, ...rest } = seed;

@@ -243,9 +243,10 @@ export const normalizeDraft = (value: unknown): Draft | undefined => {
   const plannedId = asString(data.plannedId)?.trim();
   if (plannedId) draft.plannedId = plannedId;
   const title = asString(data.title);
-  if (title) draft.title = title;
+  // 空文字は「消した」という入力。捨てると、再開時に元の題名やカテゴリが戻ってしまう。
+  if (title !== undefined) draft.title = title;
   const tags = asString(data.tags);
-  if (tags) draft.tags = tags;
+  if (tags !== undefined) draft.tags = tags;
   if (mood && MOODS.includes(mood as Mood)) draft.mood = mood as Mood;
   if (growthState && GROWTH_STATES.includes(growthState as GrowthState)) draft.growthState = growthState as GrowthState;
   if (importance && IMPORTANCE_VALUES.includes(importance as (typeof IMPORTANCE_VALUES)[number])) draft.importance = importance;
@@ -253,6 +254,7 @@ export const normalizeDraft = (value: unknown): Draft | undefined => {
   const baseBody = asString(data.baseBody);
   if (baseBody !== undefined) draft.baseBody = baseBody;
   if (data.standalone === true) draft.standalone = true;
+  if (data.reselect === true) draft.reselect = true;
   return draft;
 };
 

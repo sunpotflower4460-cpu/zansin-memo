@@ -250,7 +250,7 @@ test('D07 undo restores the previous state and sprout, keeps the newly written s
   const draft = { id: 'syn-draft', kind: 'synthesis' as const, targetSeedId: 'A', plannedId: 'syn-1', body: saved.statement, updatedAt: T1 };
 
   const undone = await writer.run(
-    undoPromotion({ commandId: 'undo', seedId: 'A', savedSynthesisId: saved.id, savedSynthesisUpdatedAt: saved.updatedAt, previous, keepDraft: draft }),
+    undoPromotion({ commandId: 'undo', seedId: 'A', savedSynthesisId: saved.id, savedSynthesisUpdatedAt: saved.updatedAt, savedGrowthState: 'sprout', previous, keepDraft: draft }),
   );
   assert.equal(undone.ok, true);
   assert.equal(seed('A').growthState, 'seed');
@@ -263,10 +263,29 @@ test('D07 undo restores the previous state and sprout, keeps the newly written s
   const saved2 = seed('A').synthesis!;
   await writer.run(promote({ commandId: 'tweak', synthesisId: saved2.id, review: true, keepExistingSources: true, statement: '直した文', now: T2 }));
   const stale = await writer.run(
-    undoPromotion({ commandId: 'undo-2', seedId: 'A', savedSynthesisId: saved2.id, savedSynthesisUpdatedAt: saved2.updatedAt, previous }),
+    undoPromotion({ commandId: 'undo-2', seedId: 'A', savedSynthesisId: saved2.id, savedSynthesisUpdatedAt: saved2.updatedAt, savedGrowthState: 'sprout', previous }),
   );
   assert.deepEqual(stale, { ok: false, reason: 'rejected', detail: 'changed_since_save' });
   assert.equal(seed('A').synthesis?.statement, '直した文');
+});
+
+test('undo never discards a growth-state change or a newer sprout draft made after saving', async () => {
+  const { writer, seed } = await setup();
+  await writer.run(promote());
+  const saved = seed('A').synthesis!;
+  const undo = (commandId: string) =>
+    undoPromotion({ commandId, seedId: 'A', savedSynthesisId: saved.id, savedSynthesisUpdatedAt: saved.updatedAt, savedGrowthState: 'sprout', previous: { growthState: 'seed' } });
+
+  writer.saveDraft({ id: 'later', kind: 'synthesis', targetSeedId: 'A', body: '保存のあとに書き始めた', updatedAt: T2 });
+  await writer.flushDrafts();
+  assert.deepEqual(await writer.run(undo('u-draft')), { ok: false, reason: 'rejected', detail: 'changed_since_save' });
+  writer.saveDraft(null, 'later');
+  await writer.flushDrafts();
+
+  await writer.run(updateSeedFields({ commandId: 'to-tree', seedId: 'A', patch: { growthState: 'tree' }, now: T2 }));
+  assert.deepEqual(await writer.run(undo('u-tree')), { ok: false, reason: 'rejected', detail: 'changed_since_save' });
+  assert.equal(seed('A').growthState, 'tree');
+  assert.equal(seed('A').synthesis?.id, saved.id);
 });
 
 test('an existing tree is never downgraded by a review, and a seed or archived memo becomes a sprout when adopted', async () => {

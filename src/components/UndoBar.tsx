@@ -3,17 +3,20 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../styles/theme';
 import { AnimatedPressable } from './AnimatedPressable';
+import { TAB_BAR_CONTENT_HEIGHT, tabBarBottomPadding } from './AppTabBar';
 
 type UndoBarProps = {
   message: string;
   actionLabel: string;
   /** 表示している時間（ms）。過ぎたら閉じる。常設の「芽を見直す」「種として考え直す」からも直せる。 */
   durationMs?: number;
+  /** タブバーのある画面では、その上に出す。 */
+  aboveTabBar?: boolean;
   onAction: () => void;
   onDismiss: () => void;
 };
 
-export function UndoBar({ message, actionLabel, durationMs = 12000, onAction, onDismiss }: UndoBarProps) {
+export function UndoBar({ message, actionLabel, durationMs = 12000, aboveTabBar = false, onAction, onDismiss }: UndoBarProps) {
   const insets = useSafeAreaInsets();
   React.useEffect(() => {
     const timer = setTimeout(onDismiss, durationMs);
@@ -21,7 +24,10 @@ export function UndoBar({ message, actionLabel, durationMs = 12000, onAction, on
   }, [durationMs, onDismiss]);
 
   return (
-    <View style={[styles.bar, { bottom: Math.max(insets.bottom, 12) + 8 }]} accessibilityLiveRegion="polite">
+    <View
+      style={[styles.bar, { bottom: aboveTabBar ? TAB_BAR_CONTENT_HEIGHT + tabBarBottomPadding(insets.bottom) + 12 : Math.max(insets.bottom, 12) + 8 }]}
+      accessibilityLiveRegion="polite"
+    >
       <Text style={styles.message}>{message}</Text>
       <AnimatedPressable onPress={onAction} style={styles.button} haptic="light" accessibilityRole="button" accessibilityLabel={actionLabel}>
         <Text style={styles.buttonText}>{actionLabel}</Text>

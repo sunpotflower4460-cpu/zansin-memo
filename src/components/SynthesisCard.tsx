@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { growthStateLabels } from '../utils/displayLabels';
-import { toSeedSnippet } from '../utils/seedText';
+import { isLongText, toSeedSnippet } from '../utils/seedText';
 import { formatDate } from '../utils/seedUtils';
 import { describeSource, getSynthesisStatus, hasChangedSources, sourcePartLabel } from '../utils/synthesis';
 import { AnimatedPressable } from './AnimatedPressable';
@@ -15,11 +15,12 @@ type SynthesisCardProps = {
   byId: Map<string, Seed>;
   /** 芽の下書きがあるか。 */
   hasDraft: boolean;
-  onCreate: () => void;
-  onReview: () => void;
-  onReconsider: () => void;
-  onResumeDraft: () => void;
-  onOpenSeed: (seedId: string) => void;
+  // 渡さない操作は、ボタンを出さない（練習では読むだけ）。
+  onCreate?: () => void;
+  onReview?: () => void;
+  onReconsider?: () => void;
+  onResumeDraft?: () => void;
+  onOpenSeed?: (seedId: string) => void;
 };
 
 // 詳細で、本人が書いた芽と、その材料（芽をまとめたときに読んだ文章）を読む。
@@ -47,7 +48,7 @@ export function SynthesisCard({ seed, byId, hasDraft, onCreate, onReview, onReco
         </Text>
       </View>
 
-      {hasDraft ? (
+      {hasDraft && onResumeDraft ? (
         <View style={styles.draft}>
           <Text style={styles.draftText}>芽の下書きがあります。</Text>
           <AnimatedPressable onPress={onResumeDraft} style={styles.smallPrimary} haptic="light" accessibilityRole="button" accessibilityLabel="芽の下書きの続きを書く">
@@ -68,16 +69,18 @@ export function SynthesisCard({ seed, byId, hasDraft, onCreate, onReview, onReco
           ) : null}
 
           <View style={styles.row}>
-            <AnimatedPressable
-              onPress={onReview}
-              style={styles.smallPrimary}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel={status === 'reconsidered' ? 'この考えで芽にし直す' : '芽を見直す'}
-            >
-              <Text style={styles.smallPrimaryText}>{status === 'reconsidered' ? 'この考えで芽にし直す' : '芽を見直す'}</Text>
-            </AnimatedPressable>
-            {status === 'current' ? (
+            {onReview ? (
+              <AnimatedPressable
+                onPress={onReview}
+                style={styles.smallPrimary}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={status === 'reconsidered' ? 'この考えで芽にし直す' : '芽を見直す'}
+              >
+                <Text style={styles.smallPrimaryText}>{status === 'reconsidered' ? 'この考えで芽にし直す' : '芽を見直す'}</Text>
+              </AnimatedPressable>
+            ) : null}
+            {status === 'current' && onReconsider ? (
               <AnimatedPressable
                 onPress={onReconsider}
                 style={styles.small}
@@ -116,12 +119,12 @@ export function SynthesisCard({ seed, byId, hasDraft, onCreate, onReview, onReco
                   <Text style={styles.changed}>材料に更新あり。現在のメモ: 「{toSeedSnippet({ body: state.currentText }, 40)}」</Text>
                 ) : null}
                 <View style={styles.row}>
-                  {state.kind !== 'deleted' && state.kind !== 'missing' && source.textSnapshot.length > 60 ? (
+                  {state.kind !== 'deleted' && state.kind !== 'missing' && isLongText(source.textSnapshot, 60) ? (
                     <AnimatedPressable onPress={() => toggle(key)} style={styles.small} haptic="light" accessibilityRole="button" accessibilityLabel={expanded ? '材料を閉じる' : '材料の全文を読む'}>
                       <Text style={styles.smallText}>{expanded ? '閉じる' : '全文'}</Text>
                     </AnimatedPressable>
                   ) : null}
-                  {origin && !origin.deletedAt && source.seedId !== seed.id ? (
+                  {onOpenSeed && origin && !origin.deletedAt && source.seedId !== seed.id ? (
                     <AnimatedPressable onPress={() => onOpenSeed(source.seedId)} style={styles.small} haptic="light" accessibilityRole="button" accessibilityLabel={`材料の元のメモを開く。${toSeedSnippet(origin, 20)}`}>
                       <Text style={styles.smallText}>元のメモを開く</Text>
                     </AnimatedPressable>
@@ -136,12 +139,12 @@ export function SynthesisCard({ seed, byId, hasDraft, onCreate, onReview, onReco
           <Text style={styles.note}>
             以前からの育ち状態（{growthStateLabels[seed.growthState]}）です。芽の文章はまだ書かれていません。材料を見ながら、書いてみることもできます。
           </Text>
-          <CreateButton onPress={onCreate} />
+          {onCreate ? <CreateButton onPress={onCreate} /> : null}
         </>
       ) : (
         <>
           <Text style={styles.note}>つないだメモや、保存済みのメモを材料に、「なら、こうできそう」を一言で残せます。芽にするかどうかは自由です。</Text>
-          <CreateButton onPress={onCreate} />
+          {onCreate ? <CreateButton onPress={onCreate} /> : null}
         </>
       )}
     </SectionCard>

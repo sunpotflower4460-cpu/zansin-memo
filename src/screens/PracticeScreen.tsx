@@ -10,7 +10,7 @@ import { SynthesisCard } from '../components/SynthesisCard';
 import { connectSeeds, disconnectSeeds, promoteToSprout, setConnectionNote } from '../domain/gardenCommands';
 import type { GardenCommand } from '../data/gardenWriter';
 import { emptyStore } from '../data/gardenModel';
-import type { GardenStoreV2, Seed } from '../domain/types';
+import type { Draft, GardenStoreV2, Seed } from '../domain/types';
 import { SEED_SCHEMA_VERSION } from '../domain/types';
 import { theme } from '../styles/theme';
 import { toSeedSnippet } from '../utils/seedText';
@@ -54,6 +54,8 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
   const [centerId, setCenterId] = React.useState('practice-a');
   const [viewMode, setViewMode] = React.useState<ConnectionsViewMode>('map');
   const [synthesisOpen, setSynthesisOpen] = React.useState(false);
+  /** 「あとで考える」で残す下書き。練習の中だけに持ち、保存しない。 */
+  const [practiceDraft, setPracticeDraft] = React.useState<Draft | undefined>();
 
   const apply = (command: GardenCommand) =>
     setStore((current) => {
@@ -75,7 +77,8 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
         connections={store.connections}
         saving={false}
         exampleStatement={EXAMPLE_STATEMENT}
-        onDraftChange={() => undefined}
+        draft={practiceDraft?.targetSeedId === center.id ? practiceDraft : undefined}
+        onDraftChange={(draft) => setPracticeDraft(draft ?? undefined)}
         onSave={async (input) => {
           apply(
             promoteToSprout({
@@ -88,15 +91,15 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
               now: now(),
             }),
           );
+          setPracticeDraft(undefined);
           setSynthesisOpen(false);
           setStep('done');
           return true;
         }}
-        onChangeCenter={() => undefined}
+        onChangeCenter={setCenterId}
         onSwitchToReview={() => undefined}
         onPostpone={() => setSynthesisOpen(false)}
         onBack={() => setSynthesisOpen(false)}
-        onOpenSeed={() => undefined}
       />
     );
   }
@@ -193,16 +196,7 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
             </View>
             <Text style={styles.note}>芽の文と、元になった材料を、あとから読み返せます。元のメモは変わりません。</Text>
           </SectionCard>
-          <SynthesisCard
-            seed={center}
-            byId={byId}
-            hasDraft={false}
-            onCreate={() => undefined}
-            onReview={() => undefined}
-            onReconsider={() => undefined}
-            onResumeDraft={() => undefined}
-            onOpenSeed={() => undefined}
-          />
+          <SynthesisCard seed={center} byId={byId} hasDraft={false} />
           <Text style={styles.closing}>数は決まっていません。できそうなことが見えた時に、芽にします。</Text>
           <PrimaryButton label="自分のメモを書く" onPress={onStartWriting} />
           <AnimatedPressable onPress={onClose} style={styles.later} haptic="light" accessibilityRole="button" accessibilityLabel="例を閉じる">
