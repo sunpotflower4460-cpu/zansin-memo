@@ -143,44 +143,9 @@ export function HomeScreen({
           {/* 1. まず書く */}
           <PrimaryButton label="メモを書く" onPress={onOpenWrite} />
 
-          {/* 2. 最近の種 */}
-          <FadeInView delayMs={40}>
-            <SectionCard muted>
-              <View style={styles.sectionHead}>
-                <Text style={styles.cardTitle}>最近の種</Text>
-                <AnimatedPressable onPress={onOpenSeeds} style={styles.moreLink} haptic="light" accessibilityRole="button" accessibilityLabel="種一覧ですべて見る">
-                  <Text style={styles.moreLinkText}>すべて見る</Text>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-                </AnimatedPressable>
-              </View>
-              {recent.map((seed) => (
-                <AnimatedPressable
-                  key={seed.id}
-                  onPress={() => onOpenSeed(seed.id)}
-                  style={styles.listItem}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel={`種を開く。${toSnippet(seed.body)}`}
-                >
-                  <Image source={stageImages[seed.growthState]} style={styles.listStage} accessibilityIgnoresInvertColors />
-                  <View style={styles.listText}>
-                    <Text style={styles.listBody} numberOfLines={2}>
-                      {seed.body}
-                    </Text>
-                    <View style={styles.listMetaRow}>
-                      <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
-                      <LinkCount count={linkCounts.get(seed.id) ?? 0} />
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
-                </AnimatedPressable>
-              ))}
-            </SectionCard>
-          </FadeInView>
-
-          {/* 3. 今日の種 */}
+          {/* 2. 今日の種 */}
           {todaySeed ? (
-            <FadeInView delayMs={60}>
+            <FadeInView delayMs={40}>
               <SectionCard>
                 <View style={styles.sectionHead}>
                   <View style={styles.titleRow}>
@@ -243,6 +208,41 @@ export function HomeScreen({
               </SectionCard>
             </FadeInView>
           ) : null}
+
+          {/* 3. 最近の種 */}
+          <FadeInView delayMs={60}>
+            <SectionCard muted>
+              <View style={styles.sectionHead}>
+                <Text style={styles.cardTitle}>最近の種</Text>
+                <AnimatedPressable onPress={onOpenSeeds} style={styles.moreLink} haptic="light" accessibilityRole="button" accessibilityLabel="種一覧ですべて見る">
+                  <Text style={styles.moreLinkText}>すべて見る</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                </AnimatedPressable>
+              </View>
+              {recent.map((seed) => (
+                <AnimatedPressable
+                  key={seed.id}
+                  onPress={() => onOpenSeed(seed.id)}
+                  style={styles.listItem}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`種を開く。${toSnippet(seed.body)}`}
+                >
+                  <Image source={stageImages[seed.growthState]} style={styles.listStage} accessibilityIgnoresInvertColors />
+                  <View style={styles.listText}>
+                    <Text style={styles.listBody} numberOfLines={2}>
+                      {seed.body}
+                    </Text>
+                    <View style={styles.listMetaRow}>
+                      <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
+                      <LinkCount count={linkCounts.get(seed.id) ?? 0} />
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
+                </AnimatedPressable>
+              ))}
+            </SectionCard>
+          </FadeInView>
 
           {/* 4. 畑と庭便りは横に並べ、押した方だけを下に開く */}
           <View style={styles.tiles}>
