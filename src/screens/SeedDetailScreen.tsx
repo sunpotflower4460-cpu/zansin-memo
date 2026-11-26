@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
@@ -29,6 +29,7 @@ import {
   type TransformType,
 } from '../domain/types';
 import { theme } from '../styles/theme';
+import { showConfirm } from '../utils/confirm';
 import { triggerLightFeedback } from '../utils/feedback';
 import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
@@ -201,7 +202,7 @@ export function SeedDetailScreen({
   };
 
   const discardDraft = () => {
-    Alert.alert('下書きを破棄しますか？', '編集中の内容が消えます。元のメモは変わりません。', [
+    showConfirm('下書きを破棄しますか？', '編集中の内容が消えます。元のメモは変わりません。', [
       { text: '編集を続ける', style: 'cancel' },
       {
         text: '下書きを破棄',
@@ -521,7 +522,7 @@ export function SeedDetailScreen({
 
         <AnimatedPressable
           onPress={() =>
-            Alert.alert('このメモを削除しますか？', '「種一覧」の一番下の「最近削除した種」から復元できます。つながりは、復元すると戻ります。', [
+            showConfirm('このメモを削除しますか？', '「種一覧」の一番下の「最近削除した種」から復元できます。つながりは、復元すると戻ります。', [
               { text: 'キャンセル', style: 'cancel' },
               {
                 text: '削除',
