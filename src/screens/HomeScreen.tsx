@@ -11,6 +11,9 @@ import { GrowthBadge } from '../components/GrowthBadge';
 import { HelpButton } from '../components/HelpButton';
 import { helpTexts } from '../utils/helpTexts';
 import { ImportanceDots } from '../components/ImportanceDots';
+import { LinkCount } from '../components/LinkCount';
+import { getLinkCounts, getLinkedSeeds } from '../utils/links';
+import { toSeedSnippet } from '../utils/seedText';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
@@ -53,6 +56,11 @@ export function HomeScreen({
   onExportText,
 }: HomeScreenProps) {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const linkCounts = React.useMemo(() => getLinkCounts(seeds), [seeds]);
+  const todayLinks = React.useMemo(
+    () => (todaySeed ? getLinkedSeeds(todaySeed.seed, seeds).slice(0, 2) : []),
+    [todaySeed, seeds],
+  );
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
@@ -94,6 +102,7 @@ export function HomeScreen({
         </View>
 
         {todaySeed ? (
+          <>
           <AnimatedPressable
             onPress={() => onOpenSeed(todaySeed.seed.id)}
             style={styles.seedCard}
@@ -115,6 +124,30 @@ export function HomeScreen({
               <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
             </View>
           </AnimatedPressable>
+          {todayLinks.length > 0 ? (
+            <View style={styles.todayLinks}>
+              <View style={styles.todayLinksTitle}>
+                <Ionicons name="git-network-outline" size={16} color={theme.colors.primary} />
+                <Text style={styles.todayLinksLabel}>つながる種</Text>
+              </View>
+              {todayLinks.map((linked) => (
+                <AnimatedPressable
+                  key={linked.id}
+                  onPress={() => onOpenSeed(linked.id)}
+                  style={styles.todayLinkRow}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`つながる種を開く。${toSnippet(linked.body)}`}
+                >
+                  <Text style={styles.todayLinkText} numberOfLines={1}>
+                    {toSeedSnippet(linked, 28)}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
+                </AnimatedPressable>
+              ))}
+            </View>
+          ) : null}
+          </>
         ) : (
           <EmptyState
             image={stageImages.seed}
@@ -174,6 +207,7 @@ export function HomeScreen({
                 <View style={styles.listMetaRow}>
                   <GrowthBadge state={seed.growthState} />
                   <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
+                  <LinkCount count={linkCounts.get(seed.id) ?? 0} />
                   <View style={styles.listMetaSpacer} />
                   <ImportanceDots value={seed.importance} />
                   <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
@@ -323,6 +357,37 @@ const styles = StyleSheet.create({
     top: 18,
     left: 20,
     gap: 2,
+  },
+  todayLinks: {
+    gap: 6,
+  },
+  todayLinksTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  todayLinksLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+  },
+  todayLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+  },
+  todayLinkText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: theme.fonts.serif,
+    color: theme.colors.text,
   },
   fieldHeader: {
     flexDirection: 'row',

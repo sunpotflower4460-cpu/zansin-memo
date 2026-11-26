@@ -9,6 +9,8 @@ import { GrowthBadge } from '../components/GrowthBadge';
 import { HelpButton } from '../components/HelpButton';
 import { helpTexts } from '../utils/helpTexts';
 import { ImportanceDots } from '../components/ImportanceDots';
+import { LinkCount } from '../components/LinkCount';
+import { getLinkCounts } from '../utils/links';
 import { IOSChip } from '../components/IOSChip';
 import { SectionCard } from '../components/SectionCard';
 import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
@@ -69,6 +71,7 @@ export function SeedsScreen({
   }, [activeTagFilter, tagFilter, onChangeTagFilter]);
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const linkCounts = useMemo(() => getLinkCounts(seeds), [seeds]);
   const stateCounts = useMemo(() => {
     const counts: Record<GrowthState, number> = { seed: 0, sprout: 0, tree: 0, archived: 0 };
     for (const seed of seeds) {
@@ -283,6 +286,7 @@ export function SeedsScreen({
           <View style={styles.metaRow}>
             <GrowthBadge state={seed.growthState} />
             <Text style={styles.meta}>{formatRelativeDay(seed.updatedAt)}</Text>
+            <LinkCount count={linkCounts.get(seed.id) ?? 0} />
             <View style={styles.metaSpacer} />
             <ImportanceDots value={seed.importance} />
             <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />

@@ -31,6 +31,7 @@ import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
 import { exportSeeds } from './src/utils/exportUtils';
+import { linkSeeds, unlinkSeeds } from './src/utils/links';
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import {
   buildTransformOutput,
@@ -294,12 +295,52 @@ export default function App() {
       return;
     }
 
-    const nextSeed = createSeed(input);
+    // 続きの元になった種が、いまも残っているときだけつなぐ。
+    const continuedFromId = activeSeeds.some((seed) => seed.id === input.continuedFromId) ? input.continuedFromId : undefined;
+    const nextSeed = createSeed({ ...input, continuedFromId });
     triggerSuccessFeedback();
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
+    if (continuedFromId) {
+      // 続きを書いたときは、つながった様子（話のながれ）がすぐ見える詳細画面を開く。
+      setScreen({ kind: 'detail', seedId: nextSeed.id, from: 'home' });
+      showToast('続きの種をまきました 🌱 元の種とつながりました');
+      return;
+    }
     setScreen({ kind: 'home' });
     showToast('種をまきました 🌱 「種一覧」に入りました');
+  };
+
+  const handleLinkSeeds = (seedId: string, otherId: string) => {
+    if (blockIfStorageLocked()) {
+      return;
+    }
+    triggerSuccessFeedback();
+    setSeeds((current) => linkSeeds(current, seedId, otherId));
+    showToast('つなぎました 🌿');
+  };
+
+  const handleUnlinkSeeds = (seedId: string, otherId: string) => {
+    if (blockIfStorageLocked()) {
+      return;
+    }
+    setSeeds((current) => unlinkSeeds(current, seedId, otherId));
+    showToast('つながりを外しました');
+  };
+
+  // 「続きを書く」: 書く画面を、元の種の続きとして開く。書きかけがあれば消さずに、その続きとして扱う。
+  const handleContinueSeed = (seedId: string) => {
+    const origin = activeSeeds.find((seed) => seed.id === seedId);
+    if (!origin) {
+      return;
+    }
+    setWriteDraft((current) => {
+      const hasDraft = current.body.trim() !== '' || current.title.trim() !== '';
+      return hasDraft
+        ? { ...current, continuedFromId: seedId }
+        : { ...initialWriteDraft, tags: origin.tags.join(', '), continuedFromId: seedId };
+    });
+    setScreen({ kind: 'write' });
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
@@ -462,12 +503,17 @@ export default function App() {
     if (screen.kind === 'detail' && selectedSeed) {
       return (
         <SeedDetailScreen
+          key={selectedSeed.id}
           seed={selectedSeed}
           allSeeds={activeSeeds}
           onBack={() => setScreen({ kind: screen.from })}
           backLabel={tabLabels[screen.from]}
           onSave={handleUpdateSeed}
           onDelete={handleDeleteSeed}
+          onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: screen.from })}
+          onLinkSeeds={handleLinkSeeds}
+          onUnlinkSeeds={handleUnlinkSeeds}
+          onContinue={handleContinueSeed}
           onCreateTransform={handleCreateTransform}
         />
       );
@@ -477,7 +523,9 @@ export default function App() {
       return (
         <WriteScreen
           draft={writeDraft}
+          continuedFrom={activeSeeds.find((seed) => seed.id === writeDraft.continuedFromId)}
           onChange={(next) => setWriteDraft((current) => ({ ...current, ...next }))}
+          onClearContinuation={() => setWriteDraft((current) => ({ ...current, continuedFromId: undefined }))}
           onSave={handleCreateSeed}
         />
       );
@@ -512,6 +560,12 @@ export default function App() {
             setSeedsSearch('');
             setTagFilter(null);
             setStateFilter(state);
+            setScreen({ kind: 'seeds' });
+          }}
+          onSearchWord={(word) => {
+            setSeedsSearch(word);
+            setTagFilter(null);
+            setStateFilter('all');
             setScreen({ kind: 'seeds' });
           }}
         />

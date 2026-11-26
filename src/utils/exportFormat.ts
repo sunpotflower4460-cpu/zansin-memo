@@ -1,6 +1,7 @@
 import type { Seed } from '../domain/types';
 import { SEED_SCHEMA_VERSION } from '../domain/types';
 import { growthStateLabels, moodLabels, transformLabels } from './displayLabels';
+import { getLinkCounts } from './links';
 
 export type ExportFormat = 'json' | 'text';
 
@@ -37,6 +38,7 @@ export const buildTextExport = (seeds: Seed[]): string => {
     return `${header}\n\n（種はまだありません）\n`;
   }
 
+  const linkCounts = getLinkCounts(seeds);
   const seedTexts = seeds.map((seed, index) => {
     const lines: string[] = [];
     lines.push(`【${index + 1}】${seed.title ? ` ${seed.title}` : ''}`);
@@ -50,6 +52,10 @@ export const buildTextExport = (seeds: Seed[]): string => {
     }
     if (seed.tags.length > 0) {
       meta.push(`カテゴリ: ${seed.tags.join(', ')}`);
+    }
+    const linkCount = linkCounts.get(seed.id) ?? 0;
+    if (linkCount > 0) {
+      meta.push(`つながり: ${linkCount}件`);
     }
     meta.push(`作成: ${formatDate(seed.createdAt)}`);
     meta.push(`更新: ${formatDate(seed.updatedAt)}`);

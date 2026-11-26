@@ -15,10 +15,12 @@ import {
   type GrowthState,
   type Importance,
   type Mood,
+  type Seed,
   type SeedCreateInput,
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
+import { toSeedSnippet } from '../utils/seedText';
 import { growthStateHints, growthStateLabels, moodLabels } from '../utils/displayLabels';
 
 type WriteScreenProps = {
@@ -31,10 +33,13 @@ type WriteScreenProps = {
     importance: Importance;
   };
   onChange: (value: Partial<WriteScreenProps['draft']>) => void;
+  /** 「続きを書く」から来たときの元の種。 */
+  continuedFrom?: Seed;
+  onClearContinuation: () => void;
   onSave: (input: SeedCreateInput) => void;
 };
 
-export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
+export function WriteScreen({ draft, onChange, continuedFrom, onClearContinuation, onSave }: WriteScreenProps) {
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const saveAccessibilityHint = saveDisabled ? '種のことばを入力するとまけます。' : '今の内容で種をまきます。';
@@ -55,6 +60,27 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         <Text style={styles.subheading}>
           思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
         </Text>
+
+        {continuedFrom ? (
+          <View style={styles.continuation}>
+            <Ionicons name="git-branch-outline" size={20} color={theme.colors.primary} />
+            <View style={styles.continuationBody}>
+              <Text style={styles.continuationLabel}>この種の続きとして書きます</Text>
+              <Text style={styles.continuationText} numberOfLines={2}>
+                {toSeedSnippet(continuedFrom, 40)}
+              </Text>
+            </View>
+            <AnimatedPressable
+              onPress={onClearContinuation}
+              style={styles.continuationClose}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="続きではなく、新しい種として書く"
+            >
+              <Ionicons name="close-circle-outline" size={24} color={theme.colors.textMuted} />
+            </AnimatedPressable>
+          </View>
+        ) : null}
 
         <FadeInView delayMs={40}>
           <SectionCard>
@@ -161,6 +187,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               importance: draft.importance,
               growthState: draft.growthState,
               tags: parseTags(draft.tags),
+              continuedFromId: continuedFrom?.id,
             })
           }
         />
@@ -184,6 +211,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  continuation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  continuationBody: {
+    flex: 1,
+    gap: 2,
+  },
+  continuationLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  continuationText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: theme.fonts.serif,
+    color: theme.colors.text,
+  },
+  continuationClose: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headingRow: {
     flexDirection: 'row',

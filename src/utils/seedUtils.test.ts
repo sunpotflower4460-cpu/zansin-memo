@@ -241,3 +241,15 @@ test('formatRelativeDay reads naturally by calendar day', () => {
   // 未来の日付（端末の時計変更など）は今日として扱う
   assert.equal(formatRelativeDay(at(2026, 10, 30), now), '今日');
 });
+
+test('pickTodaySeed explains a resurfacing caused by a recently active linked seed', () => {
+  const now = Date.now();
+  const old = new Date(now - 20 * 86400000).toISOString();
+  const recent = new Date(now - 3600000).toISOString();
+  const quiet = { ...createBaseSeed(), id: 'quiet', createdAt: old, updatedAt: old, relatedSeedIds: ['busy'] };
+  const busy = { ...createBaseSeed(), id: 'busy', createdAt: old, updatedAt: recent, growthState: 'archived' as const };
+
+  const picked = pickTodaySeed([quiet, busy]);
+  assert.equal(picked?.seed.id, 'quiet');
+  assert.equal(picked?.reason, 'つながる種が、最近育っています');
+});

@@ -94,6 +94,7 @@ const normalizeSeed = (seed: unknown): Seed | undefined => {
     growthState: growthState && GROWTH_STATES.includes(growthState as GrowthState) ? (growthState as GrowthState) : 'seed',
     tags: normalizeStringArray(data.tags),
     relatedSeedIds: normalizeStringArray(data.relatedSeedIds),
+    continuedFromId: asString(data.continuedFromId)?.trim() || undefined,
     resurfacingScore: typeof data.resurfacingScore === 'number' && Number.isFinite(data.resurfacingScore) ? data.resurfacingScore : undefined,
     lastResurfacedAt: lastResurfacedAt && isValidIsoDate(lastResurfacedAt) ? new Date(lastResurfacedAt).toISOString() : undefined,
     deletedAt: deletedAt && isValidIsoDate(deletedAt) ? new Date(deletedAt).toISOString() : undefined,

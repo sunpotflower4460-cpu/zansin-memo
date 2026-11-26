@@ -19,6 +19,7 @@ export const EMPTY_WRITE_DRAFT: WriteDraft = {
   mood: undefined,
   growthState: 'seed',
   importance: 3,
+  continuedFromId: undefined,
 };
 
 export const isEmptyDraft = (draft: WriteDraft): boolean =>
@@ -44,6 +45,7 @@ export const parseDraft = (raw: string): WriteDraft | undefined => {
       mood: MOOD_OPTIONS.includes(mood) ? mood : undefined,
       growthState: GROWTH_STATE_OPTIONS.includes(growthState) ? growthState : 'seed',
       importance: IMPORTANCE_OPTIONS.includes(importance) ? importance : 3,
+      continuedFromId: asString(data.continuedFromId) || undefined,
     };
   } catch {
     return undefined;

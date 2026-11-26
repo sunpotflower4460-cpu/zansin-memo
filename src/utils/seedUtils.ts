@@ -1,3 +1,4 @@
+import { getIdsWithRecentlyActiveLinks } from './links';
 import {
   type ResurfacedSeed,
   type Seed,
@@ -48,6 +49,7 @@ export const createSeed = (input: SeedCreateInput): Seed => {
     growthState: input.growthState ?? 'seed',
     tags: cleanArray(input.tags),
     relatedSeedIds: cleanArray(input.relatedSeedIds),
+    continuedFromId: input.continuedFromId?.trim() || undefined,
     transformOutputs: [],
     schemaVersion: SEED_SCHEMA_VERSION,
   };
@@ -98,7 +100,9 @@ export const parseTags = (raw: string): string[] =>
       .filter(Boolean),
   );
 
-const buildResurfacingScore = (seed: Seed, now: Date): number => {
+const LINK_ACTIVITY_BONUS = 1.5;
+
+const buildResurfacingScore = (seed: Seed, now: Date, hasActiveLink = false): number => {
   const updatedAt = toTimestamp(seed.updatedAt);
   const ageDays = updatedAt ? Math.max(0, (now.getTime() - updatedAt) / DAY_MS) : SCORE_DECAY_DAYS;
   const lastResurfacedAt = toTimestamp(seed.lastResurfacedAt);
@@ -110,7 +114,8 @@ const buildResurfacingScore = (seed: Seed, now: Date): number => {
   const recencyFactor = Math.min(ageDays, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
   const resurfacingFactor = Math.min(daysSinceResurfaced, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
 
-  const score = seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight;
+  const score =
+    seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight + (hasActiveLink ? LINK_ACTIVITY_BONUS : 0);
   return Number.isFinite(score) ? score : FALLBACK_SCORE;
 };
 
@@ -124,8 +129,10 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
   }
 
   const now = new Date();
+  // つながる種が最近育った種は、同じ話に出会い直しやすいよう少しだけ浮上しやすくする。
+  const withActiveLinks = getIdsWithRecentlyActiveLinks(seeds, now);
   const scored = candidates
-    .map((seed) => ({ seed, score: buildResurfacingScore(seed, now) }))
+    .map((seed) => ({ seed, score: buildResurfacingScore(seed, now, withActiveLinks.has(seed.id)) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
@@ -136,8 +143,9 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
 
   const updatedAt = toTimestamp(picked.seed.updatedAt) ?? now.getTime();
   const days = Math.floor((now.getTime() - updatedAt) / DAY_MS);
-  const reason =
-    days >= 7
+  const reason = withActiveLinks.has(picked.seed.id)
+    ? 'つながる種が、最近育っています'
+    : days >= 7
       ? 'しばらく見返していない種です'
       : picked.seed.importance >= 4
         ? '大切度が高い種です'

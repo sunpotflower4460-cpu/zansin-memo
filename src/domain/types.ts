@@ -24,6 +24,8 @@ export type Seed = {
   growthState: GrowthState;
   tags: string[];
   relatedSeedIds: string[];
+  /** 「続きを書く」で生まれた種が、元の種を指す。同じ話の流れ（話のながれ）をたどるために使う。 */
+  continuedFromId?: string;
   resurfacingScore?: number;
   lastResurfacedAt?: string;
   deletedAt?: string;
@@ -39,6 +41,7 @@ export type SeedCreateInput = {
   growthState?: GrowthState;
   tags?: string[];
   relatedSeedIds?: string[];
+  continuedFromId?: string;
 };
 
 export type SeedUpdateInput = Partial<Omit<Seed, 'id' | 'createdAt' | 'schemaVersion'>>;
@@ -56,6 +59,8 @@ export type WriteDraft = {
   mood?: Mood;
   growthState: GrowthState;
   importance: Importance;
+  /** 「続きを書く」から始めたときの元の種。 */
+  continuedFromId?: string;
 };
 
 export const MOOD_OPTIONS: Mood[] = ['calm', 'excited', 'uncertain', 'heavy', 'bright'];

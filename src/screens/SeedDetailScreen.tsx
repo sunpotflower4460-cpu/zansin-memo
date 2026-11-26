@@ -7,6 +7,7 @@ import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { IOSChip } from '../components/IOSChip';
+import { LinksSection } from '../components/LinksSection';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
@@ -27,7 +28,7 @@ import { triggerLightFeedback } from '../utils/feedback';
 import { HelpButton } from '../components/HelpButton';
 import { helpTexts } from '../utils/helpTexts';
 import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
-import { formatDate, parseTags, pickRelatedCandidates } from '../utils/seedUtils';
+import { formatDate, parseTags } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
   seed: Seed;
@@ -37,6 +38,10 @@ type SeedDetailScreenProps = {
   backLabel: string;
   onSave: (seedId: string, payload: SeedUpdateInput) => void;
   onDelete: (seedId: string) => void;
+  onOpenSeed: (seedId: string) => void;
+  onLinkSeeds: (seedId: string, otherId: string) => void;
+  onUnlinkSeeds: (seedId: string, otherId: string) => void;
+  onContinue: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
 };
 
@@ -47,7 +52,6 @@ type DraftState = {
   mood?: Mood;
   growthState: GrowthState;
   importance: Importance;
-  relatedSeedIds: string[];
 };
 
 const toDraft = (seed: Seed): DraftState => ({
@@ -57,10 +61,7 @@ const toDraft = (seed: Seed): DraftState => ({
   mood: seed.mood,
   growthState: seed.growthState,
   importance: seed.importance,
-  relatedSeedIds: seed.relatedSeedIds,
 });
-
-const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 // 保存済みの内容と見比べて、まだ保存していない変更があるかを返す（書式の違い、例えばカテゴリの区切り方は無視する）。
 const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
@@ -69,13 +70,9 @@ const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
   draft.mood !== seed.mood ||
   draft.importance !== seed.importance ||
   draft.growthState !== seed.growthState ||
-  parseTags(draft.tags).join('\n') !== seed.tags.join('\n') ||
-  !sameIds(draft.relatedSeedIds, seed.relatedSeedIds);
+  parseTags(draft.tags).join('\n') !== seed.tags.join('\n');
 
-const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
-const MAX_RELATED_CANDIDATES = 20;
-
-export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
+export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, onDelete, onOpenSeed, onLinkSeeds, onUnlinkSeeds, onContinue, onCreateTransform }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -90,11 +87,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
 
   const unsaved = hasUnsavedChanges(draft, seed);
 
-  const relatedCandidates = React.useMemo(
-    () => pickRelatedCandidates(allSeeds, seed.id, seed.relatedSeedIds, MAX_RELATED_CANDIDATES),
-    [allSeeds, seed.id, seed.relatedSeedIds],
-  );
-  const relatedCandidateIds = React.useMemo(() => new Set(relatedCandidates.map((item) => item.id)), [relatedCandidates]);
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
   const canSave = draft.body.trim().length > 0;
   const saveAccessibilityHint = canSave ? '現在の変更内容を保存します。' : '種のことばを入力すると保存できます。';
@@ -110,7 +102,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
     importance: draft.importance,
     growthState: draft.growthState,
     tags: parseTags(draft.tags),
-    relatedSeedIds: Array.from(new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id)))),
   });
 
   // 戻るときは、変更があれば自動で保存する（メモ帳のように、書いたものを失わない）。
@@ -130,16 +121,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
       { text: '編集を続ける', style: 'cancel' },
       { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
     ]);
-  };
-
-  const toggleRelatedSeed = (relatedSeedId: string) => {
-    setDraft((current) => {
-      const has = current.relatedSeedIds.includes(relatedSeedId);
-      return {
-        ...current,
-        relatedSeedIds: has ? current.relatedSeedIds.filter((id) => id !== relatedSeedId) : [...current.relatedSeedIds, relatedSeedId],
-      };
-    });
   };
 
   return (
@@ -239,31 +220,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
                   accessibilityLabel="カテゴリ"
                 />
               </View>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.label}>関連する種（任意）</Text>
-                {relatedCandidates.length === 0 ? (
-                  <Text style={styles.emptyText}>他の種が作成されるとここで紐づけできます。</Text>
-                ) : (
-                  <View style={styles.relatedList}>
-                    {relatedCandidates.map((candidate) => {
-                      const selected = draft.relatedSeedIds.includes(candidate.id);
-                      return (
-                        <IOSChip
-                          key={candidate.id}
-                          label={
-                            candidate.body.length > MAX_RELATED_CHIP_LABEL_LENGTH
-                              ? `${candidate.body.slice(0, MAX_RELATED_CHIP_LABEL_LENGTH)}…`
-                              : candidate.body
-                          }
-                          selected={selected}
-                          onPress={() => toggleRelatedSeed(candidate.id)}
-                        />
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
             </View>
           ) : null}
 
@@ -292,6 +248,17 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
             }}
           />
           </SectionCard>
+        </FadeInView>
+
+        <FadeInView delayMs={60}>
+          <LinksSection
+            seed={seed}
+            allSeeds={allSeeds}
+            onOpenSeed={onOpenSeed}
+            onLink={(otherId) => onLinkSeeds(seed.id, otherId)}
+            onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
+            onContinue={() => onContinue(seed.id)}
+          />
         </FadeInView>
 
         <FadeInView delayMs={80}>

@@ -89,3 +89,10 @@ test('buildTextExport contains transform outputs when present', () => {
   const text = buildTextExport([seed]);
   assert.ok(text.includes('何を学びたいか？'));
 });
+
+test('buildTextExport shows how many seeds each seed is connected to', () => {
+  const a = createBaseSeed({ id: 'a', body: '最初の話' });
+  const b = createBaseSeed({ id: 'b', body: '続きの話', continuedFromId: 'a' });
+  const text = buildTextExport([a, b]);
+  assert.equal(text.match(/つながり: 1件/g)?.length, 2);
+});

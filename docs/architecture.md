@@ -35,6 +35,7 @@ type Seed = {
   growthState: GrowthState;
   tags: string[];
   relatedSeedIds: string[];
+  continuedFromId?: string; // 「続きを書く」で生まれた種が元の種を指す（話のながれ）
   resurfacingScore?: number;
 };
 ```

@@ -95,6 +95,7 @@ test('getAll normalizes old or broken saved seeds', async () => {
         growthState: 'seed',
         tags: ['tag'],
         relatedSeedIds: [],
+        continuedFromId: undefined,
         resurfacingScore: undefined,
         lastResurfacedAt: undefined,
         deletedAt: undefined,

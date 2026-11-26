@@ -52,6 +52,7 @@ test('parseDraft repairs invalid fields and rejects non-objects', () => {
     mood: undefined,
     growthState: 'seed',
     importance: 3,
+    continuedFromId: undefined,
   });
 });
 
