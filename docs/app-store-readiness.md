@@ -1,5 +1,7 @@
 # App Store Readiness (MVP Draft)
 
+> 2026-11-26追記: 公開前の中核体験は [Core Growth Loop](core-growth-loop.md)と [Core Growth Plan](core-growth-plan.md)で追加設計した。ストア向けの準備だけでなく、後から接続・視覚化・芽・大量の探索・初見理解の受入条件を確認する。追加設計は未実装であり、この追記は提出済み／実機確認済みを意味しない。
+
 ## 位置づけ
 - このバージョンは **未提出のiOS向けMVP** です。
 - 目的は「iPhone上で一通り触れて、MVP体験（書く・残る・再会する・育てる）を確認できる状態」にすることです。

@@ -1,5 +1,13 @@
 # Product Quality & Subscription Blueprint
 
+## 2026-11-26: 公開前の優先順位の更新
+
+最新のユーザー依頼により、公開前は [中核設計](core-growth-loop.md)の「思いつきを残す→後からつなぐ→図で見る→可能性を芽にする→大量でも探せる」を最優先にする。画面は [Core Growth UX](core-growth-ux.md)、データは [Core Growth Data](core-growth-data.md)、実装契約は [Core Growth Plan](core-growth-plan.md)。追加設計であり未実装。
+
+本書のPhase 10を10.1〜10.6へ具体化し、Phase 9の下書き復元の必要部分を取り込む。基本の手動接続・局所マップ・本人が書く芽・全件探索は無料の中核に含め、Plus開始を前提にしない。Settings分離、月／季節の地図、課金、同期、外部AIは独立した後続計画とする。
+
+本書の保存数・状態変更・テンプレ変換を用いたActivation指標だけで、中核が伝わったと判定しない。本人がつながりを理解し、自分の可能性を残せたかを [初見検証](core-growth-plan.md)で確かめる。以下の価格案と将来設計は仮説として保持し、今回の実装範囲を広げる根拠にしない。
+
 ## 0. 結論
 
 Kizashi Notes が勝つ場所は、汎用メモの機能数ではない。

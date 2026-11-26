@@ -1,5 +1,7 @@
 # Known Issues (Debug & Stabilization Pass)
 
+> 以下は過去の安定化時点の記録。2026-11-26の監査基準 `ff0d890` では `package.json` にAsyncStorage `2.2.0`と `test` / `check` スクリプトがあるため、項目1と3を現在の未対応事項として扱わない。現在の中核体験の課題は [Core Growth Loop](core-growth-loop.md)、必要な検証は [Core Growth Plan](core-growth-plan.md)を参照。実機試験を行っていないことを、設計更新だけで解消済みとはしない。
+
 ## 1) Expo推奨依存バージョンとの差異（AsyncStorage）
 - 内容: `expo start` 時に `@react-native-async-storage/async-storage@3.0.2` について Expo SDK 54 の推奨 (`2.2.0`) 警告が出る
 - 今回直さない理由: 既存挙動を壊さない安定化を優先し、依存更新影響を切り離すため

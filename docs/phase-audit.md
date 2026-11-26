@@ -1,5 +1,7 @@
 # Phase Audit Report
 
+> この文書は初期Phase 0時点の監査記録。末尾の `READY_FOR_PHASE_1` は現在の状態ではない。2026-11-26時点のコード監査と次の設計は [Core Growth Loop](core-growth-loop.md)、実装と確認の契約は [Core Growth Plan](core-growth-plan.md)を参照する。
+
 ## 監査対象ファイル一覧
 - README.md
 - AGENTS.md

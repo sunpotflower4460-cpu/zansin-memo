@@ -1,5 +1,11 @@
 # Architecture (Draft)
 
+## 2026-11-26: 中核体験の保存契約
+
+今回の公開前実装では [Core Growth Data](core-growth-data.md)を正とする。既存Seedは維持し、接続の正本を無向Connectionへ、芽の文章と材料を原文とは別のsynthesisへ追加する。v2 Envelope・単一writer・非破壊移行・下書き・書出しも同書に定義した。新設計は未実装。
+
+以下は初期MVPの設計記録。型の現状は `src/domain/types.ts`、今後の変更は上記の契約で確認する。旧normalizerへv2データを通すと新規項目が消えるため、型だけを先に追加して保存経路を据え置かない。
+
 ## 目的
 実装前に、MVP〜将来拡張まで破綻しにくい設計方針を定義する。
 

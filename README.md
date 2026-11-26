@@ -1,6 +1,20 @@
 # Kizashi Notes / きざしノート
 
-思いつき・直感・違和感を「メモ」ではなく「種」として保存し、あとで再会し、育てるための **iOS-first スマホアプリ**（Expo + React Native）です。
+思いつき・直感・違和感を「種」として残し、あとからつなげ、見えてきた可能性を育てる **iOS-first スマホアプリ**（Expo + React Native）です。
+
+## 公開前に完成させる中核体験（2026-11-26 設計追加）
+
+**なんとなく残す → あとからメモ同士をつなぐ → つながりを目で見る → 自分の可能性を芽として残す。**
+
+書く時に分類を求めず、たくさん溜まっても検索・任意カテゴリ・局所マップから迷わずたどれる設計を追加しました。関連メモは考えを育てる「栄養」として使えます。新しい接続・合成・初回体験は設計段階であり、下の現行MVPに全て実装されたという意味ではありません。
+
+- [設計の入口・現状監査](docs/core-growth-loop.md)
+- [画面・操作・文言](docs/core-growth-ux.md)
+- [データ・保存・移行](docs/core-growth-data.md)
+- [実装順・受入条件・公開判定](docs/core-growth-plan.md)
+- [実装担当へ渡す短いスタートプロンプト](docs/core-growth-start-prompt.md)
+
+実装は既存Phase 0〜8を利用し、[Phase 10.1〜10.6](docs/core-growth-plan.md)へ進めます。状態バッジの変更やテンプレ変換だけで「芽に育つ体験」が完成したとは判定しません。
 
 ## コンセプト
 - 低圧で書ける（タイトル必須なし）
@@ -88,3 +102,7 @@ npm run ios
 - [Review Policy](docs/review-policy.md)
 - [App Store Readiness](docs/app-store-readiness.md)
 - [Product Quality & Subscription Blueprint](docs/product-quality-subscription-blueprint.md)
+- [Core Growth Loop](docs/core-growth-loop.md)
+- [Core Growth UX](docs/core-growth-ux.md)
+- [Core Growth Data](docs/core-growth-data.md)
+- [Core Growth Implementation & Validation](docs/core-growth-plan.md)

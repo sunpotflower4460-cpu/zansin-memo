@@ -1,5 +1,15 @@
 # Next Agent Tasks (Issue Drafts)
 
+## 現在の次タスク（2026-11-26）
+
+ユーザーが指定した中核体験「なんとなく残す→後からつなぐ→視覚的に見る→自分の可能性を芽にする→大量でも迷わず探す」を実装する。
+
+1. [中核設計](core-growth-loop.md)、[UX](core-growth-ux.md)、[データ](core-growth-data.md)を読む。
+2. [Core Growth Plan](core-growth-plan.md)のPhase 10.1から10.6まで、既存コードを生かして順に進める。
+3. 各Phaseの完了条件と確認結果を記録し、小さなPRで引き継ぐ。
+
+コピーして渡す文: [core-growth-start-prompt.md](core-growth-start-prompt.md)。下のIssue 1〜8は初期MVP構築用の履歴であり、現在の次タスクとして再実行しない。
+
 ## Issue 1: Phase 1 App Shell 実装
 ### 目的
 - Home / Write / Seeds / Seed Detail / Garden の最小画面枠と遷移を作り、実装土台を固定する。
