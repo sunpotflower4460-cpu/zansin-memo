@@ -29,6 +29,16 @@
 - 庭（Garden）画面の育ち状態別カラーアクセント
 - accessibilityRole / accessibilityState 設定
 
+## 最終ブラッシュアップ（App Store提出準備）
+- 下部の二重余白を解消（Safe Area・タブバー・保存バー・トーストの位置を整理）
+- 詳細画面で、変換候補を追加しても編集中の文章が消えない／未保存のまま戻るときは確認
+- 「保存中…」「保存しました」の常時トーストを廃止し、失敗時のみ通知
+- 「すべてのデータを削除」で内部の復元用コピーも消去
+- ホームの設定類を折りたたみ、「新しい種を書く」を上部へ。書く画面は開くとすぐ入力可能
+- タップ領域の拡大、文字コントラスト改善、VoiceOverラベルの具体化
+- オリジナルのアプリアイコン／スプラッシュ、プライバシーマニフェスト、暗号化申告、EAS設定
+- 提出用の文面・手順: [App Store Submission](docs/app-store-submission.md)
+
 ## 技術スタック
 - Expo SDK 54
 - React Native
@@ -65,7 +75,7 @@ npm run ios
 - 課金（未定）
 - クラウド同期（未定）
 - 通知（未定）
-- App Store提出作業
+- App Store提出の実作業（Apple Developer アカウントでの申請。準備は完了、手順は docs/app-store-submission.md）
 
 ## 重要方針
 - 認証・課金・クラウド同期は未実装
@@ -78,6 +88,9 @@ npm run ios
 - [Seed World](docs/seed-world.md)
 - [Target Users](docs/target-users.md)
 - [MVP](docs/mvp.md)
+- [App Store Readiness](docs/app-store-readiness.md)
+- [App Store Submission](docs/app-store-submission.md)
+- [Privacy Policy](docs/privacy-policy.md)
 - [UX Design](docs/ux-design.md)
 - [Architecture](docs/architecture.md)
 - [Phase Roadmap](docs/phase-roadmap.md)

@@ -170,3 +170,46 @@ test('getAll does not write anything when reading storage fails', async () => {
     AsyncStorage.setItem = originalSetItem;
   }
 });
+
+test('clearAll removes seeds, lastGood and corrupt backups but leaves unrelated keys', async () => {
+  const store = new Map<string, string>([
+    [STORAGE_KEY, '[]'],
+    [LAST_GOOD_STORAGE_KEY, '[]'],
+    [`${CORRUPT_BACKUP_PREFIX}:2026-01-01T00-00-00-000Z`, '{broken'],
+    ['other-app:setting', 'keep'],
+  ]);
+  const originalGetAllKeys = AsyncStorage.getAllKeys;
+  const originalMultiRemove = AsyncStorage.multiRemove;
+
+  AsyncStorage.getAllKeys = async () => Array.from(store.keys());
+  AsyncStorage.multiRemove = async (keys: readonly string[]) => {
+    for (const key of keys) {
+      store.delete(key);
+    }
+  };
+
+  try {
+    const repository = new AsyncStorageSeedRepository();
+    const result = await repository.clearAll();
+
+    assert.deepEqual(result, { ok: true });
+    assert.deepEqual(Array.from(store.keys()), ['other-app:setting']);
+  } finally {
+    AsyncStorage.getAllKeys = originalGetAllKeys;
+    AsyncStorage.multiRemove = originalMultiRemove;
+  }
+});
+
+test('clearAll reports failure instead of throwing', async () => {
+  const originalGetAllKeys = AsyncStorage.getAllKeys;
+  AsyncStorage.getAllKeys = async () => {
+    throw new Error('keys failed');
+  };
+
+  try {
+    const repository = new AsyncStorageSeedRepository();
+    assert.deepEqual(await repository.clearAll(), { ok: false, message: 'keys failed' });
+  } finally {
+    AsyncStorage.getAllKeys = originalGetAllKeys;
+  }
+});

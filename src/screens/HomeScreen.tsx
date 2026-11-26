@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
@@ -6,6 +7,7 @@ import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
+import { APP_VERSION } from '../config/appInfo';
 import { theme } from '../styles/theme';
 import { formatDate } from '../utils/seedUtils';
 import { toGrowthLabel } from '../utils/displayLabels';
@@ -23,6 +25,9 @@ type HomeScreenProps = {
   onExportText: () => void;
 };
 
+const SNIPPET_LENGTH = 40;
+const toSnippet = (body: string) => (body.length > SNIPPET_LENGTH ? `${body.slice(0, SNIPPET_LENGTH)}…` : body);
+
 export function HomeScreen({
   seeds,
   todaySeed,
@@ -35,6 +40,7 @@ export function HomeScreen({
   onExportJson,
   onExportText,
 }: HomeScreenProps) {
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日`;
@@ -42,7 +48,9 @@ export function HomeScreen({
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.todayMeta}>今日の種 · {dateLabel}</Text>
-      <Text style={styles.heading}>Kizashi Notes</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        Kizashi Notes
+      </Text>
       <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
 
       <FadeInView delayMs={40}>
@@ -70,9 +78,11 @@ export function HomeScreen({
             pressedStyle={styles.seedCardPressed}
             haptic="light"
             accessibilityRole="button"
-            accessibilityLabel="今日の種の詳細を開く"
+            accessibilityLabel={`今日の種を開く。${toSnippet(todaySeed.seed.body)}`}
           >
-            <Text style={styles.seedBody}>{todaySeed.seed.body}</Text>
+            <Text style={styles.seedBody} numberOfLines={6}>
+              {todaySeed.seed.body}
+            </Text>
             <Text style={styles.seedMeta}>理由: {todaySeed.reason}</Text>
             <Text style={styles.seedMeta}>更新: {formatDate(todaySeed.seed.updatedAt)}</Text>
           </AnimatedPressable>
@@ -88,6 +98,8 @@ export function HomeScreen({
         </SectionCard>
       </FadeInView>
 
+      {seeds.length > 0 ? <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} /> : null}
+
       <FadeInView delayMs={90}>
         <SectionCard muted>
           <Text style={styles.cardTitle}>最近の種</Text>
@@ -99,7 +111,7 @@ export function HomeScreen({
                 style={styles.listItem}
                 haptic="light"
                 accessibilityRole="button"
-                accessibilityLabel="最近の種の詳細を開く"
+                accessibilityLabel={`種を開く。${toSnippet(seed.body)}`}
               >
                 <Text style={styles.listBody} numberOfLines={2}>
                   {seed.body}
@@ -120,69 +132,90 @@ export function HomeScreen({
 
       <FadeInView delayMs={120}>
         <SectionCard muted>
-          <Text style={styles.cardTitle}>このアプリについて</Text>
-          <Text style={styles.aboutText}>
-            このアプリは端末内のローカル保存を中心に動作します。{'\n'}
-            現時点で、ログイン・AI送信・広告・トラッキングはありません。
-          </Text>
-
           <AnimatedPressable
-            onPress={onOpenPrivacyPolicy}
-            style={styles.linkButton}
-            pressedStyle={styles.linkButtonPressed}
+            onPress={() => setSettingsOpen((value) => !value)}
+            style={styles.settingsToggle}
             haptic="light"
             accessibilityRole="button"
-            accessibilityLabel="プライバシーポリシーを開く"
+            accessibilityState={{ expanded: settingsOpen }}
+            accessibilityLabel="設定・バックアップ・サポート"
+            accessibilityHint={settingsOpen ? 'タップして閉じます' : 'タップして開きます'}
           >
-            <Text style={styles.linkButtonText}>プライバシーポリシーを開く</Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={onOpenSupport}
-            style={styles.linkButton}
-            pressedStyle={styles.linkButtonPressed}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel="サポート連絡先を開く"
-          >
-            <Text style={styles.linkButtonText}>サポート連絡先</Text>
+            <View style={styles.settingsLabelWrap}>
+              <Ionicons name="settings-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.cardTitle}>設定・バックアップ</Text>
+            </View>
+            <Ionicons name={settingsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={18} color={theme.colors.textMuted} />
           </AnimatedPressable>
 
-          <Text style={styles.exportLabel}>データのバックアップ</Text>
-          <AnimatedPressable
-            onPress={onExportJson}
-            style={styles.linkButton}
-            pressedStyle={styles.linkButtonPressed}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel="JSONでエクスポートする"
-          >
-            <Text style={styles.linkButtonText}>JSON形式でエクスポート</Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={onExportText}
-            style={styles.linkButton}
-            pressedStyle={styles.linkButtonPressed}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel="テキストでエクスポートする"
-          >
-            <Text style={styles.linkButtonText}>テキスト形式でエクスポート</Text>
-          </AnimatedPressable>
+          {settingsOpen ? (
+            <View style={styles.settingsBody}>
+              <Text style={styles.aboutText}>
+                種はこの端末の中だけに保存されます。{'\n'}
+                ログイン・広告・トラッキング・外部への送信はありません。
+              </Text>
 
-          <AnimatedPressable
-            onPress={onClearAllData}
-            style={styles.deleteButton}
-            pressedStyle={styles.deleteButtonPressed}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel="すべてのデータを削除する"
-          >
-            <Text style={styles.deleteButtonText}>すべてのデータを削除</Text>
-          </AnimatedPressable>
+              <Text style={styles.exportLabel}>データのバックアップ</Text>
+              <AnimatedPressable
+                onPress={onExportJson}
+                style={styles.linkButton}
+                pressedStyle={styles.linkButtonPressed}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="JSONでエクスポートする"
+              >
+                <Text style={styles.linkButtonText}>JSON形式でエクスポート</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={onExportText}
+                style={styles.linkButton}
+                pressedStyle={styles.linkButtonPressed}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="テキストでエクスポートする"
+              >
+                <Text style={styles.linkButtonText}>テキスト形式でエクスポート</Text>
+              </AnimatedPressable>
+
+              <Text style={styles.exportLabel}>このアプリについて</Text>
+              <AnimatedPressable
+                onPress={onOpenPrivacyPolicy}
+                style={styles.linkButton}
+                pressedStyle={styles.linkButtonPressed}
+                haptic="light"
+                accessibilityRole="link"
+                accessibilityLabel="プライバシーポリシーを開く"
+              >
+                <Text style={styles.linkButtonText}>プライバシーポリシー</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={onOpenSupport}
+                style={styles.linkButton}
+                pressedStyle={styles.linkButtonPressed}
+                haptic="light"
+                accessibilityRole="link"
+                accessibilityLabel="サポート連絡先を開く"
+              >
+                <Text style={styles.linkButtonText}>サポート・お問い合わせ</Text>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                onPress={onClearAllData}
+                style={styles.deleteButton}
+                pressedStyle={styles.deleteButtonPressed}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="すべてのデータを削除する"
+              >
+                <Text style={styles.deleteButtonText}>すべてのデータを削除</Text>
+              </AnimatedPressable>
+
+              <Text style={styles.versionText}>Kizashi Notes バージョン {APP_VERSION}</Text>
+            </View>
+          ) : null}
         </SectionCard>
       </FadeInView>
 
-      <PrimaryButton label="新しい種を書く" onPress={onOpenWrite} />
     </ScrollView>
   );
 }
@@ -223,8 +256,9 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   secondaryButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minHeight: 36,
+    justifyContent: 'center',
     borderRadius: theme.radius.full,
     backgroundColor: '#dceee1',
   },
@@ -233,8 +267,8 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
   seedCard: {
     padding: theme.spacing.sm,
@@ -251,7 +285,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   seedMeta: {
-    fontSize: theme.typography.caption,
+    fontSize: 13,
     color: theme.colors.textMuted,
   },
   listItem: {
@@ -270,8 +304,28 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   listMeta: {
-    fontSize: theme.typography.caption,
+    fontSize: 13,
     color: theme.colors.textMuted,
+  },
+  settingsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 44,
+  },
+  settingsLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsBody: {
+    gap: theme.spacing.xs,
+  },
+  versionText: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textSoft,
+    textAlign: 'center',
+    marginTop: theme.spacing.sm,
   },
   aboutText: {
     fontSize: theme.typography.body,

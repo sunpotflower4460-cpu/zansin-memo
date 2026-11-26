@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { Alert, Linking, SafeAreaView, StyleSheet, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
@@ -26,6 +26,7 @@ import { motion } from './src/utils/motion';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
 import { exportSeeds } from './src/utils/exportUtils';
+import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import {
   buildTransformOutput,
   createSeed,
@@ -51,8 +52,6 @@ type ScreenState =
 
 const TRANSFORM_DOUBLE_TAP_GUARD_MS = 700;
 const STORAGE_LOCKED_MESSAGE = '保存データの読み込みに問題があるため、変更を停止しています。';
-const PRIVACY_POLICY_URL = 'https://github.com/sunpotflower4460-cpu/zansin-memo/blob/main/docs/privacy-policy.md';
-const SUPPORT_URL = 'https://github.com/sunpotflower4460-cpu/zansin-memo/issues/new';
 const CLEAR_ALL_DATA_ALERT_TITLE = 'すべてのデータを削除しますか？';
 const CLEAR_ALL_DATA_ALERT_MESSAGE = '保存されたすべての種（メモ）が削除されます。この操作は元に戻せません。';
 
@@ -320,6 +319,7 @@ export default function App() {
     transformTapMapRef.current[key] = now;
 
     triggerSuccessFeedback();
+    showToast('候補を追加しました 🌱');
     setSeeds((current) =>
       current.map((seed) => {
         if (seed.id !== seedId) {
@@ -383,11 +383,24 @@ export default function App() {
         text: 'すべて削除',
         style: 'destructive',
         onPress: () => {
-          triggerWarningFeedback();
-          setSeeds([]);
-          setTodaySeed(undefined);
-          setScreen({ kind: 'home' });
-          showToast('すべてのデータを削除しました。');
+          void (async () => {
+            // 復元用・破損退避用のコピーも含めて端末から消す。失敗したら画面上のデータは残す。
+            const result = await seedRepository.clearAll();
+            if (!result.ok) {
+              showToast('データを削除できませんでした。もう一度お試しください。');
+              return;
+            }
+
+            triggerWarningFeedback();
+            setSeeds([]);
+            setTodaySeed(undefined);
+            setWriteDraft(initialWriteDraft);
+            setSeedsSearch('');
+            setStateFilter('all');
+            setTagFilter(null);
+            setScreen({ kind: 'home' });
+            showToast('すべてのデータを削除しました。');
+          })();
         },
       },
     ]);
@@ -444,6 +457,7 @@ export default function App() {
           onChangeSort={setSortType}
           onRestoreSeed={handleRestoreSeed}
           onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'seeds' })}
+          onOpenWrite={() => setScreen({ kind: 'write' })}
         />
       );
     }
@@ -469,12 +483,14 @@ export default function App() {
   };
 
   const activeTab: MainTab = screen.kind === 'detail' ? screen.from : screen.kind;
-  const saveStateMessage = getSaveStateMessage(saveState);
+  // 保存の「保存中…」「保存しました」は頻繁に出て気が散るため表示しない。失敗したときだけ知らせる。
+  const saveStateMessage = saveState === 'error' ? getSaveStateMessage(saveState) : '';
   const statusToastMessage = toastMsg || saveStateMessage;
+  const tabBarVisible = screen.kind !== 'detail' && isReady;
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="dark" />
         <View style={styles.app}>
           {renderMainScreen()}
@@ -482,12 +498,13 @@ export default function App() {
             <SaveToast
               key={toastKey}
               message={statusToastMessage}
-              tone={toastMsg ? 'default' : saveState === 'error' ? 'error' : 'default'}
+              tone={toastMsg ? 'default' : 'error'}
+              aboveTabBar={tabBarVisible}
             />
           ) : null}
           <AppLaunchIntro visible={!isReady || showLaunchIntro} />
         </View>
-        {screen.kind !== 'detail' && isReady ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
+        {tabBarVisible ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
       </SafeAreaView>
     </SafeAreaProvider>
   );

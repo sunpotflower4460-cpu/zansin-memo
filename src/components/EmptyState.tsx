@@ -19,7 +19,12 @@ export function EmptyState({
   onAction,
 }: EmptyStateProps) {
   return (
-    <View style={styles.wrap}>
+    <View
+      style={styles.wrap}
+      // ボタンがある場合はまとめず、VoiceOverでボタンにも到達できるようにする。
+      accessible={!(actionLabel && onAction)}
+      accessibilityLabel={`${title}。${description}`}
+    >
       <View style={styles.iconWrap}>
         <Ionicons name={icon} size={20} color={theme.colors.primary} />
       </View>
@@ -67,15 +72,16 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
     borderRadius: theme.radius.full,
     backgroundColor: '#dceee1',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   actionPressed: {
     backgroundColor: '#d3e7d9',
   },
   actionText: {
     color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -64,7 +64,9 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>庭</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        庭
+      </Text>
       <Text style={styles.subheading}>種の流れを、静かに見渡せる場所です。</Text>
 
       {seeds.length === 0 ? (
@@ -82,7 +84,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                 <Ionicons name={stateIcons[state]} size={18} color={stateAccents[state]} />
                 <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
               </View>
-              <Text style={[styles.countText, { color: stateAccents[state] }]}>{bucket.length}</Text>
+              <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>{bucket.length}</Text>
             </View>
 
             {bucket.length === 0 ? (
@@ -97,7 +99,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                     pressedStyle={styles.cardPressed}
                     haptic="light"
                     accessibilityRole="button"
-                    accessibilityLabel={`${growthStateLabels[state]}の種の詳細を開く`}
+                    accessibilityLabel={`${growthStateLabels[state]}の種を開く。${seed.body.length > 40 ? `${seed.body.slice(0, 40)}…` : seed.body}`}
                   >
                     <Text numberOfLines={4} style={styles.body}>
                       {seed.body}
@@ -133,7 +135,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                       style={styles.tagItem}
                       haptic="light"
                       accessibilityRole="button"
-                      accessibilityLabel="カテゴリ内の種の詳細を開く"
+                      accessibilityLabel={`種を開く。${seed.body.length > 40 ? `${seed.body.slice(0, 40)}…` : seed.body}`}
                     >
                       <Text numberOfLines={2} style={styles.metaBody}>
                         {seed.body}
@@ -184,8 +186,8 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   countText: {
-    fontSize: 14,
-    color: theme.colors.primary,
+    fontSize: 15,
+    color: theme.colors.textMuted,
     fontWeight: '600',
     minWidth: 24,
     textAlign: 'right',
@@ -214,7 +216,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: theme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 13,
   },
   emptyText: {
     color: theme.colors.textMuted,

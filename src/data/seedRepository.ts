@@ -20,7 +20,11 @@ export type SeedSaveResult =
       message?: string;
     };
 
+export type SeedClearResult = { ok: true } | { ok: false; message?: string };
+
 export interface SeedRepository {
   getAll(): Promise<SeedLoadResult>;
   saveAll(seeds: Seed[]): Promise<SeedSaveResult>;
+  /** 種の本体だけでなく、復元用・破損退避用のコピーも含めて端末内から消す。 */
+  clearAll(): Promise<SeedClearResult>;
 }

@@ -19,9 +19,13 @@ const tabIcons: Record<MainTab, keyof typeof Ionicons.glyphMap> = {
   garden: 'flower-outline',
 };
 
+// タブ本体の高さ（上余白8 + ボタン64 + 上罫線1）。トーストなど他の部品が重ならないよう共有する。
+export const TAB_BAR_CONTENT_HEIGHT = 73;
+export const tabBarBottomPadding = (bottomInset: number) => Math.max(bottomInset, 10);
+
 export function AppTabBar({ activeTab, onChangeTab }: AppTabBarProps) {
   const insets = useSafeAreaInsets();
-  const tabBarStyle = [styles.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }];
+  const tabBarStyle = [styles.tabBar, { paddingBottom: tabBarBottomPadding(insets.bottom) }];
 
   return (
     <View style={tabBarStyle}>
@@ -31,15 +35,16 @@ export function AppTabBar({ activeTab, onChangeTab }: AppTabBarProps) {
           <AnimatedPressable
             key={tabId}
             onPress={() => onChangeTab(tabId)}
+            containerStyle={styles.tabContainer}
             style={[styles.tabButton, selected && styles.tabButtonSelected]}
             pressedStyle={styles.tabButtonPressed}
             haptic="light"
             accessibilityRole="tab"
-            accessibilityLabel={`${tabLabels[tabId]} ${tabLabelSuffix}`}
+            accessibilityLabel={`${tabLabels[tabId]}${tabLabelSuffix}`}
             accessibilityState={{ selected }}
           >
-            <Ionicons name={tabIcons[tabId]} size={22} color={selected ? theme.colors.primary : '#758392'} />
-            <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]}>{tabLabels[tabId]}</Text>
+            <Ionicons name={tabIcons[tabId]} size={22} color={selected ? theme.colors.primary : theme.colors.textMuted} />
+            <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]} maxFontSizeMultiplier={1.3} numberOfLines={1}>{tabLabels[tabId]}</Text>
           </AnimatedPressable>
         );
       })}
@@ -60,8 +65,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     ...theme.shadows.card,
   },
-  tabButton: {
+  tabContainer: {
     flex: 1,
+  },
+  tabButton: {
     minHeight: 64,
     alignItems: 'center',
     justifyContent: 'center',
@@ -77,7 +84,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e7efe9',
   },
   tabLabel: {
-    color: '#758392',
+    color: theme.colors.textMuted,
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',

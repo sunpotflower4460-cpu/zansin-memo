@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
@@ -56,6 +56,18 @@ const toDraft = (seed: Seed): DraftState => ({
   relatedSeedIds: seed.relatedSeedIds,
 });
 
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+
+// 保存済みの内容と見比べて、まだ保存していない変更があるかを返す（書式の違い、例えばカテゴリの区切り方は無視する）。
+const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
+  draft.body.trim() !== seed.body ||
+  (draft.title.trim() || undefined) !== seed.title ||
+  draft.mood !== seed.mood ||
+  draft.importance !== seed.importance ||
+  draft.growthState !== seed.growthState ||
+  parseTags(draft.tags).join('\n') !== seed.tags.join('\n') ||
+  !sameIds(draft.relatedSeedIds, seed.relatedSeedIds);
+
 const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
 const MAX_RELATED_CANDIDATES = 20;
 
@@ -64,9 +76,25 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
 
+  // 別の種を開いたときだけ入力内容を読み込み直す。変換候補の追加や「今日の種」の更新で、編集中の文章が巻き戻らないようにする。
+  const seedId = seed.id;
+  const latestSeedRef = React.useRef(seed);
+  latestSeedRef.current = seed;
   React.useEffect(() => {
-    setDraft(toDraft(seed));
-  }, [seed]);
+    setDraft(toDraft(latestSeedRef.current));
+  }, [seedId]);
+
+  const unsaved = hasUnsavedChanges(draft, seed);
+  const handleBack = () => {
+    if (!unsaved) {
+      onBack();
+      return;
+    }
+    Alert.alert('保存していない変更があります', 'このまま戻ると、変更は残りません。', [
+      { text: '編集を続ける', style: 'cancel' },
+      { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
+    ]);
+  };
 
   const relatedCandidates = React.useMemo(
     () => pickRelatedCandidates(allSeeds, seed.id, seed.relatedSeedIds, MAX_RELATED_CANDIDATES),
@@ -77,7 +105,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   const canSave = draft.body.trim().length > 0;
   const saveAccessibilityHint = canSave ? '現在の変更内容を保存します。' : '種のことばを入力すると保存できます。';
   const contentStyle = React.useMemo(
-    () => [styles.content, { paddingBottom: Math.max(110, insets.bottom + 80) }],
+    () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
     [insets.bottom],
   );
 
@@ -93,9 +121,13 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={contentStyle}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      >
         <AnimatedPressable
-          onPress={onBack}
+          onPress={handleBack}
           style={styles.backButton}
           pressedStyle={styles.backButtonPressed}
           haptic="light"
@@ -106,7 +138,9 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
           <Text style={styles.backButtonText}>戻る</Text>
         </AnimatedPressable>
 
-        <Text style={styles.heading}>種の詳細</Text>
+        <Text style={styles.heading} accessibilityRole="header">
+          種の詳細
+        </Text>
         <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
 
         <FadeInView delayMs={40}>
@@ -118,7 +152,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             multiline
             textAlignVertical="top"
             placeholder="種のことば"
-            placeholderTextColor="#95a1ac"
+            placeholderTextColor={theme.colors.placeholder}
             accessibilityLabel="種のことば"
           />
           <TextInput
@@ -126,7 +160,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
             style={styles.titleInput}
             placeholder="タイトル（任意）"
-            placeholderTextColor="#9ca8b3"
+            placeholderTextColor={theme.colors.placeholder}
             accessibilityLabel="タイトル"
           />
 
@@ -211,9 +245,10 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             accessibilityHint={saveAccessibilityHint}
             onPress={() => {
               if (!canSave) {
-                Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
                 return;
               }
+
+              Keyboard.dismiss();
 
               const nextRelatedSeedIds = Array.from(
                 new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
@@ -304,8 +339,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minHeight: 44,
     borderRadius: 999,
     backgroundColor: '#eaf1ea',
     gap: 2,
@@ -325,7 +360,7 @@ const styles = StyleSheet.create({
   },
   dateText: {
     color: theme.colors.textSoft,
-    fontSize: 12,
+    fontSize: 13,
   },
   bodyInput: {
     minHeight: 160,
@@ -346,7 +381,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     backgroundColor: '#f5f8f4',
-    fontSize: 14,
+    fontSize: 15,
     color: theme.colors.text,
   },
   toggle: {
@@ -354,7 +389,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
-    paddingVertical: 2,
+    minHeight: 44,
   },
   toggleText: {
     color: theme.colors.primary,
@@ -406,7 +441,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   outputType: {
-    fontSize: 12,
+    fontSize: 13,
     color: theme.colors.textMuted,
   },
   outputBody: {
@@ -415,7 +450,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   outputDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: theme.colors.textSoft,
   },
   deleteButton: {

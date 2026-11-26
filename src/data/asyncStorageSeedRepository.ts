@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GrowthState, Mood, Seed, TransformOutput, TransformType } from '../domain/types';
 import { SEED_SCHEMA_VERSION } from '../domain/types';
-import type { SeedLoadResult, SeedRepository, SeedSaveResult } from './seedRepository';
+import type { SeedClearResult, SeedLoadResult, SeedRepository, SeedSaveResult } from './seedRepository';
 
 const STORAGE_KEY = 'kizashi-notes:seeds:v1';
 const LAST_GOOD_STORAGE_KEY = 'kizashi-notes:seeds:v1:lastGood';
 const CORRUPT_BACKUP_PREFIX = 'kizashi-notes:seeds:v1:corruptBackup';
+const STORAGE_KEY_PREFIX = 'kizashi-notes:';
 const RECOVERY_BODY_FALLBACK = '（復元できなかった種）';
 const GROWTH_STATES: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 const MOODS: Mood[] = ['calm', 'excited', 'uncertain', 'heavy', 'bright'];
@@ -177,6 +178,19 @@ export class AsyncStorageSeedRepository implements SeedRepository {
       return { ok: true };
     } catch (error) {
       return { ok: false, reason: 'write_error', message: buildErrorMessage(error) };
+    }
+  }
+
+  async clearAll(): Promise<SeedClearResult> {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const ownedKeys = keys.filter((key) => key.startsWith(STORAGE_KEY_PREFIX));
+      if (ownedKeys.length > 0) {
+        await AsyncStorage.multiRemove(ownedKeys);
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: buildErrorMessage(error) };
     }
   }
 }

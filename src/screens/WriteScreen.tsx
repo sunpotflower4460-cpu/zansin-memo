@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { FadeInView } from '../components/FadeInView';
@@ -33,24 +32,21 @@ type WriteScreenProps = {
   onSave: (input: SeedCreateInput) => void;
 };
 
-const MIN_SCROLL_BOTTOM_PADDING = 150;
-const BOTTOM_BAR_OVERLAY_OFFSET = 110;
-
 export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
-  const insets = useSafeAreaInsets();
   const saveDisabled = draft.body.trim().length === 0;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const saveAccessibilityHint = saveDisabled ? '種のことばを入力すると保存できます。' : '今の内容で種を保存します。';
-  const contentStyle = [styles.content, { paddingBottom: Math.max(MIN_SCROLL_BOTTOM_PADDING, insets.bottom + BOTTOM_BAR_OVERLAY_OFFSET) }];
-  const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={contentStyle}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
-        <Text style={styles.heading}>種を書く</Text>
+        <Text style={styles.heading} accessibilityRole="header">
+          種を書く
+        </Text>
         <Text style={styles.subheading}>きれいにまとめなくても大丈夫です。</Text>
 
         <FadeInView delayMs={40}>
@@ -61,8 +57,9 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             onChangeText={(body) => onChange({ body })}
             style={styles.bodyInput}
             placeholder="今浮かんだことを、そのまま置いてください。"
-            placeholderTextColor="#8f9ba6"
+            placeholderTextColor={theme.colors.placeholder}
             multiline
+            autoFocus
             textAlignVertical="top"
             accessibilityLabel="種のことば"
           />
@@ -72,7 +69,8 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             onChangeText={(title) => onChange({ title })}
             style={styles.titleInput}
             placeholder="タイトル（任意）"
-            placeholderTextColor="#9aa6b2"
+            placeholderTextColor={theme.colors.placeholder}
+            returnKeyType="done"
             accessibilityLabel="タイトル"
           />
           </SectionCard>
@@ -128,7 +126,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
                   onChangeText={(tags) => onChange({ tags })}
                   style={styles.input}
                   placeholder="例: 企画, 感覚, 執筆"
-                  placeholderTextColor="#9aa6b2"
+                  placeholderTextColor={theme.colors.placeholder}
                   autoCapitalize="none"
                   accessibilityLabel="カテゴリ"
                 />
@@ -140,7 +138,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         </FadeInView>
       </ScrollView>
 
-      <View style={bottomBarStyle}>
+      <View style={styles.bottomBar}>
         <PrimaryButton
           label="種を保存する"
           disabled={saveDisabled}
@@ -168,6 +166,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.lg,
+    paddingBottom: 120,
     gap: theme.spacing.md,
   },
   heading: {
@@ -204,7 +203,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: '#f5f8f4',
-    fontSize: 14,
+    fontSize: 15,
     color: theme.colors.text,
   },
   detailToggle: {
@@ -212,6 +211,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 4,
+    minHeight: 44,
   },
   detailLabelWrap: {
     flexDirection: 'row',
@@ -244,13 +244,14 @@ const styles = StyleSheet.create({
   },
   hint: {
     color: theme.colors.textSoft,
-    fontSize: 12,
+    fontSize: 13,
   },
   bottomBar: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
 });

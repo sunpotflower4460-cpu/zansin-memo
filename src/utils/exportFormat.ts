@@ -49,7 +49,7 @@ export const buildTextExport = (seeds: Seed[]): string => {
       meta.push(`気分: ${moodLabels[seed.mood]}`);
     }
     if (seed.tags.length > 0) {
-      meta.push(`タグ: ${seed.tags.join(', ')}`);
+      meta.push(`カテゴリ: ${seed.tags.join(', ')}`);
     }
     meta.push(`作成: ${formatDate(seed.createdAt)}`);
     meta.push(`更新: ${formatDate(seed.updatedAt)}`);

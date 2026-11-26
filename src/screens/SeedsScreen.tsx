@@ -32,6 +32,7 @@ type SeedsScreenProps = {
   onChangeSort: (value: SortType) => void;
   onRestoreSeed: (seedId: string) => void;
   onOpenSeed: (seedId: string) => void;
+  onOpenWrite?: () => void;
 };
 
 export function SeedsScreen({
@@ -47,6 +48,7 @@ export function SeedsScreen({
   onChangeSort,
   onRestoreSeed,
   onOpenSeed,
+  onOpenWrite,
 }: SeedsScreenProps) {
   const tagOptions = useMemo(
     () => Array.from(new Set(seeds.flatMap((seed) => seed.tags))).sort((a, b) => a.localeCompare(b)),
@@ -91,7 +93,9 @@ export function SeedsScreen({
 
   const listHeader = (
     <View style={styles.listHeader}>
-      <Text style={styles.heading}>種一覧</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        種一覧
+      </Text>
       <Text style={styles.subheading}>検索や絞り込みで、いま見返したい種を見つけます。</Text>
 
       <View style={styles.searchWrap}>
@@ -101,7 +105,10 @@ export function SeedsScreen({
           onChangeText={onChangeSearch}
           style={styles.searchInput}
           placeholder="本文・タイトル・カテゴリで検索"
-          placeholderTextColor="#96a3ae"
+          placeholderTextColor={theme.colors.placeholder}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          autoCorrect={false}
           accessibilityLabel="種の検索"
         />
       </View>
@@ -176,13 +183,24 @@ export function SeedsScreen({
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       ListHeaderComponent={listHeader}
       ListEmptyComponent={
-        <EmptyState
-          icon="search-outline"
-          title="条件に合う種はありません"
-          description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
-        />
+        seeds.length === 0 ? (
+          <EmptyState
+            icon="leaf-outline"
+            title="まだ種はありません"
+            description="ひとことだけ、置いてみましょう。書いた種はここに並びます。"
+            actionLabel={onOpenWrite ? '種を書く' : undefined}
+            onAction={onOpenWrite}
+          />
+        ) : (
+          <EmptyState
+            icon="search-outline"
+            title="条件に合う種はありません"
+            description="検索やフィルターを少しゆるめると、見つかるかもしれません。"
+          />
+        )
       }
       ItemSeparatorComponent={SeedSeparator}
       ListFooterComponent={listFooter}
@@ -193,7 +211,7 @@ export function SeedsScreen({
           pressedStyle={styles.seedCardPressed}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="種の詳細を開く"
+          accessibilityLabel={`種を開く。${seed.title ? `${seed.title}。` : ''}${seed.body.length > 40 ? `${seed.body.slice(0, 40)}…` : seed.body}`}
         >
           {seed.title ? <Text style={styles.title}>{seed.title}</Text> : null}
           <Text numberOfLines={3} style={styles.body}>
@@ -281,9 +299,9 @@ const styles = StyleSheet.create({
   },
   deletedMeta: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: theme.colors.textSoft,
-    lineHeight: 17,
+    lineHeight: 18,
   },
   deletedHint: {
     fontSize: 13,
@@ -310,11 +328,11 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   meta: {
-    fontSize: 12,
+    fontSize: 13,
     color: theme.colors.textMuted,
   },
   tags: {
-    fontSize: 12,
+    fontSize: 13,
     color: theme.colors.textSoft,
   },
 });
