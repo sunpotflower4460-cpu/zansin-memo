@@ -1,6 +1,6 @@
 import type { GardenCommand } from '../data/gardenWriter';
 import { connectionId, makeConnection } from '../data/gardenModel';
-import type { GardenStoreV2, Seed, SeedCreateInput, SeedUpdateInput, TransformOutput } from './types';
+import type { Draft, GardenStoreV2, Seed, SeedCreateInput, SeedSynthesis, SeedUpdateInput, SynthesisSource, TransformOutput } from './types';
 import { SEED_SCHEMA_VERSION } from './types';
 
 // 保存の意味単位。UI が配列を直接書き換えて保存する経路を作らず、ここに集約する。
@@ -12,6 +12,17 @@ const clampImportance = (value: number | undefined): Seed['importance'] =>
   value === 1 || value === 2 || value === 3 || value === 4 || value === 5 ? value : 3;
 
 const draftIds = (id: string | undefined): string[] | undefined => (id ? [id] : undefined);
+
+/**
+ * 本文の編集下書きは育ち方も持つ。下書き側で変えていなければ、新しい育ち方に合わせる
+ * （古い育ち方のまま保存して、芽などを巻き戻さないように）。
+ */
+const followGrowthState = (drafts: Draft[], seedId: string, from: Seed['growthState'], to: Seed['growthState']): Draft[] =>
+  from === to
+    ? drafts
+    : drafts.map((draft) =>
+        draft.kind === 'edit-body' && draft.targetSeedId === seedId && draft.growthState === from ? { ...draft, growthState: to } : draft,
+      );
 
 const isLive = (seed: Seed | undefined): seed is Seed => Boolean(seed && !seed.deletedAt);
 
@@ -247,5 +258,190 @@ export const touchResurfacing = (args: { commandId: string; seedId: string; resu
         item.id === seed.id ? { ...item, lastResurfacedAt: args.resurfacedAt, resurfacingScore: args.score ?? item.resurfacingScore } : item,
       ),
     };
+  },
+});
+
+// ---- 芽（synthesis）: 材料を読んだ本人が書く「なら、こうできそう」 ----
+
+/** 材料として選んだ文章。expectedText は、本人が画面で実際に読んだ文章。 */
+export type MaterialRef = { seedId: string; sourcePart: 'body' | 'synthesis'; expectedText: string };
+
+const materialKey = (ref: Pick<MaterialRef, 'seedId' | 'sourcePart'>) => `${ref.seedId}\u0000${ref.sourcePart}`;
+
+/**
+ * 芽を保存する（新しく芽にする／既存の芽を見直す）。
+ * - 中心の原文（body）は必ず材料に含み、原文そのものは書き換えない
+ * - 材料は、表示して確認した文章が現在の文章と一致するときだけ採用（変わっていれば拒否し、入力は呼び出し側が保持）
+ * - 材料の材料は複製しない（採用した文章だけをスナップショットに残す）
+ * - すでに芽がある中心への「新規作成」は拒否（見直しは review: true で明示）
+ * - 件数・日数の解禁条件はない。材料が中心だけでもよい
+ */
+export const promoteToSprout = (args: {
+  commandId: string;
+  centerId: string;
+  /** 新規作成のとき予定のID。見直しのときは既存の芽のID。 */
+  synthesisId: string;
+  statement: string;
+  centerBodyText: string;
+  /** 中心以外の材料（0件以上）。 */
+  materials: MaterialRef[];
+  /** 見直しで、材料を変えずに文章だけ直す。 */
+  keepExistingSources?: boolean;
+  review?: boolean;
+  now: string;
+  draftId?: string;
+}): GardenCommand => ({
+  id: args.commandId,
+  clearsDraftIds: draftIds(args.draftId),
+  apply: (store) => {
+    const statement = args.statement.trim();
+    if (!statement) {
+      return { rejected: 'empty_statement' };
+    }
+    const center = findSeed(store, args.centerId);
+    if (!isLive(center)) {
+      return { rejected: 'missing_center' };
+    }
+    const existing = center.synthesis;
+
+    // 再試行・連打: 同じ芽・同じ文なら、二重に作らない。
+    if (existing && existing.id === args.synthesisId && existing.statement === statement && !args.review) {
+      return withoutDrafts(store, draftIds(args.draftId));
+    }
+    if (existing && !args.review && existing.id !== args.synthesisId) {
+      return { rejected: 'center_has_synthesis' };
+    }
+    if (args.review && (!existing || existing.id !== args.synthesisId)) {
+      return { rejected: 'missing_synthesis' };
+    }
+
+    let sources: SynthesisSource[];
+    if (args.review && args.keepExistingSources && existing) {
+      sources = existing.sources; // 芽の文章だけを編集した。材料のスナップショットは保持する。
+    } else {
+      if (center.body !== args.centerBodyText) {
+        return { rejected: 'source_changed:center' };
+      }
+      const refs: MaterialRef[] = [{ seedId: center.id, sourcePart: 'body', expectedText: args.centerBodyText }];
+      const seen = new Set<string>([materialKey(refs[0])]);
+      for (const ref of args.materials) {
+        if (ref.seedId === center.id && ref.sourcePart === 'synthesis') {
+          continue; // 編集中の芽を自分自身の材料として引用しない
+        }
+        if (!seen.has(materialKey(ref))) {
+          seen.add(materialKey(ref));
+          refs.push(ref);
+        }
+      }
+      sources = [];
+      for (const ref of refs) {
+        const origin = findSeed(store, ref.seedId);
+        if (!isLive(origin)) {
+          return { rejected: `source_missing:${ref.seedId}` };
+        }
+        if (ref.sourcePart === 'body') {
+          if (origin.body !== ref.expectedText) {
+            return { rejected: `source_changed:${ref.seedId}` };
+          }
+          sources.push({
+            seedId: origin.id,
+            sourcePart: 'body',
+            textSnapshot: origin.body,
+            ...(origin.title ? { titleSnapshot: origin.title } : {}),
+            sourceUpdatedAt: origin.updatedAt,
+          });
+        } else {
+          if (!origin.synthesis || origin.synthesis.statement !== ref.expectedText) {
+            return { rejected: `source_changed:${ref.seedId}` };
+          }
+          sources.push({
+            seedId: origin.id,
+            sourcePart: 'synthesis',
+            textSnapshot: origin.synthesis.statement,
+            ...(origin.title ? { titleSnapshot: origin.title } : {}),
+            sourceUpdatedAt: origin.synthesis.updatedAt,
+            sourceSynthesisId: origin.synthesis.id,
+          });
+        }
+      }
+    }
+
+    const currentlySprout = center.growthState === 'sprout' || center.growthState === 'tree';
+    const synthesis: SeedSynthesis = {
+      id: existing?.id ?? args.synthesisId,
+      statement,
+      sources,
+      createdAt: existing?.createdAt ?? args.now,
+      updatedAt: args.now,
+      // 芽として採用した時刻。文章を直しただけでは更新しない。
+      promotedAt: existing && currentlySprout ? existing.promotedAt : args.now,
+    };
+    const next: Seed = {
+      ...center,
+      synthesis,
+      // 既存の木は降格しない。種・保管からの採用は芽にする。
+      growthState: center.growthState === 'tree' ? 'tree' : 'sprout',
+    };
+    return withoutDrafts(
+      {
+        ...store,
+        seeds: store.seeds.map((seed) => (seed.id === center.id ? next : seed)),
+        drafts: followGrowthState(store.drafts, center.id, center.growthState, next.growthState),
+      },
+      draftIds(args.draftId),
+    );
+  },
+});
+
+/** 後日の「種として考え直す」。考えと材料は残し、現在の芽として数えない（育ち方だけを種へ）。 */
+export const reconsiderSynthesis = (args: { commandId: string; seedId: string }): GardenCommand => ({
+  id: args.commandId,
+  apply: (store) => {
+    const seed = findSeed(store, args.seedId);
+    if (!isLive(seed)) return { rejected: 'missing_seed' };
+    if (seed.growthState === 'seed') return store;
+    return {
+      ...store,
+      seeds: store.seeds.map((item) => (item.id === seed.id ? { ...item, growthState: 'seed' } : item)),
+      drafts: followGrowthState(store.drafts, seed.id, seed.growthState, 'seed'),
+    };
+  },
+});
+
+/**
+ * 芽を保存した直後の「元に戻す」。以前の育ち方と芽へ戻し、書いた新しい文章は下書きとして残す。
+ * 保存したあとに別の見直しが入っていれば、巻き戻さず拒否する。
+ */
+export const undoPromotion = (args: {
+  commandId: string;
+  seedId: string;
+  /** 保存した芽（これと一致するときだけ戻す）。 */
+  savedSynthesisId: string;
+  savedSynthesisUpdatedAt: string;
+  /** 保存した直後の育ち方。その後に本人が変えていたら戻さない。 */
+  savedGrowthState: Seed['growthState'];
+  previous: { growthState: Seed['growthState']; synthesis?: SeedSynthesis };
+  /** 戻したあとに残す、書いた文章の下書き。 */
+  keepDraft?: Draft;
+}): GardenCommand => ({
+  id: args.commandId,
+  apply: (store) => {
+    const seed = findSeed(store, args.seedId);
+    if (!seed) return { rejected: 'missing_seed' };
+    if (
+      !seed.synthesis ||
+      seed.synthesis.id !== args.savedSynthesisId ||
+      seed.synthesis.updatedAt !== args.savedSynthesisUpdatedAt ||
+      seed.growthState !== args.savedGrowthState ||
+      // 保存のあとに書き始めた芽の下書きがあれば、それと取り違えないよう戻さない。
+      store.drafts.some((draft) => draft.kind === 'synthesis' && draft.targetSeedId === seed.id)
+    ) {
+      return { rejected: 'changed_since_save' };
+    }
+    const { synthesis: _current, ...rest } = seed;
+    const restored: Seed = { ...rest, growthState: args.previous.growthState, ...(args.previous.synthesis ? { synthesis: args.previous.synthesis } : {}) };
+    const synced = followGrowthState(store.drafts, seed.id, seed.growthState, restored.growthState);
+    const drafts = args.keepDraft ? [...synced.filter((d) => d.id !== args.keepDraft?.id), args.keepDraft] : synced;
+    return { ...store, drafts, seeds: store.seeds.map((item) => (item.id === seed.id ? restored : item)) };
   },
 });

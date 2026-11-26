@@ -3,9 +3,7 @@ import * as React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import banner from '../../assets/banner-field.png';
 import { FieldRow } from '../components/FieldRow';
-import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
-import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { GrowthBadge } from '../components/GrowthBadge';
 import { HelpButton } from '../components/HelpButton';
@@ -33,7 +31,10 @@ type HomeScreenProps = {
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
   onOpenGarden: () => void;
-  onShowIntro: () => void;
+  /** 今日の種から、つながりを足す・芽を見直す。 */
+  onAddMemo: (seedId: string) => void;
+  onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
+  onShowPractice: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
   onClearAllData: () => void;
@@ -52,7 +53,9 @@ export function HomeScreen({
   onOpenSeed,
   onOpenWrite,
   onOpenGarden,
-  onShowIntro,
+  onAddMemo,
+  onOpenSynthesis,
+  onShowPractice,
   onOpenPrivacyPolicy,
   onOpenSupport,
   onClearAllData,
@@ -66,7 +69,7 @@ export function HomeScreen({
     [todaySeed, seeds, connections],
   );
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
-  const gardenLetter = buildGardenLetter(seeds);
+  const gardenLetter = buildGardenLetter(seeds, new Date(), connections);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
 
@@ -79,6 +82,40 @@ export function HomeScreen({
           <Text style={styles.heading}>きざしノート</Text>
         </View>
       </View>
+      {seeds.length === 0 ? (
+        <FadeInView delayMs={40}>
+          <SectionCard>
+            <Text style={styles.emptyHeading} accessibilityRole="header">
+              思いつきを残し、つなげて、できそうなことへ。
+            </Text>
+            <View style={styles.promise}>
+              {[
+                'まとまっていない一言も、種になります。',
+                'あとから「関係がありそう」と思ったメモをつなげます。',
+                'できそうなことが見えたら、芽として残します。',
+              ].map((line, index) => (
+                <View key={line} style={styles.promiseRow}>
+                  <Text style={styles.promiseNumber}>{index + 1}</Text>
+                  <Text style={styles.promiseText}>{line}</Text>
+                </View>
+              ))}
+            </View>
+            <PrimaryButton label="メモを書く" onPress={onOpenWrite} accessibilityHint="入力画面を開きます。タイトルや分類は不要です" />
+            <AnimatedPressable
+              onPress={onShowPractice}
+              style={styles.practiceButton}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="例で使い方を見る。実際のメモには入りません"
+            >
+              <Ionicons name="school-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.practiceText}>例で使い方を見る</Text>
+            </AnimatedPressable>
+            <Text style={styles.promiseNote}>どちらも、あとからいつでも選べます。</Text>
+          </SectionCard>
+        </FadeInView>
+      ) : (
+        <>
       <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
 
       <FadeInView delayMs={40}>
@@ -129,6 +166,40 @@ export function HomeScreen({
               <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
             </View>
           </AnimatedPressable>
+          <View style={styles.todayActions}>
+            <AnimatedPressable
+              onPress={() => onOpenSeed(todaySeed.seed.id)}
+              style={styles.todayAction}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="今日の種のつながりを見る"
+            >
+              <Ionicons name="git-network-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.todayActionText}>つながりを見る</Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => onAddMemo(todaySeed.seed.id)}
+              style={styles.todayAction}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="今日の種につなげて、メモを足す"
+            >
+              <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.todayActionText}>メモを足す</Text>
+            </AnimatedPressable>
+            {todaySeed.seed.synthesis && todaySeed.seed.growthState !== 'seed' ? (
+              <AnimatedPressable
+                onPress={() => onOpenSynthesis(todaySeed.seed.id, 'review')}
+                style={styles.todayAction}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="今日の種の芽を見直す"
+              >
+                <Ionicons name="leaf-outline" size={16} color={theme.colors.primary} />
+                <Text style={styles.todayActionText}>芽を見直す</Text>
+              </AnimatedPressable>
+            ) : null}
+          </View>
           {todayLinks.length > 0 ? (
             <View style={styles.todayLinks}>
               <View style={styles.todayLinksTitle}>
@@ -153,17 +224,11 @@ export function HomeScreen({
             </View>
           ) : null}
           </>
-        ) : (
-          <EmptyState
-            image={stageImages.seed}
-            title="ここに、最初の種をまきましょう"
-            description="ひとことで大丈夫です。書いた種は、数日後に「今日の種」としてここに戻ってきます。"
-            actionLabel="最初の種を書く"
-            onAction={onOpenWrite}
-          />
-        )}
+        ) : null}
         </SectionCard>
       </FadeInView>
+        </>
+      )}
 
       {seeds.length > 0 ? <PrimaryButton label="メモを書く" onPress={onOpenWrite} /> : null}
 
@@ -251,14 +316,14 @@ export function HomeScreen({
           {settingsOpen ? (
             <View style={styles.settingsBody}>
               <AnimatedPressable
-                onPress={onShowIntro}
+                onPress={onShowPractice}
                 style={styles.linkButton}
                 pressedStyle={styles.linkButtonPressed}
                 haptic="light"
                 accessibilityRole="button"
-                accessibilityLabel="はじめかたの案内をもう一度見る"
+                accessibilityLabel="例で使い方を見る。実際のメモには入りません"
               >
-                <Text style={styles.linkButtonText}>はじめかたをもう一度見る</Text>
+                <Text style={styles.linkButtonText}>例で使い方を見る</Text>
               </AnimatedPressable>
 
               <Text style={styles.exportLabel}>種の育ち方</Text>
@@ -369,6 +434,9 @@ const styles = StyleSheet.create({
     left: 20,
     gap: 2,
   },
+  todayActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  todayAction: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: theme.radius.full, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder },
+  todayActionText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
   todayLinks: {
     gap: 6,
   },
@@ -522,6 +590,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textMuted,
   },
+  emptyHeading: { fontSize: 20, lineHeight: 30, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  promise: { gap: theme.spacing.xs },
+  promiseRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  promiseNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    backgroundColor: theme.colors.leaf,
+    overflow: 'hidden',
+  },
+  promiseText: { flex: 1, fontSize: 15, lineHeight: 24, color: theme.colors.textMuted },
+  promiseNote: { fontSize: 13, color: theme.colors.textSoft, textAlign: 'center' },
+  practiceButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 48, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder, backgroundColor: theme.colors.surface },
+  practiceText: { fontSize: theme.typography.body, fontWeight: '700', color: theme.colors.primary },
   settingsToggle: {
     flexDirection: 'row',
     alignItems: 'center',

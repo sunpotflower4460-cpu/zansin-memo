@@ -56,6 +56,8 @@ export const useGarden = () => {
       writerRef.current ? writerRef.current.run(command) : Promise.resolve({ ok: false, reason: 'locked' as const }),
     [],
   );
+  const getStore = React.useCallback((): GardenStoreV2 => writerRef.current?.getSnapshot() ?? emptyStore(), []);
+  const getDrafts = React.useCallback((): Draft[] => writerRef.current?.getDrafts() ?? [], []);
   const saveDraft = React.useCallback((draft: Draft | null, draftId?: string) => writerRef.current?.saveDraft(draft, draftId), []);
   const flushDrafts = React.useCallback(() => writerRef.current?.flushDrafts() ?? Promise.resolve(undefined), []);
   const deleteAll = React.useCallback(
@@ -67,5 +69,5 @@ export const useGarden = () => {
     [],
   );
 
-  return { phase, store, status, run, saveDraft, flushDrafts, deleteAll, retryDeleteAll };
+  return { phase, store, status, run, getStore, getDrafts, saveDraft, flushDrafts, deleteAll, retryDeleteAll };
 };

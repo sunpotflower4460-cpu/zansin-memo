@@ -89,3 +89,19 @@ test('getIdsWithRecentlyActiveLinks marks quiet seeds whose connected seed was j
   const ids = getIdsWithRecentlyActiveLinks([quiet, busy, alsoBusy], [link('quiet', 'busy'), link('busy', 'also')], now);
   assert.deepEqual(Array.from(ids), ['quiet']); // 自分も最近動いている種は対象にしない
 });
+
+test('D08 cycles and high-degree memos stay one hop: no transitive lines, no endless expansion, every neighbor reachable', () => {
+  const ids = Array.from({ length: 400 }, (_, i) => `n${i}`);
+  const seeds = ids.map((id) => makeSeed(id));
+  // 三角形 n0-n1-n2-n0 と、n0 に 300 本の高次数
+  const connections = [link('n0', 'n1'), link('n1', 'n2'), link('n2', 'n0'), ...ids.slice(3, 303).map((id) => link('n0', id))];
+
+  const around0 = getLinkedSeeds(seeds[0], seeds, connections);
+  assert.equal(around0.length, 302); // 直接つながるメモだけ（n1, n2, n3..n302）
+  assert.equal(around0.some((s) => s.id === 'n303'), false); // つながっていないメモは含まない
+  // n3 から見える相手は n0 だけ。n0 の他の相手（n4…）を「つながり」にしない
+  assert.deepEqual(getLinkedSeeds(seeds[3], seeds, connections).map((s) => s.id), ['n0']);
+  // 循環でも、n1 の隣は n0 と n2 の2件のまま（無限に展開されない）
+  assert.deepEqual(getLinkedSeeds(seeds[1], seeds, connections).map((s) => s.id).sort(), ['n0', 'n2']);
+  assert.equal(getLinkCounts(seeds, connections).get('n0'), 302);
+});

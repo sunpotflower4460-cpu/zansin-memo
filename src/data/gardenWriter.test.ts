@@ -166,7 +166,7 @@ test('connectFromCenter adds only the previewed star and never links the targets
 
 // ---- D09: 新メモと接続は半分だけ確定しない ----
 
-test('D09 captureAndConnect is one atomic update: a failed save leaves neither, and the retry creates one memo and one connection', async () => {
+test('captureAndConnect is one atomic update: a failed save leaves neither, and the retry creates one memo and one connection', async () => {
   const { storage, writer } = make();
   await writer.run(capture('CENTER'));
   const draftId = 'draft-1';

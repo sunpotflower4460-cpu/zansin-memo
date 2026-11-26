@@ -12,6 +12,7 @@ import { HelpButton } from '../components/HelpButton';
 import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { SynthesisCard } from '../components/SynthesisCard';
 import { SectionCard } from '../components/SectionCard';
 import {
   GROWTH_STATE_OPTIONS,
@@ -41,6 +42,8 @@ type SeedDetailScreenProps = {
   seed: Seed;
   /** 削除されていないメモ全体。 */
   allSeeds: Seed[];
+  /** 削除済みのメモ。芽の材料が削除されたことを伝えるためだけに使う。 */
+  deletedSeeds: Seed[];
   connections: SeedConnection[];
   onBack: () => void;
   /** 戻り先の名前（例: 種一覧）。 */
@@ -54,7 +57,8 @@ type SeedDetailScreenProps = {
   /** 保存済みの編集中の下書き。あれば編集の続きから再開する。 */
   editDraft?: Draft;
   onEditDraftChange: (draft: Draft | null, draftId: string) => void;
-  onFlushDrafts: () => void;
+  /** 下書きを書き込む。端末に保存できなければ false。 */
+  onFlushDrafts: () => Promise<boolean>;
   onNotify: (message: string) => void;
   /** 保存の確定を待って true。失敗・衝突時は false（入力は残す）。 */
   onSave: (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string, draftId: string) => Promise<boolean>;
@@ -62,9 +66,17 @@ type SeedDetailScreenProps = {
   onOpenSeed: (seedId: string) => void;
   onLinkSeeds: (seedId: string, otherId: string) => void;
   onUnlinkSeeds: (seedId: string, otherId: string) => void;
-  onSetConnectionNote: (seedId: string, otherId: string, note: string) => void;
+  onSetConnectionNote: (seedId: string, otherId: string, note: string) => Promise<boolean>;
   onAddMemo: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
+  /** 芽の入口。mode: new=ここから芽をつくる／review=芽を見直す（考え直し中の再採用を含む）。 */
+  onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
+  onReconsiderSynthesis: (seedId: string) => void;
+  hasSynthesisDraft: boolean;
+  dismissedSuggestions: Set<string>;
+  dismissedCount: number;
+  onDismissSuggestion: (seedId: string, otherId: string) => void;
+  onRestoreDismissed: (seedId: string) => void;
 };
 
 type DraftState = {
@@ -98,7 +110,7 @@ const draftFromStored = (stored: Draft, seed: Seed): DraftState => ({
   title: stored.title ?? seed.title ?? '',
   body: stored.body,
   tags: stored.tags ?? seed.tags.join(', '),
-  mood: stored.mood ?? seed.mood,
+  mood: stored.mood, // 下書きに無ければ「気分なし」にした状態
   growthState: stored.growthState ?? seed.growthState,
   importance: stored.importance ?? seed.importance,
 });
@@ -106,6 +118,7 @@ const draftFromStored = (stored: Draft, seed: Seed): DraftState => ({
 export function SeedDetailScreen({
   seed,
   allSeeds,
+  deletedSeeds,
   connections,
   onBack,
   backLabel,
@@ -126,6 +139,13 @@ export function SeedDetailScreen({
   onSetConnectionNote,
   onAddMemo,
   onCreateTransform,
+  onOpenSynthesis,
+  onReconsiderSynthesis,
+  hasSynthesisDraft,
+  dismissedSuggestions,
+  dismissedCount,
+  onDismissSuggestion,
+  onRestoreDismissed,
 }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   // 下書きがあれば、編集の続きから開く。本文は明示的に「編集する」を選んだときだけ書き換えられる。
@@ -138,8 +158,19 @@ export function SeedDetailScreen({
   const baseBodyRef = React.useRef(editDraft?.baseBody ?? seed.body);
   /** 編集の一回分の下書きID。保存や破棄のあと、次の編集では作り直す。 */
   const draftIdRef = React.useRef(editDraft?.id ?? createId());
+  /** 「編集を閉じる」で残した入力があるか。あれば、次の「編集する」で続きから始める。 */
+  const retainedRef = React.useRef(false);
   const latestSeedRef = React.useRef(seed);
   latestSeedRef.current = seed;
+
+  // この画面の外の操作（芽にする・考え直す）で育ち方が変わったら、手元で変えていない入力は追従する。
+  const growthRef = React.useRef(seed.growthState);
+  React.useEffect(() => {
+    const previous = growthRef.current;
+    if (previous === seed.growthState) return;
+    growthRef.current = seed.growthState;
+    setDraft((current) => (current.growthState === previous ? { ...current, growthState: seed.growthState } : current));
+  }, [seed.growthState]);
 
   const unsaved = editing && hasUnsavedChanges(draft, seed);
   const canSave = draft.body.trim().length > 0;
@@ -171,10 +202,25 @@ export function SeedDetailScreen({
   }, [draft, editing]);
 
   const startEditing = () => {
-    setDraft(toDraft(seed));
-    baseUpdatedAtRef.current = seed.updatedAt;
-    baseBodyRef.current = seed.body;
+    if (!retainedRef.current) {
+      setDraft(toDraft(seed));
+      baseUpdatedAtRef.current = seed.updatedAt;
+      baseBodyRef.current = seed.body;
+    }
     setEditing(true);
+  };
+
+  // 保存の確定を待つ間の入力は、確定後に失われるので受け付けない。
+  const editDraftFields = (patch: Partial<DraftState>) => {
+    if (!saving) setDraft((prev) => ({ ...prev, ...patch }));
+  };
+
+  const closeEditor = () => {
+    retainedRef.current = unsaved;
+    if (unsaved) {
+      void onFlushDrafts().then((ok) => onNotify(ok ? '編集中の内容は下書きとして残しました。' : '下書きをまだ端末に保存できていません。アプリを閉じないでください。'));
+    }
+    setEditing(false);
   };
 
   const buildPayload = (): SeedUpdateInput => ({
@@ -196,6 +242,7 @@ export function SeedDetailScreen({
     setSaving(false);
     if (ok) {
       draftIdRef.current = createId();
+      retainedRef.current = false;
       setEditing(false);
     }
     return ok;
@@ -210,6 +257,7 @@ export function SeedDetailScreen({
         onPress: () => {
           onEditDraftChange(null, draftIdRef.current);
           draftIdRef.current = createId();
+          retainedRef.current = false;
           setEditing(false);
           setDraft(toDraft(latestSeedRef.current));
         },
@@ -227,13 +275,15 @@ export function SeedDetailScreen({
   const handleBack = () => {
     if (editing && unsaved) {
       Keyboard.dismiss();
-      onFlushDrafts();
-      onNotify('編集中の内容は下書きとして残しました。開くと続きから編集できます。');
+      void onFlushDrafts().then((ok) =>
+        onNotify(ok ? '編集中の内容は下書きとして残しました。開くと続きから編集できます。' : '下書きをまだ端末に保存できていません。アプリを閉じないでください。'),
+      );
     }
     onBack();
   };
 
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
+  const byId = React.useMemo(() => new Map([...allSeeds, ...deletedSeeds].map((item) => [item.id, item])), [allSeeds, deletedSeeds]);
   const contentStyle = React.useMemo(
     () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
     [insets.bottom],
@@ -353,7 +403,8 @@ export function SeedDetailScreen({
                 ) : null}
                 <TextInput
                   value={draft.body}
-                  onChangeText={(body) => setDraft((prev) => ({ ...prev, body }))}
+                  onChangeText={(body) => editDraftFields({ body })}
+                  editable={!saving}
                   style={styles.bodyInput}
                   multiline
                   textAlignVertical="top"
@@ -363,7 +414,8 @@ export function SeedDetailScreen({
                 />
                 <TextInput
                   value={draft.title}
-                  onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
+                  onChangeText={(title) => editDraftFields({ title })}
+                  editable={!saving}
                   style={styles.titleInput}
                   placeholder="タイトル（任意）"
                   placeholderTextColor={theme.colors.placeholder}
@@ -373,7 +425,7 @@ export function SeedDetailScreen({
                   label="育ち方"
                   options={GROWTH_STATE_OPTIONS}
                   selectedValue={draft.growthState}
-                  onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
+                  onChange={(growthState) => editDraftFields({ growthState: growthState ?? 'seed' })}
                   getLabel={(state) => growthStateLabels[state]}
                 />
                 <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
@@ -395,7 +447,7 @@ export function SeedDetailScreen({
                       label="気分"
                       options={MOOD_OPTIONS}
                       selectedValue={draft.mood}
-                      onChange={(mood) => setDraft((prev) => ({ ...prev, mood }))}
+                      onChange={(mood) => editDraftFields({ mood })}
                       allowClear
                       getLabel={(mood) => moodLabels[mood]}
                     />
@@ -403,14 +455,15 @@ export function SeedDetailScreen({
                       label="大切度（1〜5）"
                       options={IMPORTANCE_OPTIONS}
                       selectedValue={draft.importance}
-                      onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
+                      onChange={(importance) => editDraftFields({ importance: importance ?? 3 })}
                     />
                     <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
                     <View style={styles.fieldWrap}>
                       <Text style={styles.label}>カテゴリ（任意）</Text>
                       <TextInput
                         value={draft.tags}
-                        onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))}
+                        onChangeText={(tags) => editDraftFields({ tags })}
+                        editable={!saving}
                         style={styles.input}
                         accessibilityLabel="カテゴリ"
                       />
@@ -436,13 +489,7 @@ export function SeedDetailScreen({
                 />
                 <View style={styles.editFooter}>
                   <AnimatedPressable
-                    onPress={() => {
-                      if (unsaved) {
-                        onFlushDrafts();
-                        onNotify('編集中の内容は下書きとして残しました。');
-                      }
-                      setEditing(false);
-                    }}
+                    onPress={closeEditor}
                     style={styles.textButton}
                     haptic="light"
                     accessibilityRole="button"
@@ -479,6 +526,23 @@ export function SeedDetailScreen({
             onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
             onSetNote={(otherId, note) => onSetConnectionNote(seed.id, otherId, note)}
             onAddMemo={() => onAddMemo(seed.id)}
+            dismissed={dismissedSuggestions}
+            dismissedCount={dismissedCount}
+            onDismissSuggestion={(otherId) => onDismissSuggestion(seed.id, otherId)}
+            onRestoreDismissed={() => onRestoreDismissed(seed.id)}
+          />
+        </FadeInView>
+
+        <FadeInView delayMs={70}>
+          <SynthesisCard
+            seed={seed}
+            byId={byId}
+            hasDraft={hasSynthesisDraft}
+            onCreate={() => onOpenSynthesis(seed.id, 'new')}
+            onReview={() => onOpenSynthesis(seed.id, 'review')}
+            onReconsider={() => onReconsiderSynthesis(seed.id)}
+            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
+            onOpenSeed={onOpenSeed}
           />
         </FadeInView>
 

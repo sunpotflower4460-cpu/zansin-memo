@@ -99,6 +99,8 @@ export type Draft = {
   baseBody?: string;
   /** add-memo: 単独で残すに切り替えたか。 */
   standalone?: boolean;
+  /** 芽の見直しで、材料を選び直している途中。 */
+  reselect?: boolean;
   updatedAt: string;
 };
 

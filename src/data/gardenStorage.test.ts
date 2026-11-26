@@ -46,7 +46,7 @@ test('a failed migration write does not lose data: the app runs from memory and 
   assert.equal(storage.data.has(KEYS.main), false);
 });
 
-test('D11 a corrupt v2 falls back to the v2 backup, never silently to v1, and keeps the corrupt copy', async () => {
+test('recovery: a corrupt v2 falls back to the v2 backup, never silently to v1, and keeps the corrupt copy', async () => {
   const storage = new FakeStorage({
     [KEYS.main]: '{broken',
     [KEYS.lastGood]: v2(['B']),
@@ -60,7 +60,7 @@ test('D11 a corrupt v2 falls back to the v2 backup, never silently to v1, and ke
   assert.equal(storage.data.get(KEYS.main), '{broken'); // 読込だけでは上書きしない
 });
 
-test('D11 a corrupt v2 without a usable backup blocks writes instead of starting empty', async () => {
+test('recovery: a corrupt v2 without a usable backup blocks writes instead of starting empty', async () => {
   const storage = new FakeStorage({ [KEYS.main]: '{broken', [KEYS.v1Main]: JSON.stringify([makeV1Seed('OLD')]) });
   const result = await loadGarden(storage);
   assert.deepEqual(result, { status: 'blocked', reason: 'corrupt', detail: 'invalid_json' });
@@ -68,7 +68,7 @@ test('D11 a corrupt v2 without a usable backup blocks writes instead of starting
   assert.equal(storage.writes.filter((w) => w.key === KEYS.main).length, 0);
 });
 
-test('D11 an unknown future store version is never read with today\'s normalizer or overwritten', async () => {
+test('recovery: an unknown future store version is never read with today\'s normalizer or overwritten', async () => {
   const future = JSON.stringify({ storeVersion: 3, seeds: [], connections: [], extra: 'keep' });
   const storage = new FakeStorage({ [KEYS.main]: future });
   const result = await loadGarden(storage);

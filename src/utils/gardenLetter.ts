@@ -1,4 +1,4 @@
-import type { Seed } from '../domain/types';
+import type { Seed, SeedConnection } from '../domain/types';
 
 const LETTER_WINDOW_DAYS = 7;
 
@@ -13,6 +13,10 @@ export type GardenLetter = {
   newSeedCount: number;
   tendedSeedCount: number;
   transformCount: number;
+  /** 今週、本人が結んで、いま残っているつながり（旧データ由来は日時不明のため数えない）。 */
+  newConnectionCount: number;
+  /** 今週、本人が芽として採用して、いま芽・木の状態にあるもの。 */
+  newSproutCount: number;
   leadingTheme?: GardenLetterTheme;
   reflection: string;
   hasActivity: boolean;
@@ -58,7 +62,21 @@ const buildReflection = ({
   newSeedCount,
   tendedSeedCount,
   transformCount,
-}: Pick<GardenLetter, 'leadingTheme' | 'newSeedCount' | 'tendedSeedCount' | 'transformCount'>): string => {
+  newConnectionCount,
+  newSproutCount,
+}: Pick<
+  GardenLetter,
+  'leadingTheme' | 'newSeedCount' | 'tendedSeedCount' | 'transformCount' | 'newConnectionCount' | 'newSproutCount'
+>): string => {
+  // 実際に本人がした操作（芽にした・つないだ）を、意味を断定せずに伝える。
+  if (newSproutCount > 0) {
+    return '今週、言葉にした芽が生まれました。材料と一緒に、読み返してみませんか？';
+  }
+
+  if (newConnectionCount > 0) {
+    return '今週、メモ同士をつなぎました。つながりを見ながら、気づいたことを足してもよさそうです。';
+  }
+
   if (leadingTheme) {
     return `「${leadingTheme.label}」が${leadingTheme.seedCount}つの種に重なっています。別々に見える言葉の間に、同じ願いはありますか？`;
   }
@@ -78,7 +96,7 @@ const buildReflection = ({
   return '静かな一週間も、庭の時間です。言葉になる前の気配があれば、ひとことだけ置いてみましょう。';
 };
 
-export const buildGardenLetter = (seeds: Seed[], now = new Date()): GardenLetter => {
+export const buildGardenLetter = (seeds: Seed[], now = new Date(), connections: SeedConnection[] = []): GardenLetter => {
   const endsAt = Number.isFinite(now.getTime()) ? now.getTime() : Date.now();
   const startDate = new Date(endsAt);
   startDate.setHours(0, 0, 0, 0);
@@ -112,9 +130,34 @@ export const buildGardenLetter = (seeds: Seed[], now = new Date()): GardenLetter
     ).length;
   }
 
+  // 閲覧・検索・再浮上・下書き・移行・候補の提示は、育成として数えない。
+  // 芽は promotedAt（本人が採用した時刻）が今週で、いま芽・木の状態にあるものだけ。
+  let newSproutCount = 0;
+  for (const seed of activeSeeds) {
+    if (seed.synthesis && (seed.growthState === 'sprout' || seed.growthState === 'tree')) {
+      if (isInWindow(toTimestamp(seed.synthesis.promotedAt), startsAt, endsAt)) {
+        newSproutCount += 1;
+      }
+    }
+  }
+  // つながりは正規化したペア単位で、本人が結んだ（日時が分かる）もの。両端が残っているものだけ。
+  const activeIds = new Set(activeSeeds.map((seed) => seed.id));
+  const countedConnections = new Set<string>();
+  for (const connection of connections) {
+    if (
+      connection.origin === 'manual' &&
+      activeIds.has(connection.aSeedId) &&
+      activeIds.has(connection.bSeedId) &&
+      isInWindow(toTimestamp(connection.createdAt), startsAt, endsAt)
+    ) {
+      countedConnections.add(connection.id);
+    }
+  }
+  const newConnectionCount = countedConnections.size;
+
   const leadingTheme = pickLeadingTheme(activitySeeds);
-  const hasActivity = newSeedCount + tendedSeedCount + transformCount > 0;
-  const reflection = buildReflection({ leadingTheme, newSeedCount, tendedSeedCount, transformCount });
+  const hasActivity = newSeedCount + tendedSeedCount + transformCount + newConnectionCount + newSproutCount > 0;
+  const reflection = buildReflection({ leadingTheme, newSeedCount, tendedSeedCount, transformCount, newConnectionCount, newSproutCount });
 
   return {
     startsAt: new Date(startsAt).toISOString(),
@@ -122,6 +165,8 @@ export const buildGardenLetter = (seeds: Seed[], now = new Date()): GardenLetter
     newSeedCount,
     tendedSeedCount,
     transformCount,
+    newConnectionCount,
+    newSproutCount,
     leadingTheme,
     reflection,
     hasActivity,

@@ -17,7 +17,7 @@ import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
 import { findConnection, getLinkCounts } from '../utils/links';
-import { buildMatchExcerpt, searchableText, toSeedSnippet } from '../utils/seedText';
+import { buildMatchExcerpt, isLongText, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { formatDate, formatRelativeDay, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
 
 export type SeedsView = 'all' | 'unconnected' | 'connected' | 'sprout';
@@ -62,6 +62,8 @@ type SeedsScreenProps = {
   onOpenWrite?: () => void;
   onConnectPair: (aId: string, bId: string) => void;
   onConnectFromCenter: (centerId: string, targetIds: string[]) => void;
+  /** 選んだメモから芽をつくる（最初に選んだメモが中心の初期値）。 */
+  onStartSynthesis: (selectedIds: string[]) => void;
 };
 
 export function SeedsScreen({
@@ -89,6 +91,7 @@ export function SeedsScreen({
   onOpenWrite,
   onConnectPair,
   onConnectFromCenter,
+  onStartSynthesis,
 }: SeedsScreenProps) {
   const [moreOpen, setMoreOpen] = React.useState(false);
   const [planOpen, setPlanOpen] = React.useState(false);
@@ -111,7 +114,7 @@ export function SeedsScreen({
   // 検索対象の文字列は、メモが変わったときだけ作り直す（入力のたびに全件を作り直さない）。
   const haystacks = React.useMemo(() => new Map(seeds.map((seed) => [seed.id, searchableText(seed)])), [seeds]);
   const deferredSearch = React.useDeferredValue(search);
-  const normalizedSearch = deferredSearch.trim().toLowerCase();
+  const normalizedSearch = normalizeSearchText(deferredSearch.trim());
 
   const viewCounts = React.useMemo(() => {
     let unconnected = 0;
@@ -356,7 +359,7 @@ export function SeedsScreen({
           const order = selectedIds.indexOf(seed.id) + 1;
           const isExpanded = expanded.has(seed.id);
           const excerpt = normalizedSearch ? buildMatchExcerpt(seed, normalizedSearch) : undefined;
-          const long = seed.body.length > 90;
+          const long = isLongText(seed.body, 90);
           return (
             <View style={[styles.seedCard, picked && styles.seedCardPicked]}>
               <AnimatedPressable
@@ -469,13 +472,28 @@ export function SeedsScreen({
                 accessibilityHint="選んだ2つのメモの間に線を引きます。メモの内容は変わりません。"
                 onPress={() => {
                   const [a, b] = selectedSeeds;
-                  cancelSelecting();
                   onConnectPair(a.id, b.id);
                 }}
               />
             )
           ) : null}
           {selectedSeeds.length >= 3 ? <PrimaryButton label="つなぎ方を選ぶ" onPress={() => setPlanOpen(true)} /> : null}
+          {selectedSeeds.length >= 1 ? (
+            <AnimatedPressable
+              onPress={() => {
+                const ids = selectedSeeds.map((seed) => seed.id);
+                cancelSelecting();
+                onStartSynthesis(ids);
+              }}
+              style={styles.synthesisButton}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`選んだメモから芽をつくる。最初に選んだメモに芽が残ります。${toSeedSnippet(selectedSeeds[0], 20)}`}
+            >
+              <Ionicons name="leaf-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.synthesisButtonText}>ここから芽をつくる（最初に選んだメモに残ります）</Text>
+            </AnimatedPressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -486,7 +504,6 @@ export function SeedsScreen({
         onClose={() => setPlanOpen(false)}
         onConfirm={(centerId, targetIds) => {
           setPlanOpen(false);
-          cancelSelecting();
           onConnectFromCenter(centerId, targetIds);
         }}
       />
@@ -616,5 +633,18 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   trayChipText: { fontSize: 13, color: theme.colors.text, flexShrink: 1 },
+  synthesisButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  synthesisButtonText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary, flexShrink: 1, textAlign: 'center' },
   trayHint: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
 });

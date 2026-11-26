@@ -44,7 +44,9 @@ export function GardenLetterCard({ letter, onOpenGarden }: GardenLetterCardProps
       <View style={styles.metrics}>
         <Metric value={letter.newSeedCount} label="新しい種" />
         <Metric value={letter.tendedSeedCount} label="手入れ" />
-        <Metric value={letter.transformCount} label="育てた形" />
+        <Metric value={letter.transformCount} label="書き出し" />
+        {letter.newConnectionCount > 0 ? <Metric value={letter.newConnectionCount} label="つないだ線" /> : null}
+        {letter.newSproutCount > 0 ? <Metric value={letter.newSproutCount} label="芽" /> : null}
       </View>
 
       <View style={styles.reflection}>

@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', '.expo/**', 'dist/**', 'coverage/**'],
+    ignores: ['node_modules/**', '.expo/**', 'dist/**', 'coverage/**', 'scripts/e2e/**'],
   },
   {
     files: ['**/*.{ts,tsx}'],
