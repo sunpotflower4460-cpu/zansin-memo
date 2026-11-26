@@ -27,6 +27,7 @@ import { moodLabels } from '../utils/displayLabels';
 const COMPACT_CHROME_HEIGHT = 180;
 const COMPACT_CONNECT_ROW_HEIGHT = 44;
 const MIN_BODY_HEIGHT = 80;
+const KEYBOARD_SETTLE_MS = 350;
 
 type WriteScreenProps = {
   draft: {
@@ -82,8 +83,12 @@ export function WriteScreen({
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
-  // キーボードが出ている間は、書くことに必要なものだけを残し、本文欄を残りの高さに合わせる。
-  const compact = keyboardHeight > 0;
+  /** 本文か題名を入力中か。カテゴリ欄の入力中は画面を畳まない（欄ごと消えて入力できなくなる）。 */
+  // 開くと本文に自動で入力が始まるので、最初は「入力中」とする。
+  const [writing, setWriting] = React.useState(true);
+  const scrollRef = React.useRef<ScrollView>(null);
+  // 本文・題名の入力中は、書くことに必要なものだけを残し、本文欄を残りの高さに合わせる。
+  const compact = writing && keyboardHeight > 0;
   const compactBodyHeight = Math.max(
     MIN_BODY_HEIGHT,
     windowHeight - insets.top - keyboardHeight - COMPACT_CHROME_HEIGHT - (addTo ? COMPACT_CONNECT_ROW_HEIGHT : 0),
@@ -93,6 +98,7 @@ export function WriteScreen({
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, compact && styles.contentCompact]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -217,6 +223,8 @@ export function WriteScreen({
             placeholderTextColor={theme.colors.placeholder}
             multiline
             autoFocus
+            onFocus={() => setWriting(true)}
+            onBlur={() => setWriting(false)}
             textAlignVertical="top"
             accessibilityLabel="メモの本文"
           />
@@ -227,6 +235,8 @@ export function WriteScreen({
             style={styles.titleInput}
             placeholder="タイトル（任意）"
             placeholderTextColor={theme.colors.placeholder}
+            onFocus={() => setWriting(true)}
+            onBlur={() => setWriting(false)}
             returnKeyType="done"
             accessibilityLabel="タイトル"
           />
@@ -277,6 +287,8 @@ export function WriteScreen({
                   placeholder="例: 企画, 感覚, 執筆"
                   placeholderTextColor={theme.colors.placeholder}
                   autoCapitalize="none"
+                  // 下の方の欄なので、キーボードが出きってから見える位置へ送る。
+                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), KEYBOARD_SETTLE_MS)}
                   accessibilityLabel="カテゴリ"
                 />
                 <Text style={styles.hint}>カンマ区切りで複数入力できます。空でもOKです。</Text>
