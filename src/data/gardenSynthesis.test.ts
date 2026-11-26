@@ -288,6 +288,17 @@ test('undo never discards a growth-state change or a newer sprout draft made aft
   assert.equal(seed('A').synthesis?.id, saved.id);
 });
 
+test('a retained body-edit draft follows the growth state, so saving it later cannot demote the sprout', async () => {
+  const { writer, stored } = await setup();
+  writer.saveDraft({ id: 'edit', kind: 'edit-body', targetSeedId: 'A', body: '編集中', growthState: 'seed', updatedAt: T1 });
+  await writer.flushDrafts();
+  await writer.run(promote());
+  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.growthState, 'sprout');
+  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.body, '編集中');
+  await writer.run(reconsiderSynthesis({ commandId: 'reconsider', seedId: 'A' }));
+  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.growthState, 'seed');
+});
+
 test('an existing tree is never downgraded by a review, and a seed or archived memo becomes a sprout when adopted', async () => {
   const { writer, seed } = await setup();
   await writer.run(updateSeedFields({ commandId: 'tree', seedId: 'A', patch: { growthState: 'tree' }, now: T1 }));

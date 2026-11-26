@@ -138,3 +138,21 @@ test('an emptied title and emptied categories stay empty after a restart', () =>
   assert.equal(parsed.store.drafts[0].tags, '');
   assert.equal(parsed.store.drafts[0].reselect, true);
 });
+
+test('confirming an uncertain commit also brings the backup up to date, or says it is stale', async () => {
+  const { storage, writer } = make();
+  storage.failNext('setItem', KEYS.main, 1, true);
+  storage.failNext('getItem', KEYS.main, 1);
+  await writer.run(capture('A'));
+  assert.equal((await writer.run(capture('A'))).ok, true);
+  assert.equal(storage.data.get(KEYS.lastGood), storage.data.get(KEYS.main));
+
+  storage.failNext('setItem', KEYS.main, 1, true);
+  storage.failNext('getItem', KEYS.main, 1);
+  await writer.run(capture('B'));
+  storage.failNext('setItem', KEYS.lastGood);
+  const retried = await writer.run(capture('B'));
+  assert.equal(retried.ok && retried.backupOk, false);
+  assert.equal(writer.getStatus().backupStale, true);
+});
+

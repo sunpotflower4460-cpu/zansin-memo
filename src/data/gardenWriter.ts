@@ -182,6 +182,8 @@ export class GardenWriter {
       if (state === 'committed') {
         this.committed = this.uncertain;
         this.needsInitialPersist = false;
+        // 失敗扱いで飛ばした控えの更新を、ここで行う。できなければ「控えが古い」と伝える。
+        await this.writeBackup(serializeStore(this.committed));
       }
       this.uncertain = undefined;
       this.emit();
@@ -226,16 +228,19 @@ export class GardenWriter {
       return { ok: true, revision: next.revision, backupOk: !this.backupStale };
     }
 
-    let backupOk = true;
+    const backupOk = await this.writeBackup(json);
+    this.emit();
+    return { ok: true, revision: next.revision, backupOk };
+  }
+
+  private async writeBackup(json: string): Promise<boolean> {
     try {
       await this.storage.setItem(KEYS.lastGood, json);
       this.backupStale = false;
     } catch {
-      backupOk = false;
       this.backupStale = true;
     }
-    this.emit();
-    return { ok: true, revision: next.revision, backupOk };
+    return !this.backupStale;
   }
 
   private async confirmCommitted(expected: GardenStoreV2): Promise<Confirmation> {

@@ -13,6 +13,17 @@ const clampImportance = (value: number | undefined): Seed['importance'] =>
 
 const draftIds = (id: string | undefined): string[] | undefined => (id ? [id] : undefined);
 
+/**
+ * 本文の編集下書きは育ち方も持つ。下書き側で変えていなければ、新しい育ち方に合わせる
+ * （古い育ち方のまま保存して、芽などを巻き戻さないように）。
+ */
+const followGrowthState = (drafts: Draft[], seedId: string, from: Seed['growthState'], to: Seed['growthState']): Draft[] =>
+  from === to
+    ? drafts
+    : drafts.map((draft) =>
+        draft.kind === 'edit-body' && draft.targetSeedId === seedId && draft.growthState === from ? { ...draft, growthState: to } : draft,
+      );
+
 const isLive = (seed: Seed | undefined): seed is Seed => Boolean(seed && !seed.deletedAt);
 
 export const buildSeed = (id: string, input: SeedCreateInput, now: string): Seed => ({
@@ -372,7 +383,11 @@ export const promoteToSprout = (args: {
       growthState: center.growthState === 'tree' ? 'tree' : 'sprout',
     };
     return withoutDrafts(
-      { ...store, seeds: store.seeds.map((seed) => (seed.id === center.id ? next : seed)) },
+      {
+        ...store,
+        seeds: store.seeds.map((seed) => (seed.id === center.id ? next : seed)),
+        drafts: followGrowthState(store.drafts, center.id, center.growthState, next.growthState),
+      },
       draftIds(args.draftId),
     );
   },
@@ -385,7 +400,11 @@ export const reconsiderSynthesis = (args: { commandId: string; seedId: string })
     const seed = findSeed(store, args.seedId);
     if (!isLive(seed)) return { rejected: 'missing_seed' };
     if (seed.growthState === 'seed') return store;
-    return { ...store, seeds: store.seeds.map((item) => (item.id === seed.id ? { ...item, growthState: 'seed' } : item)) };
+    return {
+      ...store,
+      seeds: store.seeds.map((item) => (item.id === seed.id ? { ...item, growthState: 'seed' } : item)),
+      drafts: followGrowthState(store.drafts, seed.id, seed.growthState, 'seed'),
+    };
   },
 });
 
@@ -421,7 +440,8 @@ export const undoPromotion = (args: {
     }
     const { synthesis: _current, ...rest } = seed;
     const restored: Seed = { ...rest, growthState: args.previous.growthState, ...(args.previous.synthesis ? { synthesis: args.previous.synthesis } : {}) };
-    const drafts = args.keepDraft ? [...store.drafts.filter((d) => d.id !== args.keepDraft?.id), args.keepDraft] : store.drafts;
+    const synced = followGrowthState(store.drafts, seed.id, seed.growthState, restored.growthState);
+    const drafts = args.keepDraft ? [...synced.filter((d) => d.id !== args.keepDraft?.id), args.keepDraft] : synced;
     return { ...store, drafts, seeds: store.seeds.map((item) => (item.id === seed.id ? restored : item)) };
   },
 });

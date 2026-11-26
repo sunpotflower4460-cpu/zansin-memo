@@ -109,6 +109,14 @@ export function SynthesisScreen({
     return ids.filter((id) => id !== center.id && byId.has(id));
   }, [neighborIds, picked, byId, center.id]);
 
+  // 選んだあとに削除された材料。黙って外さず、本人が外すか復元するまで保存しない。
+  const unavailable = reselect
+    ? picked.filter((p) => {
+        const origin = byId.get(p.seedId);
+        return !origin || (p.part === 'synthesis' && !origin.synthesis);
+      })
+    : [];
+
   const materials: MaterialRef[] = [];
   for (const p of picked) {
     const origin = byId.get(p.seedId);
@@ -148,11 +156,17 @@ export function SynthesisScreen({
     setPicked((current) => (current.some((p) => p.seedId === center.id) ? current.filter((p) => p.seedId !== center.id) : current));
   }, [center.id]);
 
-  const toggle = (seedId: string, part: 'body' | 'synthesis') =>
+  // 保存の確定を待つ間の変更は、保存にも下書きにも残らないので受け付けない。
+  const toggle = (seedId: string, part: 'body' | 'synthesis') => {
+    if (saving) return;
     setPicked((current) => {
       const key = pickKey({ seedId, part });
       return current.some((p) => pickKey(p) === key) ? current.filter((p) => pickKey(p) !== key) : [...current, { seedId, part }];
     });
+  };
+  const editStatement = (text: string) => {
+    if (!saving) setStatement(text);
+  };
   const toggleExpanded = (key: string) =>
     setExpanded((current) => {
       const next = new Set(current);
@@ -163,7 +177,7 @@ export function SynthesisScreen({
 
   const clash = mode === 'new' && Boolean(existing);
   const question = reviewing || materials.length > 0 || !reselect ? 'このメモを合わせると、どんなことができそう？' : 'このメモから、どんなことができそう？';
-  const canSave = statement.trim().length > 0 && !saving && !clash;
+  const canSave = statement.trim().length > 0 && !saving && !clash && unavailable.length === 0;
 
   const save = async () => {
     const ok = await onSave({
@@ -203,7 +217,7 @@ export function SynthesisScreen({
           <Text style={styles.note}>元のメモは変わりません。芽の文章は、元のメモとは別に保存されます。</Text>
           {!reviewing ? (
             <AnimatedPressable
-              onPress={() => setCenterPickerOpen(true)}
+              onPress={() => !saving && setCenterPickerOpen(true)}
               style={styles.linkButton}
               haptic="light"
               accessibilityRole="button"
@@ -267,13 +281,23 @@ export function SynthesisScreen({
                     </View>
                   );
                 })}
-              <AnimatedPressable onPress={() => setReselect(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="材料を選び直す">
+              <AnimatedPressable onPress={() => !saving && setReselect(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="材料を選び直す">
                 <Text style={styles.linkButtonText}>材料を選び直す（現在のメモを読み直します）</Text>
               </AnimatedPressable>
             </>
           ) : (
             <>
               <Text style={styles.subLabel}>ほかの材料（選んだものだけ。0件でも大丈夫です）</Text>
+              {unavailable.map((p) => (
+                <View key={pickKey(p)} style={styles.material} accessibilityLiveRegion="polite">
+                  <Text style={styles.changed}>
+                    {sourceById.get(p.seedId)?.deletedAt
+                      ? '選んだ材料のメモは「最近削除した種」にあります。復元するか、材料から外すと保存できます。'
+                      : '選んだ材料が見つかりません。材料から外すと保存できます。'}
+                  </Text>
+                  <SmallToggle label="材料から外す" onPress={() => toggle(p.seedId, p.part)} />
+                </View>
+              ))}
               {candidateIds.length === 0 ? <Text style={styles.note}>つながっているメモはまだありません。「材料を追加」から、ほかのメモも選べます。</Text> : null}
               {candidateIds.map((id) => {
                 const origin = byId.get(id);
@@ -323,14 +347,15 @@ export function SynthesisScreen({
           <Text style={styles.note}>「なら、○○できるかも」のように、一言から。</Text>
           {reviewing && existing ? <Text style={styles.currentSprout}>いまの芽: {existing.statement}</Text> : null}
           {exampleStatement ? (
-            <AnimatedPressable onPress={() => setStatement(exampleStatement)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="完成例を入力欄に入れて見る">
+            <AnimatedPressable onPress={() => editStatement(exampleStatement)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="完成例を入力欄に入れて見る">
               <Ionicons name="bulb-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.linkButtonText}>完成例を見る</Text>
             </AnimatedPressable>
           ) : null}
           <TextInput
             value={statement}
-            onChangeText={setStatement}
+            onChangeText={editStatement}
+            editable={!saving}
             style={styles.input}
             multiline
             textAlignVertical="top"

@@ -602,6 +602,8 @@ export default function App() {
 
   const openSynthesis = (centerId: string, mode: 'new' | 'review', from: MainTab, initialMaterialIds?: string[]) => {
     setSynthesisError('');
+    // 同じ芽を開き直したら、直前の「元に戻す」は閉じる（開いている画面の下で芽を消さない）。
+    setUndo((current) => (current?.seedId === centerId ? undefined : current));
     setScreen({ kind: 'synthesis', centerId, from, mode, initialMaterialIds });
   };
 
@@ -687,6 +689,12 @@ export default function App() {
       reselect: info.previous.synthesis && info.materialsChanged ? true : undefined,
       updatedAt: new Date().toISOString(),
     };
+    // 書き込み待ちの下書きも「保存のあとの変更」として確かめられるようにする。
+    await garden.flushDrafts();
+    if (garden.getDrafts().some((draft) => draft.kind === 'synthesis' && draft.targetSeedId === info.seedId)) {
+      showToast('保存のあとに別の変更があったため、巻き戻せませんでした。「芽を見直す」から直せます');
+      return;
+    }
     const result = await garden.run(
       undoPromotion({
         commandId: createId(),

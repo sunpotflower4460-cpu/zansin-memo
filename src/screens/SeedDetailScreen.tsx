@@ -163,6 +163,15 @@ export function SeedDetailScreen({
   const latestSeedRef = React.useRef(seed);
   latestSeedRef.current = seed;
 
+  // この画面の外の操作（芽にする・考え直す）で育ち方が変わったら、手元で変えていない入力は追従する。
+  const growthRef = React.useRef(seed.growthState);
+  React.useEffect(() => {
+    const previous = growthRef.current;
+    if (previous === seed.growthState) return;
+    growthRef.current = seed.growthState;
+    setDraft((current) => (current.growthState === previous ? { ...current, growthState: seed.growthState } : current));
+  }, [seed.growthState]);
+
   const unsaved = editing && hasUnsavedChanges(draft, seed);
   const canSave = draft.body.trim().length > 0;
   const staleBase = editing && (seed.updatedAt !== baseUpdatedAtRef.current || seed.body !== baseBodyRef.current);
