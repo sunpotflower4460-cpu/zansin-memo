@@ -131,6 +131,13 @@ export function SynthesisCard({
               <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
             </AnimatedPressable>
           ) : null}
+          {/* 考えの文がない以前の芽・花も、育ち方を戻せるようにする。 */}
+          {status === 'legacy' ? (
+            <View style={styles.row}>
+              {seed.growthState === 'tree' && onReturnToSprout ? <SmallButton label="芽に戻す" accessibilityLabel="花を芽に戻す" onPress={onReturnToSprout} /> : null}
+              {onReconsider ? <SmallButton label="種に戻す" accessibilityLabel="種に戻す" onPress={onReconsider} /> : null}
+            </View>
+          ) : null}
         </>
       ) : (
         <>

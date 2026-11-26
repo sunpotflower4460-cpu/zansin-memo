@@ -337,3 +337,14 @@ test('archiving remembers the growth stage and returning restores it', async () 
   assert.equal(seed('A').growthState, 'tree');
   assert.equal(seed('A').archivedFrom, undefined);
 });
+
+test('a legacy flower or sprout without a written thought can still go back a stage', async () => {
+  const { writer, seed } = await setup();
+  await writer.run(updateSeedFields({ commandId: 'legacy', seedId: 'B', patch: { growthState: 'tree' }, now: T1 }));
+  await writer.run(returnToSprout({ commandId: 'to-sprout', seedId: 'B' }));
+  assert.equal(seed('B').growthState, 'sprout');
+  await writer.run(reconsiderSynthesis({ commandId: 'to-seed', seedId: 'B' }));
+  assert.equal(seed('B').growthState, 'seed');
+  assert.equal(seed('B').synthesis, undefined);
+});
+

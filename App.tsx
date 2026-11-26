@@ -751,7 +751,8 @@ export default function App() {
       return;
     }
     const result = await garden.run(reconsiderSynthesis({ commandId: createId(), seedId }));
-    afterCommit(result, '種に戻しました。書いた考えは残っています');
+    const kept = Boolean(seeds.find((seed) => seed.id === seedId)?.synthesis);
+    afterCommit(result, kept ? '種に戻しました。書いた考えは残っています' : '種に戻しました');
   };
 
   const handleBloom = async (seedId: string, note: string): Promise<boolean> => {
