@@ -278,7 +278,9 @@ export function SynthesisScreen({
 
           {sourcesToShow.length > 0 ? (
             <>
-              <Text style={styles.subLabel}>前に書いたときに見たメモ</Text>
+              <Text style={styles.subLabel}>
+                {sourcesToShow.some((source) => source.seedId !== center.id || source.sourcePart !== 'body') ? '前に書いたときに見たメモ' : '前は、このメモだけを見て書きました。'}
+              </Text>
               {sourcesToShow
                 .filter((source) => !(source.seedId === center.id && source.sourcePart === 'body'))
                 .map((source) => {
