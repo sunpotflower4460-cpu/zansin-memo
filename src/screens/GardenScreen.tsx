@@ -7,19 +7,19 @@ import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
-import { ClusterCard } from '../components/ClusterCard';
 import { HelpButton } from '../components/HelpButton';
 import { LinkCount } from '../components/LinkCount';
-import { buildClusters, findRecurringWords, getLinkCounts } from '../utils/links';
+import { findRecurringWords, getLinkCounts } from '../utils/links';
 import { SectionCard } from '../components/SectionCard';
 import { helpTexts } from '../utils/helpTexts';
-import type { GrowthState, Seed } from '../domain/types';
+import type { GrowthState, Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
 import { getTagGroupKey, getTagGroupLabel, groupSeedsByTag } from '../utils/seedUtils';
 
 type GardenScreenProps = {
   seeds: Seed[];
+  connections: SeedConnection[];
   onOpenSeed: (seedId: string) => void;
   /** 指定した育ち方だけの種一覧へ移る。 */
   onOpenSeedsByState: (state: GrowthState) => void;
@@ -54,7 +54,7 @@ const stateAccents: Record<GrowthState, string> = {
   archived: '#a39d90', // 古紙の灰
 };
 
-export function GardenScreen({ seeds, onOpenSeed, onOpenSeedsByState, onSearchWord }: GardenScreenProps) {
+export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByState, onSearchWord }: GardenScreenProps) {
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
 
@@ -66,9 +66,8 @@ export function GardenScreen({ seeds, onOpenSeed, onOpenSeedsByState, onSearchWo
     return buckets;
   }, [seeds]);
 
-  const clusters = useMemo(() => buildClusters(seeds), [seeds]);
   const recurringWords = useMemo(() => findRecurringWords(seeds), [seeds]);
-  const linkCounts = useMemo(() => getLinkCounts(seeds), [seeds]);
+  const linkCounts = useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
 
   const groupedByTag = useMemo(() => groupSeedsByTag(seeds), [seeds]);
 
@@ -99,24 +98,6 @@ export function GardenScreen({ seeds, onOpenSeed, onOpenSeedsByState, onSearchWo
 
       {seeds.length === 0 ? (
         <EmptyState image={stageImages.seed} title="この場所は、これから育っていきます。" description="書いた種が増えると、土の上に少しずつ並びます。" />
-      ) : null}
-
-      {seeds.length >= 2 ? (
-        <FadeInView delayMs={30}>
-          <View style={styles.linkSection}>
-            <View style={styles.linkTitleRow}>
-              <Ionicons name="git-network-outline" size={20} color={theme.colors.primary} />
-              <Text style={styles.sectionTitle}>つながりのまとまり</Text>
-            </View>
-            {clusters.length > 0 ? (
-              clusters.slice(0, 5).map((members) => <ClusterCard key={members[0].id} members={members} onOpenSeed={onOpenSeed} />)
-            ) : (
-              <Text style={styles.emptyText}>
-                種どうしをつなぐと、ここに「まとまり」ができます。種の詳細の「つながり」から、続きを書いたり、関係のある種をつなげたりできます。
-              </Text>
-            )}
-          </View>
-        </FadeInView>
       ) : null}
 
       {recurringWords.length > 0 ? (

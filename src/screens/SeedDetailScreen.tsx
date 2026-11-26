@@ -19,6 +19,7 @@ import {
   type Importance,
   type Mood,
   type Seed,
+  type SeedConnection,
   type SeedUpdateInput,
   type TransformOutput,
   type TransformType,
@@ -33,15 +34,17 @@ import { formatDate, parseTags } from '../utils/seedUtils';
 type SeedDetailScreenProps = {
   seed: Seed;
   allSeeds: Seed[];
+  connections: SeedConnection[];
   onBack: () => void;
   /** 戻り先の名前（例: 種一覧）。どこへ戻るかが分かるようにボタンに表示する。 */
   backLabel: string;
-  onSave: (seedId: string, payload: SeedUpdateInput) => void;
+  /** 保存の確定を待って true を返す。失敗時は false（入力はそのまま残す）。 */
+  onSave: (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string) => Promise<boolean>;
   onDelete: (seedId: string) => void;
   onOpenSeed: (seedId: string) => void;
   onLinkSeeds: (seedId: string, otherId: string) => void;
   onUnlinkSeeds: (seedId: string, otherId: string) => void;
-  onContinue: (seedId: string) => void;
+  onAddMemo: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
 };
 
@@ -72,10 +75,13 @@ const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
   draft.growthState !== seed.growthState ||
   parseTags(draft.tags).join('\n') !== seed.tags.join('\n');
 
-export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, onDelete, onOpenSeed, onLinkSeeds, onUnlinkSeeds, onContinue, onCreateTransform }: SeedDetailScreenProps) {
+export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabel, onSave, onDelete, onOpenSeed, onLinkSeeds, onUnlinkSeeds, onAddMemo, onCreateTransform }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  /** 編集を始めた時点の更新日時。これと違えば、別の更新が先に確定している。 */
+  const baseUpdatedAtRef = React.useRef(seed.updatedAt);
 
   // 別の種を開いたときだけ入力内容を読み込み直す。変換候補の追加や「今日の種」の更新で、編集中の文章が巻き戻らないようにする。
   const seedId = seed.id;
@@ -83,7 +89,22 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
   latestSeedRef.current = seed;
   React.useEffect(() => {
     setDraft(toDraft(latestSeedRef.current));
+    baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
   }, [seedId]);
+
+  const save = async (): Promise<boolean> => {
+    if (saving) {
+      return false;
+    }
+    setSaving(true);
+    const ok = await onSave(seed.id, buildPayload(), baseUpdatedAtRef.current);
+    setSaving(false);
+    if (ok) {
+      // 自分の保存で進んだ版を、次の編集の起点にする。
+      baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
+    }
+    return ok;
+  };
 
   const unsaved = hasUnsavedChanges(draft, seed);
 
@@ -113,8 +134,12 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
     }
     if (canSave) {
       Keyboard.dismiss();
-      onSave(seed.id, buildPayload());
-      onBack();
+      // 保存の確定を待ってから戻る。失敗したら、この画面に残して入力を守る。
+      void save().then((ok) => {
+        if (ok) {
+          onBack();
+        }
+      });
       return;
     }
     Alert.alert('本文が空のままです', 'このまま戻ると、変更は残りません。', [
@@ -235,8 +260,8 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
           </View>
 
           <PrimaryButton
-            label={unsaved ? '変更を保存' : '保存済み'}
-            disabled={!canSave || !unsaved}
+            label={saving ? '保存しています…' : unsaved ? '変更を保存' : '保存済み'}
+            disabled={!canSave || !unsaved || saving}
             accessibilityHint={saveAccessibilityHint}
             onPress={() => {
               if (!canSave) {
@@ -244,7 +269,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
               }
 
               Keyboard.dismiss();
-              onSave(seed.id, buildPayload());
+              void save();
             }}
           />
           </SectionCard>
@@ -254,10 +279,11 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, on
           <LinksSection
             seed={seed}
             allSeeds={allSeeds}
+            connections={connections}
             onOpenSeed={onOpenSeed}
             onLink={(otherId) => onLinkSeeds(seed.id, otherId)}
             onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
-            onContinue={() => onContinue(seed.id)}
+            onAddMemo={() => onAddMemo(seed.id)}
           />
         </FadeInView>
 

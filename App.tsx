@@ -7,18 +7,21 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
-import { seedRepository } from './src/data/asyncStorageSeedRepository';
-import { EMPTY_WRITE_DRAFT, loadDraft, saveDraft } from './src/data/draftStorage';
+import { useGarden } from './src/data/useGarden';
 import { hasSeenOnboarding, markOnboardingSeen } from './src/data/onboardingStorage';
-import type {
-  GrowthState,
-  ResurfacedSeed,
-  Seed,
-  SeedCreateInput,
-  SeedUpdateInput,
-  TransformType,
-  WriteDraft,
-} from './src/domain/types';
+import {
+  addTransformOutput,
+  captureAndConnect,
+  captureSeed,
+  connectSeeds,
+  disconnectSeeds,
+  restoreSeed,
+  softDeleteSeed,
+  touchResurfacing,
+  updateSeedFields,
+} from './src/domain/gardenCommands';
+import type { CommitResult } from './src/data/gardenWriter';
+import type { Draft, GrowthState, ResurfacedSeed, SeedCreateInput, SeedUpdateInput, TransformType, WriteDraft } from './src/domain/types';
 import { GardenScreen } from './src/screens/GardenScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -29,22 +32,10 @@ import { theme } from './src/styles/theme';
 import { motion } from './src/utils/motion';
 import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
-import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
-import { exportSeeds } from './src/utils/exportUtils';
-import { linkSeeds, unlinkSeeds } from './src/utils/links';
+import { exportGarden } from './src/utils/exportUtils';
+import { createId } from './src/utils/ids';
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
-import {
-  buildTransformOutput,
-  createSeed,
-  getLocalDateKey,
-  pickTodaySeed,
-  restoreSeed,
-  softDeleteSeed,
-  isSoftDeletedSeed,
-  syncResurfacedSeed,
-  updateSeed,
-  updateSeedResurfacingMeta,
-} from './src/utils/seedUtils';
+import { buildTransformOutput, getLocalDateKey, pickTodaySeed, syncResurfacedSeed } from './src/utils/seedUtils';
 
 type MainTab = 'home' | 'write' | 'seeds' | 'garden';
 
@@ -57,20 +48,44 @@ type ScreenState =
     };
 
 const TRANSFORM_DOUBLE_TAP_GUARD_MS = 700;
-const STORAGE_LOCKED_MESSAGE = '保存データの読み込みに問題があるため、変更を停止しています。';
+const BLOCKED_MESSAGE = '保存データを読み込めないため、変更を停止しています。データは消していません。';
+const SAVE_FAILED_MESSAGE = '保存できませんでした。入力は残っています。もう一度お試しください。';
 const CLEAR_ALL_DATA_ALERT_TITLE = 'すべてのデータを削除しますか？';
-const CLEAR_ALL_DATA_ALERT_MESSAGE = '保存されたすべての種（メモ）が削除されます。この操作は元に戻せません。';
+const CLEAR_ALL_DATA_ALERT_MESSAGE =
+  '保存されたすべてのメモ・つながり・芽・下書きと、復元用のコピーが端末から削除されます。この操作は元に戻せません。';
+const EXPORT_JSON_ALERT_TITLE = 'JSONで全データを書き出します';
+const EXPORT_JSON_ALERT_MESSAGE =
+  '削除済みのメモ、つながり、芽と材料、下書きもすべて含まれます。この書き出しからアプリへ復元する機能は、現時点ではありません。';
 
-const initialWriteDraft: WriteDraft = EMPTY_WRITE_DRAFT;
+const initialWriteDraft: WriteDraft = {
+  title: '',
+  body: '',
+  tags: '',
+  mood: undefined,
+  growthState: 'seed',
+  importance: 3,
+};
+
+/** 書く画面の一回分の操作ID。復元・再試行で作り直さない。 */
+type WriteSession = { draftId: string; seedId: string; commandId: string };
+const newWriteSession = (): WriteSession => ({ draftId: createId(), seedId: createId(), commandId: createId() });
+
+const isBlankDraft = (draft: WriteDraft) => draft.body.trim() === '' && draft.title.trim() === '' && draft.tags.trim() === '';
 
 export default function App() {
-  const [seeds, setSeeds] = React.useState<Seed[]>([]);
-  const [isReady, setIsReady] = React.useState(false);
-  const [canPersistSeeds, setCanPersistSeeds] = React.useState(false);
+  const garden = useGarden();
+  const { store } = garden;
+  const seeds = store.seeds;
+  const isReady = garden.phase.kind !== 'loading';
+  const isBlocked = garden.phase.kind === 'blocked';
   const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
   const [onboardingVisible, setOnboardingVisible] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
+  /** 「メモを足す」の接続先（中心）。 */
+  const [writeTargetId, setWriteTargetId] = React.useState<string | undefined>();
+  const [writeStandalone, setWriteStandalone] = React.useState(false);
+  const [writeSaving, setWriteSaving] = React.useState(false);
   const [todaySeed, setTodaySeed] = React.useState<ResurfacedSeed | undefined>();
   const [todayKey, setTodayKey] = React.useState('');
   const [seedsSearch, setSeedsSearch] = React.useState('');
@@ -79,16 +94,15 @@ export default function App() {
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
   const [toastKey, setToastKey] = React.useState(0);
   const [toastMsg, setToastMsg] = React.useState('');
-  const [saveState, setSaveState] = React.useState<SaveState>('idle');
+  /** 消えないエラー（保存失敗など）。成功するか、本人が閉じるまで残す。 */
+  const [persistentError, setPersistentError] = React.useState('');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveStateTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchedAtRef = React.useRef(Date.now());
   const transformTapMapRef = React.useRef<Record<string, number>>({});
-  const saveProgressRef = React.useRef<SaveProgress>({ requestId: 0, state: 'idle' });
-  const didHydrateSeedsRef = React.useRef(false);
-  const didHydrateDraftRef = React.useRef(false);
-  const latestDraftRef = React.useRef<WriteDraft>(initialWriteDraft);
+  const writeSessionRef = React.useRef<WriteSession | null>(null);
+  const didRestoreDraftRef = React.useRef(false);
+  const didStartupChecksRef = React.useRef(false);
 
   const showToast = React.useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -97,329 +111,333 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToastMsg(''), 3400);
   }, []);
 
-  const blockIfStorageLocked = React.useCallback((): boolean => {
-    if (canPersistSeeds) {
+  const blockIfLocked = React.useCallback((): boolean => {
+    if (!isBlocked) {
       return false;
     }
-
-    showToast(STORAGE_LOCKED_MESSAGE);
+    setPersistentError(BLOCKED_MESSAGE);
     return true;
-  }, [canPersistSeeds, showToast]);
+  }, [isBlocked]);
+
+  /** 確定した結果だけを成功として扱う。失敗は消えない表示にして、入力を残す。 */
+  const reportFailure = React.useCallback((result: Extract<CommitResult, { ok: false }>) => {
+    setPersistentError(
+      result.reason === 'rejected' && result.detail === 'conflict'
+        ? '別の更新が先に保存されました。入力は残っています。内容を確かめてからもう一度保存してください。'
+        : result.reason === 'locked'
+          ? BLOCKED_MESSAGE
+          : SAVE_FAILED_MESSAGE,
+    );
+  }, []);
+
+  const afterCommit = React.useCallback(
+    (result: CommitResult, successMessage?: string): boolean => {
+      if (!result.ok) {
+        reportFailure(result);
+        return false;
+      }
+      setPersistentError('');
+      triggerSuccessFeedback();
+      if (successMessage) {
+        showToast(result.backupOk ? successMessage : `${successMessage}（バックアップの更新だけ失敗しました）`);
+      }
+      return true;
+    },
+    [reportFailure, showToast],
+  );
 
   React.useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (saveStateTimer.current) clearTimeout(saveStateTimer.current);
       if (launchTimer.current) clearTimeout(launchTimer.current);
     };
   }, []);
 
+  // 起動の演出は、読込が終わったら待たせずに閉じる（入力を遅らせない）。
   React.useEffect(() => {
     if (!isReady) {
       return;
     }
-
     const elapsed = Date.now() - launchedAtRef.current;
-    const waitMs = Math.max(0, motion.launchMinVisibleMs - elapsed);
-
-    launchTimer.current = setTimeout(() => {
-      setShowLaunchIntro(false);
-    }, waitMs);
-
+    launchTimer.current = setTimeout(() => setShowLaunchIntro(false), Math.max(0, motion.launchMinVisibleMs - elapsed));
     return () => {
-      if (launchTimer.current) {
-        clearTimeout(launchTimer.current);
-      }
+      if (launchTimer.current) clearTimeout(launchTimer.current);
     };
   }, [isReady]);
 
+  // 読込が終わったときに一度だけ: 復元の通知、初回案内、書きかけの復元。
   React.useEffect(() => {
-    let active = true;
+    if (garden.phase.kind === 'loading' || didStartupChecksRef.current) {
+      return;
+    }
+    didStartupChecksRef.current = true;
 
-    const load = async () => {
-      const [loadResult, savedDraft, seenOnboarding] = await Promise.all([
-        seedRepository.getAll(),
-        loadDraft(),
-        hasSeenOnboarding(),
-      ]);
-      if (!active) {
-        return;
-      }
+    if (garden.phase.kind === 'blocked') {
+      setPersistentError(BLOCKED_MESSAGE);
+      return;
+    }
+    if (garden.phase.recoveredFromBackup) {
+      showToast('バックアップからメモを復元しました。');
+    }
 
-      // 書きかけの種があれば、そのまま続きから書けるようにする。
-      if (savedDraft) {
-        setWriteDraft(savedDraft);
-      }
-      didHydrateDraftRef.current = true;
+    const restorable = store.drafts.find((draft) => draft.kind === 'new' || draft.kind === 'add-memo');
+    if (restorable && !didRestoreDraftRef.current) {
+      didRestoreDraftRef.current = true;
+      writeSessionRef.current = {
+        draftId: restorable.id,
+        seedId: restorable.plannedId ?? createId(),
+        commandId: createId(),
+      };
+      setWriteDraft({
+        title: restorable.title ?? '',
+        body: restorable.body,
+        tags: restorable.tags ?? '',
+        mood: restorable.mood,
+        growthState: restorable.growthState ?? 'seed',
+        importance: restorable.importance ?? 3,
+      });
+      setWriteTargetId(restorable.kind === 'add-memo' ? restorable.targetSeedId : undefined);
+      setWriteStandalone(Boolean(restorable.standalone));
+    }
 
-      if (!loadResult.ok) {
-        setCanPersistSeeds(false);
-        setIsReady(true);
-        showToast('保存データを読み込めませんでした。自動保存を停止しています。');
-        return;
-      }
-
-      // はじめて使う人にだけ、短い案内を見せる。すでに種がある人（更新前から使っている人）には出さない。
-      if (!seenOnboarding) {
-        if (loadResult.seeds.length === 0) {
+    void (async () => {
+      const seen = await hasSeenOnboarding();
+      if (!seen) {
+        if (store.seeds.length === 0) {
           setOnboardingVisible(true);
         } else {
           void markOnboardingSeen();
         }
       }
+    })();
+  }, [garden.phase, showToast, store.drafts, store.seeds.length]);
 
-      setSeeds(loadResult.seeds);
-      setCanPersistSeeds(true);
-      setIsReady(true);
-      didHydrateSeedsRef.current = true;
+  const activeSeeds = React.useMemo(() => seeds.filter((seed) => !seed.deletedAt), [seeds]);
+  const deletedSeeds = React.useMemo(
+    () => seeds.filter((seed) => seed.deletedAt).sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')),
+    [seeds],
+  );
+  /** 表示するつながり。両端が削除されていないものだけ（削除済みへの線は復元まで見せない）。 */
+  const activeConnections = React.useMemo(() => {
+    const ids = new Set(activeSeeds.map((seed) => seed.id));
+    return store.connections.filter((connection) => ids.has(connection.aSeedId) && ids.has(connection.bSeedId));
+  }, [activeSeeds, store.connections]);
 
-      if (loadResult.recoveredFromBackup) {
-        showToast('バックアップから種を復元しました。');
-      }
-    };
+  // ---- 書きかけ（入力は即座に画面へ、保存は間を置いて writer へ） ----
 
-    void load();
-
-    return () => {
-      active = false;
-    };
-  }, [showToast]);
+  const writeTargetSeed = React.useMemo(
+    () => (writeTargetId ? activeSeeds.find((seed) => seed.id === writeTargetId) : undefined),
+    [activeSeeds, writeTargetId],
+  );
 
   React.useEffect(() => {
-    if (!isReady || !canPersistSeeds) {
+    if (!isReady || isBlocked) {
       return;
     }
-
-    if (!didHydrateSeedsRef.current) {
+    if (isBlankDraft(writeDraft)) {
+      if (writeSessionRef.current) {
+        garden.saveDraft(null, writeSessionRef.current.draftId);
+        writeSessionRef.current = null;
+      }
       return;
     }
-
-    const persist = async () => {
-      if (saveStateTimer.current) {
-        clearTimeout(saveStateTimer.current);
-      }
-
-      const started = beginSave(saveProgressRef.current.requestId);
-      saveProgressRef.current = started;
-      setSaveState(started.state);
-
-      const saveResult = await seedRepository.saveAll(seeds);
-      const finished = finishSave(saveProgressRef.current, started.requestId, saveResult);
-      if (finished.requestId !== saveProgressRef.current.requestId || finished.state === saveProgressRef.current.state) {
-        return;
-      }
-
-      saveProgressRef.current = finished;
-      setSaveState(finished.state);
-
-      if (finished.state === 'saved') {
-        saveStateTimer.current = setTimeout(() => {
-          const settled = settleSaved(saveProgressRef.current, started.requestId);
-          if (settled.state === saveProgressRef.current.state) {
-            return;
-          }
-
-          saveProgressRef.current = settled;
-          setSaveState(settled.state);
-        }, 1400);
-      }
+    const session = (writeSessionRef.current ??= newWriteSession());
+    const draft: Draft = {
+      id: session.draftId,
+      kind: writeTargetSeed && !writeStandalone ? 'add-memo' : 'new',
+      targetSeedId: writeTargetSeed?.id,
+      plannedId: session.seedId,
+      body: writeDraft.body,
+      title: writeDraft.title,
+      tags: writeDraft.tags,
+      mood: writeDraft.mood,
+      growthState: writeDraft.growthState,
+      importance: writeDraft.importance,
+      standalone: writeStandalone || undefined,
+      updatedAt: new Date().toISOString(),
     };
-
-    void persist();
-  }, [canPersistSeeds, isReady, seeds]);
-
-  // 書きかけは少し間を置いて端末に退避する。アプリが裏に回るときは即座に退避する。
-  React.useEffect(() => {
-    latestDraftRef.current = writeDraft;
-    if (!didHydrateDraftRef.current) {
-      return;
-    }
-    const timer = setTimeout(() => void saveDraft(writeDraft), 400);
-    return () => clearTimeout(timer);
-  }, [writeDraft]);
+    garden.saveDraft(draft);
+  }, [writeDraft, writeTargetSeed, writeStandalone, isReady, isBlocked]);
 
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' && didHydrateDraftRef.current) {
-        void saveDraft(latestDraftRef.current);
+      if (state !== 'active') {
+        void garden.flushDrafts();
       }
     });
     return () => subscription.remove();
-  }, []);
+  }, [garden]);
 
-  const activeSeeds = React.useMemo(() => seeds.filter((seed) => !isSoftDeletedSeed(seed)), [seeds]);
-  const deletedSeeds = React.useMemo(
-    () =>
-      seeds
-        .filter((seed) => isSoftDeletedSeed(seed))
-        .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')),
-    [seeds],
-  );
+  // ---- 今日の種（再浮上の記録も writer を通す） ----
 
   const refreshTodaySeed = React.useCallback(() => {
-    const picked = pickTodaySeed(activeSeeds);
+    const picked = pickTodaySeed(activeSeeds, activeConnections);
     setTodaySeed(picked);
     setTodayKey(getLocalDateKey());
-
-    if (!picked) {
+    if (!picked || isBlocked) {
       return;
     }
-
-    setSeeds((current) =>
-      current.map((seed) =>
-        seed.id === picked.seed.id
-          ? updateSeedResurfacingMeta(seed, {
-              lastResurfacedAt: new Date().toISOString(),
-              resurfacingScore: picked.seed.resurfacingScore,
-            })
-          : seed,
-      ),
+    void garden.run(
+      touchResurfacing({
+        commandId: createId(),
+        seedId: picked.seed.id,
+        resurfacedAt: new Date().toISOString(),
+        score: picked.seed.resurfacingScore,
+      }),
     );
-  }, [activeSeeds]);
+  }, [activeSeeds, activeConnections, garden, isBlocked]);
 
   const displayedTodaySeed = React.useMemo(() => syncResurfacedSeed(todaySeed, activeSeeds), [todaySeed, activeSeeds]);
 
   React.useEffect(() => {
-    if (!isReady) {
+    if (!isReady || isBlocked) {
       return;
     }
-
-    // 表示中の今日の種が消えた・アーカイブされた場合も選び直す。表示と同じ判定を使う。
     if (todayKey !== getLocalDateKey() || !displayedTodaySeed) {
       refreshTodaySeed();
     }
-  }, [displayedTodaySeed, isReady, todayKey, refreshTodaySeed]);
+  }, [displayedTodaySeed, isReady, isBlocked, todayKey, refreshTodaySeed]);
 
-  const handleCreateSeed = (input: SeedCreateInput) => {
-    if (!input.body.trim() || blockIfStorageLocked()) {
-      return;
-    }
+  // ---- 操作（確定してから成功を表示する） ----
 
-    // 続きの元になった種が、いまも残っているときだけつなぐ。
-    const continuedFromId = activeSeeds.some((seed) => seed.id === input.continuedFromId) ? input.continuedFromId : undefined;
-    const nextSeed = createSeed({ ...input, continuedFromId });
-    triggerSuccessFeedback();
-    setSeeds((current) => [nextSeed, ...current]);
+  const resetWrite = () => {
+    writeSessionRef.current = null;
     setWriteDraft(initialWriteDraft);
-    if (continuedFromId) {
-      // 続きを書いたときは、つながった様子（話のながれ）がすぐ見える詳細画面を開く。
-      setScreen({ kind: 'detail', seedId: nextSeed.id, from: 'home' });
-      showToast('続きの種をまきました 🌱 元の種とつながりました');
-      return;
-    }
-    setScreen({ kind: 'home' });
-    showToast('種をまきました 🌱 「種一覧」に入りました');
+    setWriteTargetId(undefined);
+    setWriteStandalone(false);
   };
 
-  const handleLinkSeeds = (seedId: string, otherId: string) => {
-    if (blockIfStorageLocked()) {
+  const handleCreateSeed = async (input: SeedCreateInput) => {
+    if (!input.body.trim() || blockIfLocked() || writeSaving) {
       return;
     }
-    triggerSuccessFeedback();
-    setSeeds((current) => linkSeeds(current, seedId, otherId));
-    showToast('つなぎました 🌿');
+    const session = (writeSessionRef.current ??= newWriteSession());
+    const center = writeTargetSeed && !writeStandalone ? writeTargetSeed : undefined;
+    const now = new Date().toISOString();
+
+    setWriteSaving(true);
+    // 確定操作の前に、待機中の下書き保存を優先して流す。
+    await garden.flushDrafts();
+    const result = await garden.run(
+      center
+        ? captureAndConnect({ commandId: session.commandId, seedId: session.seedId, input, centerId: center.id, now, draftId: session.draftId })
+        : captureSeed({ commandId: session.commandId, seedId: session.seedId, input, now, draftId: session.draftId }),
+    );
+    setWriteSaving(false);
+
+    if (!afterCommit(result, center ? '保存して、つなぎました 🌱' : '保存しました 🌱 「種一覧」に入りました')) {
+      return; // 失敗: 入力・接続先・操作IDを残す（もう一度押すと同じ操作を再試行する）
+    }
+    resetWrite();
+    setScreen(center ? { kind: 'detail', seedId: center.id, from: 'home' } : { kind: 'home' });
   };
 
-  const handleUnlinkSeeds = (seedId: string, otherId: string) => {
-    if (blockIfStorageLocked()) {
+  const handleAddMemo = (seedId: string) => {
+    if (!activeSeeds.some((seed) => seed.id === seedId)) {
       return;
     }
-    setSeeds((current) => unlinkSeeds(current, seedId, otherId));
-    showToast('つながりを外しました');
-  };
-
-  // 「続きを書く」: 書く画面を、元の種の続きとして開く。書きかけがあれば消さずに、その続きとして扱う。
-  const handleContinueSeed = (seedId: string) => {
-    const origin = activeSeeds.find((seed) => seed.id === seedId);
-    if (!origin) {
-      return;
-    }
-    setWriteDraft((current) => {
-      const hasDraft = current.body.trim() !== '' || current.title.trim() !== '';
-      return hasDraft
-        ? { ...current, continuedFromId: seedId }
-        : { ...initialWriteDraft, tags: origin.tags.join(', '), continuedFromId: seedId };
-    });
+    // 書きかけがあれば消さずに、その接続先だけを切り替える。
+    setWriteTargetId(seedId);
+    setWriteStandalone(false);
     setScreen({ kind: 'write' });
   };
 
-  const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
-    if ((payload.body !== undefined && !payload.body.trim()) || blockIfStorageLocked()) {
-      return;
+  const handleUpdateSeed = async (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string): Promise<boolean> => {
+    if ((payload.body !== undefined && !payload.body.trim()) || blockIfLocked()) {
+      return false;
     }
-
-    triggerSuccessFeedback();
-    setSeeds((current) => current.map((seed) => (seed.id === seedId ? updateSeed(seed, payload) : seed)));
-    showToast('種を更新しました ✨');
+    const result = await garden.run(
+      updateSeedFields({ commandId: createId(), seedId, patch: payload, now: new Date().toISOString(), expectedUpdatedAt }),
+    );
+    return afterCommit(result, '更新しました ✨');
   };
 
-  const handleDeleteSeed = (seedId: string) => {
-    if (blockIfStorageLocked()) {
+  const handleDeleteSeed = async (seedId: string) => {
+    if (blockIfLocked()) {
       return;
     }
-
+    const result = await garden.run(softDeleteSeed({ commandId: createId(), seedId, now: new Date().toISOString() }));
+    if (!afterCommit(result)) {
+      return;
+    }
     triggerWarningFeedback();
-    setSeeds((current) => current.map((seed) => (seed.id === seedId ? softDeleteSeed(seed) : seed)));
     setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
     showToast('削除しました。「種一覧」の一番下から元に戻せます');
   };
 
   const handleRestoreSeed = React.useCallback(
-    (seedId: string) => {
-      if (blockIfStorageLocked()) {
+    async (seedId: string) => {
+      if (blockIfLocked()) {
         return;
       }
-
-      triggerSuccessFeedback();
-      setSeeds((current) => current.map((seed) => (seed.id === seedId ? restoreSeed(seed) : seed)));
-      showToast('種を復元しました 🌱');
+      const result = await garden.run(restoreSeed({ commandId: createId(), seedId, now: new Date().toISOString() }));
+      afterCommit(result, '復元しました 🌱');
     },
-    [blockIfStorageLocked, showToast],
+    [afterCommit, blockIfLocked, garden],
   );
 
-  const handleCreateTransform = (seedId: string, type: TransformType) => {
-    if (blockIfStorageLocked()) {
+  const handleLinkSeeds = async (seedId: string, otherId: string) => {
+    if (blockIfLocked()) {
       return;
     }
+    const result = await garden.run(connectSeeds({ commandId: createId(), a: seedId, b: otherId, now: new Date().toISOString() }));
+    afterCommit(result, 'つなぎました 🌿');
+  };
 
+  const handleUnlinkSeeds = async (seedId: string, otherId: string) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(disconnectSeeds({ commandId: createId(), a: seedId, b: otherId }));
+    afterCommit(result, 'つながりを外しました。メモは両方とも残っています');
+  };
+
+  const handleCreateTransform = async (seedId: string, type: TransformType) => {
+    if (blockIfLocked()) {
+      return;
+    }
     const key = `${seedId}:${type}`;
     const now = Date.now();
-    const lastTapAt = transformTapMapRef.current[key] ?? 0;
-    if (now - lastTapAt < TRANSFORM_DOUBLE_TAP_GUARD_MS) {
+    if (now - (transformTapMapRef.current[key] ?? 0) < TRANSFORM_DOUBLE_TAP_GUARD_MS) {
       return;
     }
     transformTapMapRef.current[key] = now;
 
-    triggerSuccessFeedback();
-    showToast('水をあげました 💧 候補を追加しました');
-    setSeeds((current) =>
-      current.map((seed) => {
-        if (seed.id !== seedId) {
-          return seed;
-        }
-
-        const nextOutput = buildTransformOutput(seed, type);
-        return updateSeed(seed, {
-          transformOutputs: [...(seed.transformOutputs ?? []), nextOutput],
-        });
-      }),
+    const seed = seeds.find((item) => item.id === seedId);
+    if (!seed) {
+      return;
+    }
+    const result = await garden.run(
+      addTransformOutput({ commandId: createId(), seedId, output: buildTransformOutput(seed, type), now: new Date().toISOString() }),
     );
+    afterCommit(result, '候補を追加しました');
   };
 
-  const handleExportJson = React.useCallback(async () => {
-    const result = await exportSeeds(seeds, 'json');
-    if (!result.ok) {
-      showToast(result.message);
-    }
-  }, [seeds, showToast]);
+  const handleExportJson = React.useCallback(() => {
+    // 削除済み・下書きも含む全データであることを、実行の前に伝える。
+    Alert.alert(EXPORT_JSON_ALERT_TITLE, EXPORT_JSON_ALERT_MESSAGE, [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '書き出す',
+        onPress: () => {
+          void (async () => {
+            const result = await exportGarden(store, 'json');
+            if (!result.ok) {
+              showToast(result.message);
+            }
+          })();
+        },
+      },
+    ]);
+  }, [store, showToast]);
 
   const handleExportText = React.useCallback(async () => {
-    const result = await exportSeeds(seeds, 'text');
+    const result = await exportGarden(store, 'text');
     if (!result.ok) {
       showToast(result.message);
     }
-  }, [seeds, showToast]);
+  }, [store, showToast]);
 
   const openExternalUrl = React.useCallback(
     async (url: string, failureMessage: string) => {
@@ -452,10 +470,6 @@ export default function App() {
   }, []);
 
   const handleClearAllData = React.useCallback(() => {
-    if (blockIfStorageLocked()) {
-      return;
-    }
-
     Alert.alert(CLEAR_ALL_DATA_ALERT_TITLE, CLEAR_ALL_DATA_ALERT_MESSAGE, [
       { text: 'キャンセル', style: 'cancel' },
       {
@@ -463,17 +477,17 @@ export default function App() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
-            // 復元用・破損退避用のコピーも含めて端末から消す。失敗したら画面上のデータは残す。
-            const result = await seedRepository.clearAll();
+            // 削除は専用の手順。すべてのキーの消去と空データの確定を確認できるまで、完了と表示しない。
+            const retry = garden.status.deleting;
+            const result = retry ? await garden.retryDeleteAll() : await garden.deleteAll();
             if (!result.ok) {
-              showToast('データを削除できませんでした。もう一度お試しください。');
+              setPersistentError('削除を完了できませんでした。もう一度「すべてのデータを削除」を押してください。アプリを開き直すと、削除の続きから再開します。');
               return;
             }
-
             triggerWarningFeedback();
-            setSeeds([]);
+            setPersistentError('');
             setTodaySeed(undefined);
-            setWriteDraft(initialWriteDraft);
+            resetWrite();
             setSeedsSearch('');
             setStateFilter('all');
             setTagFilter(null);
@@ -485,7 +499,7 @@ export default function App() {
         },
       },
     ]);
-  }, [blockIfStorageLocked, showToast]);
+  }, [garden, showToast]);
 
   const selectedSeed = screen.kind === 'detail' ? activeSeeds.find((seed) => seed.id === screen.seedId) : undefined;
 
@@ -506,6 +520,7 @@ export default function App() {
           key={selectedSeed.id}
           seed={selectedSeed}
           allSeeds={activeSeeds}
+          connections={activeConnections}
           onBack={() => setScreen({ kind: screen.from })}
           backLabel={tabLabels[screen.from]}
           onSave={handleUpdateSeed}
@@ -513,7 +528,7 @@ export default function App() {
           onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: screen.from })}
           onLinkSeeds={handleLinkSeeds}
           onUnlinkSeeds={handleUnlinkSeeds}
-          onContinue={handleContinueSeed}
+          onAddMemo={handleAddMemo}
           onCreateTransform={handleCreateTransform}
         />
       );
@@ -523,9 +538,15 @@ export default function App() {
       return (
         <WriteScreen
           draft={writeDraft}
-          continuedFrom={activeSeeds.find((seed) => seed.id === writeDraft.continuedFromId)}
+          addTo={writeTargetSeed}
+          standalone={writeStandalone}
+          saving={writeSaving}
           onChange={(next) => setWriteDraft((current) => ({ ...current, ...next }))}
-          onClearContinuation={() => setWriteDraft((current) => ({ ...current, continuedFromId: undefined }))}
+          onToggleStandalone={() => setWriteStandalone((value) => !value)}
+          onClearTarget={() => {
+            setWriteTargetId(undefined);
+            setWriteStandalone(false);
+          }}
           onSave={handleCreateSeed}
         />
       );
@@ -535,6 +556,7 @@ export default function App() {
       return (
         <SeedsScreen
           seeds={activeSeeds}
+          connections={activeConnections}
           deletedSeeds={deletedSeeds}
           search={seedsSearch}
           stateFilter={stateFilter}
@@ -555,6 +577,7 @@ export default function App() {
       return (
         <GardenScreen
           seeds={activeSeeds}
+          connections={activeConnections}
           onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })}
           onOpenSeedsByState={(state) => {
             setSeedsSearch('');
@@ -575,6 +598,7 @@ export default function App() {
     return (
       <HomeScreen
         seeds={activeSeeds}
+        connections={activeConnections}
         todaySeed={displayedTodaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
@@ -591,9 +615,8 @@ export default function App() {
   };
 
   const activeTab: MainTab = screen.kind === 'detail' ? screen.from : screen.kind;
-  // 保存の「保存中…」「保存しました」は頻繁に出て気が散るため表示しない。失敗したときだけ知らせる。
-  const saveStateMessage = saveState === 'error' ? getSaveStateMessage(saveState) : '';
-  const statusToastMessage = toastMsg || saveStateMessage;
+  // 成功の通知は時間で消える。失敗・読込停止は、解決するまで消えない。
+  const statusToastMessage = toastMsg || persistentError;
   const tabBarVisible = screen.kind !== 'detail' && isReady && !onboardingVisible;
 
   return (
@@ -607,7 +630,7 @@ export default function App() {
             <SaveToast
               key={toastKey}
               message={statusToastMessage}
-              tone={toastMsg ? 'default' : 'error'}
+              tone={toastMsg && !persistentError ? 'default' : 'error'}
               aboveTabBar={tabBarVisible}
             />
           ) : null}

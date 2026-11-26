@@ -2,6 +2,7 @@ import { getIdsWithRecentlyActiveLinks } from './links';
 import {
   type ResurfacedSeed,
   type Seed,
+  type SeedConnection,
   type SeedCreateInput,
   type SeedUpdateInput,
   type TransformOutput,
@@ -48,8 +49,6 @@ export const createSeed = (input: SeedCreateInput): Seed => {
     importance: clampImportance(input.importance),
     growthState: input.growthState ?? 'seed',
     tags: cleanArray(input.tags),
-    relatedSeedIds: cleanArray(input.relatedSeedIds),
-    continuedFromId: input.continuedFromId?.trim() || undefined,
     transformOutputs: [],
     schemaVersion: SEED_SCHEMA_VERSION,
   };
@@ -65,7 +64,6 @@ export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => {
     title: patch.title !== undefined ? patch.title?.trim() || undefined : seed.title,
     body: nextBody || currentBody,
     tags: patch.tags !== undefined ? cleanArray(patch.tags) : seed.tags,
-    relatedSeedIds: patch.relatedSeedIds !== undefined ? cleanArray(patch.relatedSeedIds) : seed.relatedSeedIds,
     transformOutputs: patch.transformOutputs ?? seed.transformOutputs ?? [],
     updatedAt: new Date().toISOString(),
   };
@@ -122,7 +120,7 @@ const buildResurfacingScore = (seed: Seed, now: Date, hasActiveLink = false): nu
 // 今日の種の候補にできるのはアーカイブされていない種だけ。pickTodaySeed と syncResurfacedSeed で同じ条件を使う。
 const isResurfacableSeed = (seed: Seed): boolean => seed.growthState !== 'archived';
 
-export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
+export const pickTodaySeed = (seeds: Seed[], connections: SeedConnection[] = []): ResurfacedSeed | undefined => {
   const candidates = seeds.filter(isResurfacableSeed);
   if (candidates.length === 0) {
     return undefined;
@@ -130,7 +128,7 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
 
   const now = new Date();
   // つながる種が最近育った種は、同じ話に出会い直しやすいよう少しだけ浮上しやすくする。
-  const withActiveLinks = getIdsWithRecentlyActiveLinks(seeds, now);
+  const withActiveLinks = getIdsWithRecentlyActiveLinks(seeds, connections, now);
   const scored = candidates
     .map((seed) => ({ seed, score: buildResurfacingScore(seed, now, withActiveLinks.has(seed.id)) }))
     .sort((a, b) => b.score - a.score)
@@ -252,16 +250,6 @@ export const groupSeedsByTag = (seeds: Seed[]): Map<string | undefined, Seed[]> 
     }
   }
   return groups;
-};
-
-// 関連候補は先頭 limit 件だけを表示する。すでに選ばれている種は上限の外でも残し、保存時に黙って外れないようにする。
-export const pickRelatedCandidates = (allSeeds: Seed[], seedId: string, selectedIds: string[], limit: number): Seed[] => {
-  const others = allSeeds.filter((seed) => seed.id !== seedId);
-  const visible = others.slice(0, limit);
-  const visibleIds = new Set(visible.map((seed) => seed.id));
-  const selected = new Set(selectedIds);
-  const selectedBeyondLimit = others.filter((seed) => !visibleIds.has(seed.id) && selected.has(seed.id));
-  return [...visible, ...selectedBeyondLimit];
 };
 
 const UNTAGGED_GROUP_KEY = 'untagged';

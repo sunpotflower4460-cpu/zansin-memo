@@ -33,14 +33,20 @@ type WriteScreenProps = {
     importance: Importance;
   };
   onChange: (value: Partial<WriteScreenProps['draft']>) => void;
-  /** 「続きを書く」から来たときの元の種。 */
-  continuedFrom?: Seed;
-  onClearContinuation: () => void;
-  onSave: (input: SeedCreateInput) => void;
+  /** 「メモを足す」で、いまつなぐ先にしている種（中心）。 */
+  addTo?: Seed;
+  /** 単独のメモとして残す（本文は消さない）。 */
+  standalone: boolean;
+  /** 保存の確定を待っている間は、二重に押せない。 */
+  saving: boolean;
+  onToggleStandalone: () => void;
+  onClearTarget: () => void;
+  onSave: (input: SeedCreateInput) => void | Promise<void>;
 };
 
-export function WriteScreen({ draft, onChange, continuedFrom, onClearContinuation, onSave }: WriteScreenProps) {
-  const saveDisabled = draft.body.trim().length === 0;
+export function WriteScreen({ draft, onChange, addTo, standalone, saving, onToggleStandalone, onClearTarget, onSave }: WriteScreenProps) {
+  const saveDisabled = draft.body.trim().length === 0 || saving;
+  const connecting = Boolean(addTo) && !standalone;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const saveAccessibilityHint = saveDisabled ? '種のことばを入力するとまけます。' : '今の内容で種をまきます。';
 
@@ -61,21 +67,30 @@ export function WriteScreen({ draft, onChange, continuedFrom, onClearContinuatio
           思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
         </Text>
 
-        {continuedFrom ? (
+        {addTo ? (
           <View style={styles.continuation}>
-            <Ionicons name="git-branch-outline" size={20} color={theme.colors.primary} />
+            <Ionicons name={connecting ? 'git-branch-outline' : 'document-outline'} size={20} color={theme.colors.primary} />
             <View style={styles.continuationBody}>
-              <Text style={styles.continuationLabel}>この種の続きとして書きます</Text>
+              <Text style={styles.continuationLabel}>{connecting ? 'このメモにつなげます' : '単独のメモとして残します'}</Text>
               <Text style={styles.continuationText} numberOfLines={2}>
-                {toSeedSnippet(continuedFrom, 40)}
+                {toSeedSnippet(addTo, 40)}
               </Text>
+              <AnimatedPressable
+                onPress={onToggleStandalone}
+                style={styles.toggleLink}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={connecting ? '単独のメモとして残すに切り替える。本文は消えません' : 'このメモにつなげるに戻す'}
+              >
+                <Text style={styles.toggleLinkText}>{connecting ? '単独のメモとして残す' : 'このメモにつなげる'}</Text>
+              </AnimatedPressable>
             </View>
             <AnimatedPressable
-              onPress={onClearContinuation}
+              onPress={onClearTarget}
               style={styles.continuationClose}
               haptic="light"
               accessibilityRole="button"
-              accessibilityLabel="続きではなく、新しい種として書く"
+              accessibilityLabel="つなぎ先の指定をやめる。本文は消えません"
             >
               <Ionicons name="close-circle-outline" size={24} color={theme.colors.textMuted} />
             </AnimatedPressable>
@@ -176,7 +191,8 @@ export function WriteScreen({ draft, onChange, continuedFrom, onClearContinuatio
       <View style={styles.bottomBar}>
         {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「種をまく」を押せるようになります。</Text> : null}
         <PrimaryButton
-          label="種をまく"
+          label={saving ? '保存しています…' : connecting ? '保存してつなぐ' : '種をまく'}
+          accessibilityLabel={connecting ? '保存してつなぐ' : '種をまく'}
           disabled={saveDisabled}
           accessibilityHint={saveAccessibilityHint}
           onPress={() =>
@@ -187,7 +203,6 @@ export function WriteScreen({ draft, onChange, continuedFrom, onClearContinuatio
               importance: draft.importance,
               growthState: draft.growthState,
               tags: parseTags(draft.tags),
-              continuedFromId: continuedFrom?.id,
             })
           }
         />
@@ -236,6 +251,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  toggleLink: {
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  toggleLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    textDecorationLine: 'underline',
   },
   continuationClose: {
     minWidth: 44,
