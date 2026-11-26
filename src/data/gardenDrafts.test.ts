@@ -83,6 +83,17 @@ test('a failed older draft write never replaces newer input', async () => {
   assert.equal(stored(storage).drafts[0]?.body, '新しい');
 });
 
+test('the unsaved-draft warning clears once there is nothing left to write', async () => {
+  const { storage, writer } = make();
+  storage.failNext('setItem', KEYS.main);
+  writer.saveDraft(draft('入力'));
+  await writer.flushDrafts();
+  assert.ok(writer.getStatus().lastFailure);
+  writer.saveDraft(null, 'd1'); // 本人が入力を消した
+  await writer.flushDrafts();
+  assert.equal(writer.getStatus().lastFailure, undefined);
+});
+
 test('flushing while a draft write is in flight reports that write', async () => {
   const { storage, writer } = make();
   const release = storage.hold('setItem', KEYS.main);

@@ -197,6 +197,8 @@ export class GardenWriter {
       return { ok: false, reason: 'rejected', detail: result.rejected };
     }
     if (result === base && !this.needsInitialPersist) {
+      // 書き直す必要がなくなった下書き（失敗後に消した等）は、未保存の警告も解消する。
+      if (command.id.startsWith('draft-')) this.lastFailure = undefined;
       return { ok: true, revision: base.revision, backupOk: !this.backupStale, noop: true };
     }
 
