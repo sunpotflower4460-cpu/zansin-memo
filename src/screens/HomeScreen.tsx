@@ -14,6 +14,7 @@ import { ImportanceDots } from '../components/ImportanceDots';
 import { LinkCount } from '../components/LinkCount';
 import { getLinkCounts, getLinkedSeeds } from '../utils/links';
 import { toSeedSnippet } from '../utils/seedText';
+import { GardenLetterCard } from '../components/GardenLetterCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
@@ -22,6 +23,7 @@ import { theme } from '../styles/theme';
 import { formatRelativeDay } from '../utils/seedUtils';
 import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
 import { GROWTH_STATE_OPTIONS } from '../domain/types';
+import { buildGardenLetter } from '../utils/gardenLetter';
 
 type HomeScreenProps = {
   seeds: Seed[];
@@ -62,6 +64,7 @@ export function HomeScreen({
     [todaySeed, seeds],
   );
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+  const gardenLetter = buildGardenLetter(seeds);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
 
@@ -184,6 +187,12 @@ export function HomeScreen({
             </View>
             <FieldRow seeds={seeds} onPress={onOpenGarden} />
           </SectionCard>
+        </FadeInView>
+      ) : null}
+
+      {seeds.length > 0 ? (
+        <FadeInView delayMs={80}>
+          <GardenLetterCard letter={gardenLetter} onOpenGarden={onOpenGarden} />
         </FadeInView>
       ) : null}
 
