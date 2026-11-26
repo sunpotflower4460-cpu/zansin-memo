@@ -1,22 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import banner from '../../assets/banner-field.png';
+import * as React from 'react';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import soilTexture from '../../assets/soil.png';
-import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { FoldSection } from '../components/FoldSection';
 import { HelpButton } from '../components/HelpButton';
 import { LinkCount } from '../components/LinkCount';
-import { findRecurringWords, getLinkCounts, getLinkedSeeds } from '../utils/links';
-import { toSeedSnippet } from '../utils/seedText';
-import { SectionCard } from '../components/SectionCard';
-import { helpTexts } from '../utils/helpTexts';
 import type { GrowthState, Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
+import { helpTexts } from '../utils/helpTexts';
+import { findRecurringWords, getLinkCounts, getLinkedSeeds } from '../utils/links';
+import { toSeedSnippet } from '../utils/seedText';
 import { getTagGroupKey, getTagGroupLabel, groupSeedsByTag } from '../utils/seedUtils';
+import { stageImages } from '../utils/stageImages';
 
 type GardenScreenProps = {
   seeds: Seed[];
@@ -30,492 +29,278 @@ type GardenScreenProps = {
   onOpenConnectedList: () => void;
 };
 
-const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
-const GARDEN_CARD_WIDTH_RATIO = 0.72;
-const GARDEN_CARD_MIN_WIDTH = 210;
-const GARDEN_CARD_MAX_WIDTH = 280;
+/** 畑に大きく並べる育ち方。保管は別の小さな入口にする。 */
+const PLOT_STATES = ['seed', 'sprout', 'tree'] as const;
+type PlotState = (typeof PLOT_STATES)[number];
+const PLANT_LIMIT = 6;
+const LINK_CARD_LIMIT = 6;
 
-// 育ちごとに、土の色から若草・深緑へと畝の色を変える。
-const bedTints: Record<GrowthState, string> = {
+// 育ちごとに、土の色から若草・花の色へと区画の色を変える。
+const plotTints: Record<PlotState, string> = {
   seed: '#efe3cb',
   sprout: '#e8eed6',
-  tree: '#dde9d4',
-  archived: '#ece7db',
-};
-
-const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
-  seed: 'leaf-outline',
-  sprout: 'nutrition-outline',
-  tree: 'flower-outline',
-  archived: 'archive-outline',
-};
-
-const stateAccents: Record<GrowthState, string> = {
-  seed: '#b9a67b', // 土の色
-  sprout: '#7fae6a', // 若草
-  tree: theme.colors.primary,
-  archived: '#a39d90', // 古紙の灰
+  tree: '#f4e2da',
 };
 
 export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByState, onSearchWord, onOpenConnectedList }: GardenScreenProps) {
-  const { width } = useWindowDimensions();
-  const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
+  const [chosen, setChosen] = React.useState<PlotState | undefined>();
 
-  const stateBuckets = useMemo(() => {
-    const buckets: Record<GrowthState, Seed[]> = { seed: [], sprout: [], tree: [], archived: [] };
+  const buckets = React.useMemo(() => {
+    const grouped: Record<GrowthState, Seed[]> = { seed: [], sprout: [], tree: [], archived: [] };
     for (const seed of seeds) {
-      buckets[seed.growthState].push(seed);
+      grouped[seed.growthState].push(seed);
     }
-    return buckets;
+    for (const list of Object.values(grouped)) {
+      list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+    return grouped;
   }, [seeds]);
 
-  const linkCounts = useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
+  // 開いたときは、いちばん育っている区画を見せる。
+  const selected: PlotState = chosen ?? (buckets.tree.length > 0 ? 'tree' : buckets.sprout.length > 0 ? 'sprout' : 'seed');
+  const plants = buckets[selected];
 
+  const linkCounts = React.useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
   // つながりのあるメモ（中心にして見られるカード）。同じ集団を「同じテーマ」とまとめず、メモごとに直接のつながりだけを示す。
-  const connectedCenters = useMemo(
+  const connectedCenters = React.useMemo(
     () =>
       seeds
         .filter((seed) => (linkCounts.get(seed.id) ?? 0) > 0)
         .sort((a, b) => (linkCounts.get(b.id) ?? 0) - (linkCounts.get(a.id) ?? 0) || b.updatedAt.localeCompare(a.updatedAt)),
     [seeds, linkCounts],
   );
-  const recurringWords = useMemo(() => findRecurringWords(seeds), [seeds]);
-
-  const groupedByTag = useMemo(() => groupSeedsByTag(seeds), [seeds]);
-
-  const orderedTags = useMemo(
+  const recurringWords = React.useMemo(() => findRecurringWords(seeds), [seeds]);
+  const groupedByTag = React.useMemo(() => groupSeedsByTag(seeds), [seeds]);
+  const tags = React.useMemo(
     () =>
-      Array.from(groupedByTag.keys()).sort((a, b) => {
-        if (a === undefined) {
-          return 1;
-        }
-        if (b === undefined) {
-          return -1;
-        }
-        return a.localeCompare(b);
-      }),
+      Array.from(groupedByTag.keys())
+        .filter((tag): tag is string => tag !== undefined)
+        .sort((a, b) => a.localeCompare(b)),
     [groupedByTag],
   );
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.banner} accessible accessibilityRole="header" accessibilityLabel="庭">
-        <Image source={banner} style={styles.bannerImage} resizeMode="cover" accessibilityIgnoresInvertColors />
-        <Text style={styles.heading}>庭</Text>
-      </View>
-      <View style={styles.subheadingRow}>
-        <Text style={[styles.subheading, styles.subheadingText]}>種から芽へ、芽から花へ。育ちを静かに見渡せます。</Text>
+      <View style={styles.headingRow}>
+        <Text style={styles.heading} accessibilityRole="header">
+          庭
+        </Text>
         <HelpButton content={helpTexts.garden} />
       </View>
 
       {seeds.length === 0 ? (
         <EmptyState image={stageImages.seed} title="この場所は、これから育っていきます。" description="書いた種が増えると、土の上に少しずつ並びます。" />
-      ) : null}
-
-      {connectedCenters.length > 0 ? (
-        <FadeInView delayMs={30}>
-          <View style={styles.linkSection}>
-            <View style={styles.linkTitleRow}>
-              <Ionicons name="git-network-outline" size={20} color={theme.colors.primary} />
-              <Text style={styles.sectionTitle}>つながりのあるメモ</Text>
-            </View>
-            <Text style={styles.emptyText}>あなたが結んだメモです。タップすると、そのメモを中心につながりを見られます。</Text>
-            {connectedCenters.slice(0, 6).map((center) => {
-              const around = getLinkedSeeds(center, seeds, connections);
-              return (
-                <AnimatedPressable
-                  key={center.id}
-                  onPress={() => onOpenSeed(center.id)}
-                  style={styles.centerCard}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel={`つながりを見る。${toSeedSnippet(center, 30)}。つながり${around.length}件`}
-                >
-                  <Text style={styles.centerText} numberOfLines={2}>
-                    {toSeedSnippet(center, 60)}
-                  </Text>
-                  {around.slice(0, 2).map((other) => (
-                    <Text key={other.id} style={styles.aroundText} numberOfLines={1}>
-                      ─ {toSeedSnippet(other, 40)}
-                    </Text>
-                  ))}
-                  <View style={styles.centerFooter}>
-                    <Text style={styles.centerMeta}>
-                      つながり {around.length}件{around.length > 2 ? `（ほか${around.length - 2}件）` : ''}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-                  </View>
-                </AnimatedPressable>
-              );
-            })}
-            {connectedCenters.length > 6 ? (
-              <AnimatedPressable
-                onPress={onOpenConnectedList}
-                style={styles.moreLink}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel={`ほか${connectedCenters.length - 6}件を、一覧で見る`}
-              >
-                <Text style={styles.moreLinkText}>ほか{connectedCenters.length - 6}件を一覧で見る</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-              </AnimatedPressable>
-            ) : null}
-          </View>
-        </FadeInView>
-      ) : null}
-
-      {recurringWords.length > 0 ? (
-        <FadeInView delayMs={50}>
-          <View style={styles.linkSection}>
-            <View style={styles.linkTitleRow}>
-              <Ionicons name="water-outline" size={20} color="#4f7f93" />
-              <Text style={styles.sectionTitle}>くり返し出てくる言葉</Text>
-            </View>
-            <Text style={styles.emptyText}>複数の種に現れる言葉です。タップすると、その言葉を含む種を探せます。</Text>
-            <View style={styles.wordRow}>
-              {recurringWords.map(({ word, count }) => (
-                <AnimatedPressable
-                  key={word}
-                  onPress={() => onSearchWord(word)}
-                  style={styles.wordChip}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel={`「${word}」を含む種を探す。${count}件の種に出てきます`}
-                >
-                  <Text style={styles.wordText}>{word}</Text>
-                  <Text style={styles.wordCount}>{count}</Text>
-                </AnimatedPressable>
-              ))}
-            </View>
-          </View>
-        </FadeInView>
-      ) : null}
-
-      {orderedStates.map((state) => {
-        const bucket = stateBuckets[state];
-
-        return (
-          <FadeInView key={state} delayMs={40}>
-            <View style={[styles.bed, { backgroundColor: bedTints[state] }]}>
-            <View style={styles.furrow}>
-              <Image source={soilTexture} resizeMode="repeat" style={styles.soilImage} />
-            </View>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <Image source={stageImages[state]} style={styles.stageIcon} accessibilityIgnoresInvertColors />
-                <View style={styles.sectionTitleText}>
-                  <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
-                  <Text style={styles.sectionHint}>{growthStateHints[state]}</Text>
-                </View>
-              </View>
-              <View style={styles.sectionRight}>
-                <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>
-                  {bucket.length}
-                </Text>
-                {bucket.length > 0 ? (
+      ) : (
+        <>
+          {/* 畑: 種・芽・花の区画。押した区画の植物を下に並べる。 */}
+          <FadeInView delayMs={30}>
+            <View style={styles.plots}>
+              {PLOT_STATES.map((state) => {
+                const on = state === selected;
+                return (
                   <AnimatedPressable
-                    onPress={() => onOpenSeedsByState(state)}
-                    style={styles.listLink}
+                    key={state}
+                    onPress={() => setChosen(state)}
+                    containerStyle={styles.plotContainer}
+                    style={[styles.plot, { backgroundColor: plotTints[state] }, on && styles.plotOn]}
                     haptic="light"
-                    accessibilityRole="button"
-                    accessibilityLabel={`${growthStateLabels[state]}の種を一覧で見る`}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${growthStateLabels[state]} ${buckets[state].length}件。${growthStateHints[state]}`}
                   >
-                    <Text style={styles.listLinkText}>一覧で見る</Text>
-                    <Ionicons name="chevron-forward" size={14} color={theme.colors.primary} />
-                  </AnimatedPressable>
-                ) : null}
-              </View>
-            </View>
-
-            {bucket.length === 0 ? (
-              <Text style={styles.emptyText}>まだこの状態の種はありません。</Text>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
-                {bucket.map((seed) => (
-                  <AnimatedPressable
-                    key={seed.id}
-                    onPress={() => onOpenSeed(seed.id)}
-                    style={[styles.card, { width: cardWidth, borderLeftColor: stateAccents[state], borderLeftWidth: 3 }]}
-                    pressedStyle={styles.cardPressed}
-                    haptic="light"
-                    accessibilityRole="button"
-                    accessibilityLabel={`${growthStateLabels[state]}の種を開く。${seed.body.length > 40 ? `${seed.body.slice(0, 40)}…` : seed.body}`}
-                  >
-                    <Text numberOfLines={4} style={styles.body}>
-                      {seed.body}
-                    </Text>
-                    <View style={styles.cardFooter}>
-                      <Ionicons name={stateIcons[state]} size={14} color={stateAccents[state]} />
-                      <Text style={styles.meta}>大切度{seed.importance}</Text>
-                      <LinkCount count={linkCounts.get(seed.id) ?? 0} />
+                    <Image source={stageImages[state]} style={styles.plotImage} accessibilityIgnoresInvertColors />
+                    <View style={styles.plotSoil}>
+                      <Image source={soilTexture} resizeMode="repeat" style={styles.soilImage} />
                     </View>
+                    <Text style={styles.plotLabel}>
+                      {growthStateLabels[state]} {buckets[state].length}
+                    </Text>
                   </AnimatedPressable>
-                ))}
-              </ScrollView>
-            )}
+                );
+              })}
             </View>
           </FadeInView>
-        );
-      })}
 
-      <FadeInView delayMs={80}>
-        <SectionCard>
-        <Text style={styles.sectionTitle}>カテゴリのまとまり</Text>
-        {orderedTags.length === 0 ? (
-          <Text style={styles.emptyText}>まだカテゴリ付きの種はありません。</Text>
-        ) : (
-          <View style={styles.tagList}>
-            {orderedTags.map((tag) => {
-              const bucket = groupedByTag.get(tag) ?? [];
-              return (
-                <View key={getTagGroupKey(tag)} style={styles.tagCard}>
-                  <Text style={styles.tagTitle}>
-                    {getTagGroupLabel(tag)} ({bucket.length})
-                  </Text>
-                  {bucket.slice(0, 2).map((seed) => (
+          <FadeInView delayMs={50}>
+            <Text style={styles.plotHint}>{growthStateHints[selected]}</Text>
+            {plants.length === 0 ? (
+              <Text style={styles.emptyText}>まだありません。</Text>
+            ) : (
+              <View style={styles.plantGrid}>
+                {plants.slice(0, PLANT_LIMIT).map((seed) => {
+                  // 芽と花は、本人が書いた考えを前に出す。
+                  const text = selected !== 'seed' && seed.synthesis ? seed.synthesis.statement : toSeedSnippet(seed, 60);
+                  return (
                     <AnimatedPressable
                       key={seed.id}
                       onPress={() => onOpenSeed(seed.id)}
-                      style={styles.tagItem}
+                      containerStyle={styles.plantContainer}
+                      style={styles.plant}
                       haptic="light"
                       accessibilityRole="button"
-                      accessibilityLabel={`種を開く。${seed.body.length > 40 ? `${seed.body.slice(0, 40)}…` : seed.body}`}
+                      accessibilityLabel={`${growthStateLabels[selected]}を開く。${toSeedSnippet({ body: text }, 40)}`}
                     >
-                      <Text numberOfLines={2} style={styles.metaBody}>
-                        {seed.body}
+                      <Image source={stageImages[selected]} style={styles.plantImage} accessibilityIgnoresInvertColors />
+                      <Text style={styles.plantText} numberOfLines={3}>
+                        {text}
                       </Text>
+                      <LinkCount count={linkCounts.get(seed.id) ?? 0} />
                     </AnimatedPressable>
-                  ))}
-                </View>
-              );
-            })}
-          </View>
-        )}
-        </SectionCard>
-      </FadeInView>
+                  );
+                })}
+              </View>
+            )}
+            {plants.length > 0 ? (
+              <AnimatedPressable
+                onPress={() => onOpenSeedsByState(selected)}
+                style={styles.moreLink}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={`${growthStateLabels[selected]}を一覧で見る`}
+              >
+                <Text style={styles.moreLinkText}>{plants.length > PLANT_LIMIT ? `ほか${plants.length - PLANT_LIMIT}件も一覧で見る` : '一覧で見る'}</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              </AnimatedPressable>
+            ) : null}
+          </FadeInView>
+
+          {connectedCenters.length > 0 ? (
+            <FoldSection title="つながりのあるメモ" icon="git-network-outline" count={connectedCenters.length}>
+              {connectedCenters.slice(0, LINK_CARD_LIMIT).map((center) => {
+                const around = getLinkedSeeds(center, seeds, connections);
+                return (
+                  <AnimatedPressable
+                    key={center.id}
+                    onPress={() => onOpenSeed(center.id)}
+                    style={styles.centerCard}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={`つながりを見る。${toSeedSnippet(center, 30)}。つながり${around.length}件`}
+                  >
+                    <Text style={styles.centerText} numberOfLines={2}>
+                      {toSeedSnippet(center, 60)}
+                    </Text>
+                    <Text style={styles.aroundText} numberOfLines={1}>
+                      ─ {toSeedSnippet(around[0], 30)}
+                      {around.length > 1 ? `（ほか${around.length - 1}件）` : ''}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
+              {connectedCenters.length > LINK_CARD_LIMIT ? (
+                <AnimatedPressable
+                  onPress={onOpenConnectedList}
+                  style={styles.moreLink}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`ほか${connectedCenters.length - LINK_CARD_LIMIT}件を、一覧で見る`}
+                >
+                  <Text style={styles.moreLinkText}>ほか{connectedCenters.length - LINK_CARD_LIMIT}件を一覧で見る</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                </AnimatedPressable>
+              ) : null}
+            </FoldSection>
+          ) : null}
+
+          {recurringWords.length > 0 ? (
+            <FoldSection title="くり返し出てくる言葉" icon="water-outline" count={recurringWords.length}>
+              <View style={styles.wordRow}>
+                {recurringWords.map(({ word, count }) => (
+                  <AnimatedPressable
+                    key={word}
+                    onPress={() => onSearchWord(word)}
+                    style={styles.wordChip}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={`「${word}」を含む種を探す。${count}件の種に出てきます`}
+                  >
+                    <Text style={styles.wordText}>{word}</Text>
+                    <Text style={styles.wordCount}>{count}</Text>
+                  </AnimatedPressable>
+                ))}
+              </View>
+            </FoldSection>
+          ) : null}
+
+          {tags.length > 0 ? (
+            <FoldSection title="カテゴリ" icon="pricetags-outline" count={tags.length}>
+              {tags.map((tag) => {
+                const bucket = groupedByTag.get(tag) ?? [];
+                return (
+                  <View key={getTagGroupKey(tag)} style={styles.tagCard}>
+                    <Text style={styles.tagTitle}>
+                      {getTagGroupLabel(tag)} ({bucket.length})
+                    </Text>
+                    {bucket.slice(0, 2).map((seed) => (
+                      <AnimatedPressable
+                        key={seed.id}
+                        onPress={() => onOpenSeed(seed.id)}
+                        style={styles.tagItem}
+                        haptic="light"
+                        accessibilityRole="button"
+                        accessibilityLabel={`種を開く。${toSeedSnippet(seed, 40)}`}
+                      >
+                        <Text numberOfLines={1} style={styles.aroundText}>
+                          {toSeedSnippet(seed, 40)}
+                        </Text>
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                );
+              })}
+            </FoldSection>
+          ) : null}
+
+          {buckets.archived.length > 0 ? (
+            <AnimatedPressable
+              onPress={() => onOpenSeedsByState('archived')}
+              style={styles.moreLink}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`保管したメモ${buckets.archived.length}件を一覧で見る`}
+            >
+              <Ionicons name="archive-outline" size={16} color={theme.colors.textMuted} />
+              <Text style={styles.archiveText}>保管したメモ {buckets.archived.length}件</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+            </AnimatedPressable>
+          ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  soilImage: {
-    width: '100%',
-    height: '100%',
-  },
-  content: {
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: 124,
-    gap: theme.spacing.md,
-  },
-  heading: {
-    fontSize: theme.typography.title,
-    fontWeight: '700',
-    fontFamily: theme.fonts.serif,
-    color: theme.colors.text,
-  },
-  subheading: {
-    color: theme.colors.textMuted,
-    lineHeight: 22,
-    marginBottom: 2,
-  },
-  banner: {
-    height: 150,
-    borderRadius: theme.radius.xl,
-    overflow: 'hidden',
-    backgroundColor: '#f1e4c3',
-    borderWidth: 1,
-    borderColor: theme.colors.rule,
-    padding: 18,
-  },
-  bannerImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  bed: {
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-    padding: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
-    gap: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.rule,
-  },
-  furrow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 8,
-    backgroundColor: '#80603f',
-    overflow: 'hidden',
-  },
-  linkSection: {
-    gap: theme.spacing.sm,
-  },
-  linkTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  centerCard: {
-    gap: 6,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.rule,
-    ...theme.shadows.card,
-  },
-  centerText: { fontSize: 16, lineHeight: 24, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
-  aroundText: { fontSize: 14, lineHeight: 20, fontFamily: theme.fonts.serif, color: theme.colors.textMuted },
-  centerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  centerMeta: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
+  content: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.lg, paddingBottom: 124, gap: theme.spacing.md },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heading: { fontSize: theme.typography.title, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  plots: { flexDirection: 'row', gap: theme.spacing.xs },
+  plotContainer: { flex: 1 },
+  plot: { alignItems: 'center', borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.rule, overflow: 'hidden', paddingTop: 6 },
+  plotOn: { borderWidth: 3, borderColor: theme.colors.primary },
+  plotImage: { width: 96, height: 96, marginBottom: -14, zIndex: 1 },
+  plotSoil: { alignSelf: 'stretch', height: 18, backgroundColor: '#80603f', overflow: 'hidden' },
+  soilImage: { width: '100%', height: '100%' },
+  plotLabel: { fontSize: 16, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text, paddingVertical: 8 },
+  plotHint: { fontSize: 13, color: theme.colors.textMuted, textAlign: 'center', marginBottom: theme.spacing.xs },
+  plantGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
+  // 2列に並べる。1件だけでも横いっぱいには広げない。
+  plantContainer: { width: '48.5%' },
+  plant: { alignItems: 'center', gap: 6, padding: theme.spacing.sm, minHeight: 150, borderRadius: theme.radius.lg, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.rule },
+  plantImage: { width: 64, height: 64 },
+  plantText: { fontSize: 14, lineHeight: 20, fontFamily: theme.fonts.serif, color: theme.colors.text, textAlign: 'center' },
+  emptyText: { color: theme.colors.textMuted, fontSize: 14, textAlign: 'center' },
   moreLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 44 },
   moreLinkText: { fontSize: theme.typography.subbody, fontWeight: '700', color: theme.colors.primary },
-  wordRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  wordChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 40,
-    paddingHorizontal: 14,
-    borderRadius: theme.radius.full,
-    backgroundColor: '#e6eef0',
-    borderWidth: 1,
-    borderColor: '#c5d6db',
-  },
-  wordText: {
-    fontSize: theme.typography.subbody,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  wordCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4f7f93',
-  },
-  subheadingRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  subheadingText: {
-    flex: 1,
-  },
-  sectionRight: {
-    alignItems: 'flex-end',
-  },
-  listLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 32,
-    gap: 2,
-  },
-  listLinkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  stageIcon: {
-    width: 52,
-    height: 52,
-    marginVertical: -8,
-  },
-  sectionTitleText: {
-    flex: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitleWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionHint: {
-    fontSize: 12,
-    color: theme.colors.textSoft,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: theme.fonts.serif,
-    color: theme.colors.text,
-  },
-  countText: {
-    fontSize: 15,
-    color: theme.colors.textMuted,
-    fontWeight: '600',
-    minWidth: 24,
-    textAlign: 'right',
-  },
-  horizontalRow: {
-    gap: 10,
-    paddingRight: 14,
-    paddingBottom: 2,
-  },
-  card: {
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    padding: 12,
-    gap: 8,
-  },
-  cardPressed: {
-    backgroundColor: theme.colors.surfaceSoft,
-  },
-  body: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.serif,
-    fontSize: 15,
-    lineHeight: 23,
-    paddingBottom: 2,
-  },
-  meta: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-  },
-  emptyText: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-  },
-  tagList: {
-    gap: 8,
-  },
-  tagCard: {
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: 12,
-    gap: 8,
-  },
-  tagTitle: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tagItem: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.rule,
-    paddingTop: 8,
-  },
-  metaBody: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  archiveText: { fontSize: theme.typography.subbody, fontWeight: '600', color: theme.colors.textMuted },
+  centerCard: { gap: 4, padding: theme.spacing.sm, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.rule },
+  centerText: { fontSize: 15, lineHeight: 22, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  aroundText: { fontSize: 13, lineHeight: 19, fontFamily: theme.fonts.serif, color: theme.colors.textMuted },
+  wordRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  wordChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: theme.radius.full, backgroundColor: '#e6eef0', borderWidth: 1, borderColor: '#c5d6db' },
+  wordText: { fontSize: theme.typography.subbody, fontWeight: '600', color: theme.colors.text },
+  wordCount: { fontSize: 12, fontWeight: '700', color: '#4f7f93' },
+  tagCard: { borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, padding: 12, gap: 6 },
+  tagTitle: { color: theme.colors.text, fontSize: 14, fontWeight: '600' },
+  tagItem: { borderTopWidth: 1, borderTopColor: theme.colors.rule, paddingTop: 6, minHeight: 32, justifyContent: 'center' },
 });

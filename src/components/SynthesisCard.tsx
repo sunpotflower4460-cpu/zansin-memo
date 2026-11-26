@@ -28,6 +28,8 @@ type SynthesisCardProps = {
   /** 花を咲かせる。保存できなければ false（入力は残す）。 */
   onBloom?: (note: string) => Promise<boolean>;
   onReturnToSprout?: () => void;
+  /** 理由の入力を始めたとき。カードの上端から入力欄までの距離を渡す（画面側で見える位置へ送る）。 */
+  onBloomInputFocus?: (offsetInCard: number) => void;
 };
 
 const STEPS = ['seed', 'sprout', 'tree'] as const;
@@ -70,7 +72,9 @@ export function SynthesisCard({
   onOpenSeed,
   onBloom,
   onReturnToSprout,
+  onBloomInputFocus,
 }: SynthesisCardProps) {
+  const bloomFormY = React.useRef(0);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [open, setOpen] = React.useState<Set<string>>(new Set());
   const [blooming, setBlooming] = React.useState(false);
@@ -162,7 +166,12 @@ export function SynthesisCard({
 
           {sprout && onBloom ? (
             blooming ? (
-              <View style={styles.bloomForm}>
+              <View
+                style={styles.bloomForm}
+                onLayout={(event) => {
+                  bloomFormY.current = event.nativeEvent.layout.y;
+                }}
+              >
                 <Text style={styles.label}>咲いたと感じた理由（書かなくても大丈夫）</Text>
                 <TextInput
                   value={bloomNote}
@@ -170,6 +179,7 @@ export function SynthesisCard({
                     if (!bloomSaving) setBloomNote(text);
                   }}
                   editable={!bloomSaving}
+                  onFocus={() => onBloomInputFocus?.(bloomFormY.current)}
                   style={styles.input}
                   multiline
                   textAlignVertical="top"

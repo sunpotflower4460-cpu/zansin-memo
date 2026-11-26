@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
@@ -32,7 +32,11 @@ import { moodLabels, transformLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
 import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
+import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { formatDate, formatRelativeDay, parseTags } from '../utils/seedUtils';
+
+const KEYBOARD_SETTLE_MS = 350;
+const KEYBOARD_SCROLL_MARGIN = 12;
 
 type SeedDetailScreenProps = {
   seed: Seed;
@@ -147,6 +151,13 @@ export function SeedDetailScreen({
   onRestoreDismissed,
 }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  const scrollRef = React.useRef<ScrollView>(null);
+  const growthCardY = React.useRef(0);
+  // キーボードが出きってから、入力欄を画面の上の方へ送る。
+  const showGrowthInput = (offsetInCard: number) => {
+    setTimeout(() => scrollRef.current?.scrollTo({ y: growthCardY.current + offsetInCard - KEYBOARD_SCROLL_MARGIN, animated: true }), KEYBOARD_SETTLE_MS);
+  };
   // 下書きがあれば、編集の続きから開く。本文は明示的に「編集する」を選んだときだけ書き換えられる。
   const [editing, setEditing] = React.useState(Boolean(editDraft));
   const [draft, setDraft] = React.useState<DraftState>(() => (editDraft ? draftFromStored(editDraft, seed) : toDraft(seed)));
@@ -282,8 +293,11 @@ export function SeedDetailScreen({
   const connectionCount = connections.filter((c) => c.aSeedId === seed.id || c.bSeedId === seed.id).length;
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.container}>
       <ScrollView
+        ref={scrollRef}
+        // 画面の下の方の入力欄（理由など）も、キーボードに隠れない位置へ自動で送る（iOS）。
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={contentStyle}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -331,12 +345,15 @@ export function SeedDetailScreen({
           </View>
         ) : null}
 
-        <View style={styles.headingRow}>
-          <Text style={styles.heading} accessibilityRole="header">
-            メモ
-          </Text>
-          <HelpButton content={helpTexts.detail} />
-        </View>
+        {/* 本文を直している間は、見出しを省いて入力欄を広く見せる。 */}
+        {editing && keyboardHeight > 0 ? null : (
+          <View style={styles.headingRow}>
+            <Text style={styles.heading} accessibilityRole="header">
+              メモ
+            </Text>
+            <HelpButton content={helpTexts.detail} />
+          </View>
+        )}
 
         <FadeInView delayMs={40}>
           <SectionCard>
@@ -380,7 +397,7 @@ export function SeedDetailScreen({
                   value={draft.body}
                   onChangeText={(body) => editDraftFields({ body })}
                   editable={!saving}
-                  style={styles.bodyInput}
+                  style={[styles.bodyInput, keyboardHeight > 0 && styles.bodyInputCompact]}
                   multiline
                   textAlignVertical="top"
                   placeholder="メモの本文"
@@ -476,24 +493,7 @@ export function SeedDetailScreen({
           </SectionCard>
         </FadeInView>
 
-        {/* 「思いついたことを書く場所」は、メモのすぐ下に置く。 */}
         <FadeInView delayMs={60}>
-          <SynthesisCard
-            seed={seed}
-            byId={byId}
-            draftText={synthesisDraftText}
-            connectionCount={connectionCount}
-            onCreate={() => onOpenSynthesis(seed.id, 'new')}
-            onReview={() => onOpenSynthesis(seed.id, 'review')}
-            onReconsider={() => onReconsiderSynthesis(seed.id)}
-            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
-            onOpenSeed={onOpenSeed}
-            onBloom={(note) => onBloom(seed.id, note)}
-            onReturnToSprout={() => onReturnToSprout(seed.id)}
-          />
-        </FadeInView>
-
-        <FadeInView delayMs={70}>
           <ConnectionsPanel
             center={seed}
             seeds={allSeeds}
@@ -511,6 +511,30 @@ export function SeedDetailScreen({
             onRestoreDismissed={() => onRestoreDismissed(seed.id)}
           />
         </FadeInView>
+
+        {/* つながりを見てから、思いついたことを書けるように、マップの下に置く。 */}
+        <View
+          onLayout={(event) => {
+            growthCardY.current = event.nativeEvent.layout.y;
+          }}
+        >
+        <FadeInView delayMs={70}>
+          <SynthesisCard
+            onBloomInputFocus={showGrowthInput}
+            seed={seed}
+            byId={byId}
+            draftText={synthesisDraftText}
+            connectionCount={connectionCount}
+            onCreate={() => onOpenSynthesis(seed.id, 'new')}
+            onReview={() => onOpenSynthesis(seed.id, 'review')}
+            onReconsider={() => onReconsiderSynthesis(seed.id)}
+            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
+            onOpenSeed={onOpenSeed}
+            onBloom={(note) => onBloom(seed.id, note)}
+            onReturnToSprout={() => onReturnToSprout(seed.id)}
+          />
+        </FadeInView>
+        </View>
 
         <FadeInView delayMs={80}>
           <SectionCard muted>
@@ -608,7 +632,7 @@ export function SeedDetailScreen({
           </SectionCard>
         </FadeInView>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -717,6 +741,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
+  bodyInputCompact: { minHeight: 90, maxHeight: 120 },
   titleInput: {
     borderRadius: theme.radius.sm,
     minHeight: 44,

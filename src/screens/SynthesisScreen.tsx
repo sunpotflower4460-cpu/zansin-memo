@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -13,6 +13,7 @@ import { createId } from '../utils/ids';
 import { buildAdjacency } from '../utils/links';
 import { isLongText, toSeedSnippet } from '../utils/seedText';
 import { formatRelativeDay } from '../utils/seedUtils';
+import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { describeSource, sourcePartLabel } from '../utils/synthesis';
 
 export type SynthesisSaveInput = {
@@ -74,6 +75,7 @@ export function SynthesisScreen({
   exampleStatement,
 }: SynthesisScreenProps) {
   const insets = useSafeAreaInsets();
+  const compact = useKeyboardHeight() > 0;
   const existing = center.synthesis;
   const reviewing = mode === 'review' && Boolean(existing);
 
@@ -194,9 +196,9 @@ export function SynthesisScreen({
   const sourcesToShow = reviewing && existing && !reselect ? existing.sources : [];
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(140, insets.bottom + 120) }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(140, insets.bottom + 120) }, compact && styles.contentCompact]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
@@ -205,11 +207,18 @@ export function SynthesisScreen({
           <Text style={styles.backButtonText}>戻る</Text>
         </AnimatedPressable>
 
-        <Text style={styles.heading} accessibilityRole="header">
-          {reviewing ? '芽を書き直す' : '芽を書く'}
-        </Text>
+        {compact ? null : (
+          <Text style={styles.heading} accessibilityRole="header">
+            {reviewing ? '芽を書き直す' : '芽を書く'}
+          </Text>
+        )}
 
-        {/* この芽が残るメモ */}
+        {/* この芽が残るメモ。キーボード表示中は一行だけにして、書く欄を見せる。 */}
+        {compact ? (
+          <Text style={styles.compactCenter} numberOfLines={1}>
+            メモ: {toSeedSnippet(center, 40)}
+          </Text>
+        ) : (
         <SectionCard muted>
           <View style={styles.centerHead}>
             <Text style={styles.label}>このメモに残ります</Text>
@@ -232,6 +241,7 @@ export function SynthesisScreen({
             <SmallToggle label={expanded.has('center') ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded('center')} />
           ) : null}
         </SectionCard>
+        )}
 
         {clash && existing ? (
           <View style={styles.clash} accessibilityLiveRegion="polite">
@@ -256,7 +266,7 @@ export function SynthesisScreen({
             value={statement}
             onChangeText={editStatement}
             editable={!saving}
-            style={styles.input}
+            style={[styles.input, compact && styles.inputCompact]}
             multiline
             textAlignVertical="top"
             placeholder="ここに書く（例：こうできるかも）"
@@ -364,17 +374,23 @@ export function SynthesisScreen({
         ) : null}
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {!statement.trim() ? <Text style={styles.disabledHint}>一言書くと、保存できます。</Text> : null}
+      <View style={[styles.bottomBar, { paddingBottom: compact ? 8 : Math.max(insets.bottom, 12) }, compact && styles.bottomBarCompact]}>
+        {!statement.trim() && !compact ? <Text style={styles.disabledHint}>一言書くと、保存できます。</Text> : null}
         <PrimaryButton
           label={saving ? '保存しています…' : reviewing ? '書き直した芽を保存' : '芽として保存'}
           disabled={!canSave}
           onPress={() => void save()}
           accessibilityHint="この芽を、このメモに残します。元のメモは変わりません。"
         />
-        <AnimatedPressable onPress={onPostpone} style={styles.postpone} haptic="light" accessibilityRole="button" accessibilityLabel="あとで考える。入力は下書きに残ります">
-          <Text style={styles.postponeText}>あとで考える（下書きに残す）</Text>
-        </AnimatedPressable>
+        {compact ? (
+          <AnimatedPressable onPress={() => Keyboard.dismiss()} style={styles.postpone} haptic="light" accessibilityRole="button" accessibilityLabel="キーボードを閉じる">
+            <Text style={styles.postponeText}>キーボードを閉じる</Text>
+          </AnimatedPressable>
+        ) : (
+          <AnimatedPressable onPress={onPostpone} style={styles.postpone} haptic="light" accessibilityRole="button" accessibilityLabel="あとで考える。入力は下書きに残ります">
+            <Text style={styles.postponeText}>あとで考える（下書きに残す）</Text>
+          </AnimatedPressable>
+        )}
       </View>
 
       <SeedPickerModal
@@ -439,6 +455,10 @@ const styles = StyleSheet.create({
   heading: { fontSize: theme.typography.title, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
   label: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
   centerText: { fontSize: 16, lineHeight: 25, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  contentCompact: { paddingTop: theme.spacing.xs, gap: theme.spacing.xs },
+  compactCenter: { fontSize: 13, color: theme.colors.textMuted },
+  inputCompact: { minHeight: 88, maxHeight: 120 },
+  bottomBarCompact: { paddingTop: 8, gap: 0 },
   centerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   centerChange: { minHeight: 32, justifyContent: 'center', paddingHorizontal: 8 },
   writeCard: { gap: theme.spacing.xs, padding: theme.spacing.md, borderRadius: theme.radius.lg, backgroundColor: theme.colors.primarySoft, borderWidth: 2, borderColor: theme.colors.primary },

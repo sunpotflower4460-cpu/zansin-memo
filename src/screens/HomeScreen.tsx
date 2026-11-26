@@ -1,17 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import banner from '../../assets/banner-field.png';
+import bannerLetter from '../../assets/splash-icon.png';
+import { stageImages } from '../utils/stageImages';
 import { FieldRow } from '../components/FieldRow';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { FadeInView } from '../components/FadeInView';
 import { GrowthBadge } from '../components/GrowthBadge';
 import { HelpButton } from '../components/HelpButton';
 import { helpTexts } from '../utils/helpTexts';
-import { ImportanceDots } from '../components/ImportanceDots';
 import { LinkCount } from '../components/LinkCount';
-import { getLinkCounts, getLinkedSeeds } from '../utils/links';
-import { toSeedSnippet } from '../utils/seedText';
+import { getLinkCounts } from '../utils/links';
 import { GardenLetterCard } from '../components/GardenLetterCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
@@ -30,6 +30,7 @@ type HomeScreenProps = {
   onRefreshToday: () => void;
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
+  onOpenSeeds: () => void;
   onOpenGarden: () => void;
   /** 今日の種から、つながりを足す・芽を見直す。 */
   onAddMemo: (seedId: string) => void;
@@ -42,8 +43,29 @@ type HomeScreenProps = {
   onExportText: () => void;
 };
 
+const RECENT_LIMIT = 3;
 const SNIPPET_LENGTH = 40;
 const toSnippet = (body: string) => (body.length > SNIPPET_LENGTH ? `${body.slice(0, SNIPPET_LENGTH)}…` : body);
+
+/** ホーム下部の小さな入口。押すと、その中身をすぐ下に開く。 */
+function HomeTile({ title, summary, image, open, onPress }: { title: string; summary: string; image: ImageSourcePropType; open: boolean; onPress: () => void }) {
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      containerStyle={styles.tileContainer}
+      style={[styles.tile, open && styles.tileOpen]}
+      haptic="light"
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={`${title}。${summary}。開閉`}
+    >
+      <Image source={image} style={styles.tileImage} accessibilityIgnoresInvertColors />
+      <Text style={styles.tileTitle}>{title}</Text>
+      <Text style={styles.tileSummary}>{summary}</Text>
+      <Ionicons name={open ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
+    </AnimatedPressable>
+  );
+}
 
 export function HomeScreen({
   seeds,
@@ -52,6 +74,7 @@ export function HomeScreen({
   onRefreshToday,
   onOpenSeed,
   onOpenWrite,
+  onOpenSeeds,
   onOpenGarden,
   onAddMemo,
   onOpenSynthesis,
@@ -63,12 +86,12 @@ export function HomeScreen({
   onExportText,
 }: HomeScreenProps) {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [panel, setPanel] = React.useState<'field' | 'letter' | undefined>();
   const linkCounts = React.useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
-  const todayLinks = React.useMemo(
-    () => (todaySeed ? getLinkedSeeds(todaySeed.seed, seeds, connections).slice(0, 2) : []),
-    [todaySeed, seeds, connections],
-  );
-  const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+  const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, RECENT_LIMIT);
+  const flowerCount = seeds.filter((seed) => seed.growthState === 'tree').length;
+  const sproutCount = seeds.filter((seed) => seed.growthState === 'sprout').length;
+  const seedCount = seeds.filter((seed) => seed.growthState === 'seed').length;
   const gardenLetter = buildGardenLetter(seeds, new Date(), connections);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
@@ -117,184 +140,145 @@ export function HomeScreen({
         </FadeInView>
       ) : (
         <>
-      <Text style={styles.subheading}>{'ひとことを置いて、\nあとでゆっくり育てるためのノートです。'}</Text>
+          {/* 1. まず書く */}
+          <PrimaryButton label="メモを書く" onPress={onOpenWrite} />
 
-      <FadeInView delayMs={40}>
-        <SectionCard>
-        <View style={styles.cardHeader}>
-          <View>
-            <View style={styles.titleRow}>
-              <Ionicons name="sunny-outline" size={20} color={theme.colors.accent} />
-              <Text style={styles.cardTitle}>今日の種</Text>
-              <HelpButton content={helpTexts.today} />
-            </View>
-            <Text style={styles.cardCaption}>今日、光をあてる種です</Text>
-          </View>
-          {todaySeed ? (
-            <AnimatedPressable
-              onPress={onRefreshToday}
-              style={styles.secondaryButton}
-              pressedStyle={styles.secondaryButtonPressed}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="今日の種を切り替える"
-            >
-              <Text style={styles.secondaryButtonText}>別の種を見る</Text>
-            </AnimatedPressable>
-          ) : null}
-        </View>
-
-        {todaySeed ? (
-          <>
-          <AnimatedPressable
-            onPress={() => onOpenSeed(todaySeed.seed.id)}
-            style={styles.seedCard}
-            pressedStyle={styles.seedCardPressed}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel={`今日の種を開く。${toSnippet(todaySeed.seed.body)}`}
-          >
-            <Text style={styles.seedBody} numberOfLines={6}>
-              {todaySeed.seed.body}
-            </Text>
-            <View style={styles.seedMetaRow}>
-              <GrowthBadge state={todaySeed.seed.growthState} />
-              <Text style={styles.seedMeta}>{formatRelativeDay(todaySeed.seed.updatedAt)}に更新</Text>
-            </View>
-            <Text style={styles.reason}>{todaySeed.reason}</Text>
-            <View style={styles.openRow}>
-              <Text style={styles.openText}>タップして開く</Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-            </View>
-          </AnimatedPressable>
-          <View style={styles.todayActions}>
-            <AnimatedPressable
-              onPress={() => onOpenSeed(todaySeed.seed.id)}
-              style={styles.todayAction}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="今日の種のつながりを見る"
-            >
-              <Ionicons name="git-network-outline" size={16} color={theme.colors.primary} />
-              <Text style={styles.todayActionText}>つながりを見る</Text>
-            </AnimatedPressable>
-            <AnimatedPressable
-              onPress={() => onAddMemo(todaySeed.seed.id)}
-              style={styles.todayAction}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="今日の種に、書いてつなぐ"
-            >
-              <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
-              <Text style={styles.todayActionText}>書いてつなぐ</Text>
-            </AnimatedPressable>
-            {todaySeed.seed.synthesis && todaySeed.seed.growthState !== 'seed' ? (
-              <AnimatedPressable
-                onPress={() => onOpenSynthesis(todaySeed.seed.id, 'review')}
-                style={styles.todayAction}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel="今日の種の芽を書き直す"
-              >
-                <Ionicons name="leaf-outline" size={16} color={theme.colors.primary} />
-                <Text style={styles.todayActionText}>芽を書き直す</Text>
-              </AnimatedPressable>
-            ) : null}
-          </View>
-          {todayLinks.length > 0 ? (
-            <View style={styles.todayLinks}>
-              <View style={styles.todayLinksTitle}>
-                <Ionicons name="git-network-outline" size={16} color={theme.colors.primary} />
-                <Text style={styles.todayLinksLabel}>つながる種</Text>
+          {/* 2. 最近の種 */}
+          <FadeInView delayMs={40}>
+            <SectionCard muted>
+              <View style={styles.sectionHead}>
+                <Text style={styles.cardTitle}>最近の種</Text>
+                <AnimatedPressable onPress={onOpenSeeds} style={styles.moreLink} haptic="light" accessibilityRole="button" accessibilityLabel="種一覧ですべて見る">
+                  <Text style={styles.moreLinkText}>すべて見る</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                </AnimatedPressable>
               </View>
-              {todayLinks.map((linked) => (
+              {recent.map((seed) => (
                 <AnimatedPressable
-                  key={linked.id}
-                  onPress={() => onOpenSeed(linked.id)}
-                  style={styles.todayLinkRow}
+                  key={seed.id}
+                  onPress={() => onOpenSeed(seed.id)}
+                  style={styles.listItem}
                   haptic="light"
                   accessibilityRole="button"
-                  accessibilityLabel={`つながる種を開く。${toSnippet(linked.body)}`}
+                  accessibilityLabel={`種を開く。${toSnippet(seed.body)}`}
                 >
-                  <Text style={styles.todayLinkText} numberOfLines={1}>
-                    {toSeedSnippet(linked, 28)}
-                  </Text>
+                  <Image source={stageImages[seed.growthState]} style={styles.listStage} accessibilityIgnoresInvertColors />
+                  <View style={styles.listText}>
+                    <Text style={styles.listBody} numberOfLines={2}>
+                      {seed.body}
+                    </Text>
+                    <View style={styles.listMetaRow}>
+                      <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
+                      <LinkCount count={linkCounts.get(seed.id) ?? 0} />
+                    </View>
+                  </View>
                   <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
                 </AnimatedPressable>
               ))}
-            </View>
+            </SectionCard>
+          </FadeInView>
+
+          {/* 3. 今日の種 */}
+          {todaySeed ? (
+            <FadeInView delayMs={60}>
+              <SectionCard>
+                <View style={styles.sectionHead}>
+                  <View style={styles.titleRow}>
+                    <Ionicons name="sunny-outline" size={20} color={theme.colors.accent} />
+                    <Text style={styles.cardTitle}>今日の種</Text>
+                    <HelpButton content={helpTexts.today} />
+                  </View>
+                  <AnimatedPressable
+                    onPress={onRefreshToday}
+                    style={styles.secondaryButton}
+                    pressedStyle={styles.secondaryButtonPressed}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="今日の種を切り替える"
+                  >
+                    <Text style={styles.secondaryButtonText}>別の種</Text>
+                  </AnimatedPressable>
+                </View>
+                <AnimatedPressable
+                  onPress={() => onOpenSeed(todaySeed.seed.id)}
+                  style={styles.seedCard}
+                  pressedStyle={styles.seedCardPressed}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`今日の種を開く。${toSnippet(todaySeed.seed.body)}`}
+                >
+                  <Text style={styles.seedBody} numberOfLines={3}>
+                    {todaySeed.seed.body}
+                  </Text>
+                  <View style={styles.seedMetaRow}>
+                    <GrowthBadge state={todaySeed.seed.growthState} />
+                    <LinkCount count={linkCounts.get(todaySeed.seed.id) ?? 0} />
+                  </View>
+                  <Text style={styles.reason}>{todaySeed.reason}</Text>
+                </AnimatedPressable>
+                <View style={styles.todayActions}>
+                  <AnimatedPressable
+                    onPress={() => onAddMemo(todaySeed.seed.id)}
+                    style={styles.todayAction}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="今日の種に、書いてつなぐ"
+                  >
+                    <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+                    <Text style={styles.todayActionText}>書いてつなぐ</Text>
+                  </AnimatedPressable>
+                  {todaySeed.seed.synthesis && todaySeed.seed.growthState !== 'seed' ? (
+                    <AnimatedPressable
+                      onPress={() => onOpenSynthesis(todaySeed.seed.id, 'review')}
+                      style={styles.todayAction}
+                      haptic="light"
+                      accessibilityRole="button"
+                      accessibilityLabel="今日の種の芽を書き直す"
+                    >
+                      <Ionicons name="leaf-outline" size={16} color={theme.colors.primary} />
+                      <Text style={styles.todayActionText}>芽を書き直す</Text>
+                    </AnimatedPressable>
+                  ) : null}
+                </View>
+              </SectionCard>
+            </FadeInView>
           ) : null}
-          </>
-        ) : null}
-        </SectionCard>
-      </FadeInView>
+
+          {/* 4. 畑と庭便りは横に並べ、押した方だけを下に開く */}
+          <View style={styles.tiles}>
+            <HomeTile
+              title="あなたの畑"
+              summary={`種${seedCount}・芽${sproutCount}・花${flowerCount}`}
+              image={stageImages[flowerCount > 0 ? 'tree' : sproutCount > 0 ? 'sprout' : 'seed']}
+              open={panel === 'field'}
+              onPress={() => setPanel((current) => (current === 'field' ? undefined : 'field'))}
+            />
+            <HomeTile
+              title="庭便り"
+              summary={`今週の新しい種 ${gardenLetter.newSeedCount}`}
+              image={bannerLetter}
+              open={panel === 'letter'}
+              onPress={() => setPanel((current) => (current === 'letter' ? undefined : 'letter'))}
+            />
+          </View>
+          {panel === 'field' ? (
+            <SectionCard>
+              <View style={styles.sectionHead}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.cardTitle}>あなたの畑</Text>
+                  <HelpButton content={helpTexts.field} />
+                </View>
+                <AnimatedPressable onPress={onOpenGarden} style={styles.moreLink} haptic="light" accessibilityRole="button" accessibilityLabel="庭で全体を見る">
+                  <Text style={styles.moreLinkText}>庭で見る</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                </AnimatedPressable>
+              </View>
+              <FieldRow seeds={seeds} onPress={onOpenGarden} />
+            </SectionCard>
+          ) : null}
+          {panel === 'letter' ? <GardenLetterCard letter={gardenLetter} onOpenGarden={onOpenGarden} /> : null}
         </>
       )}
-
-      {seeds.length > 0 ? <PrimaryButton label="メモを書く" onPress={onOpenWrite} /> : null}
-
-      {seeds.length > 0 ? (
-        <FadeInView delayMs={70}>
-          <SectionCard>
-            <View style={styles.fieldHeader}>
-              <View style={styles.titleRow}>
-                <Ionicons name="leaf-outline" size={20} color={theme.colors.primary} />
-                <Text style={styles.cardTitle}>あなたの畑</Text>
-                <HelpButton content={helpTexts.field} />
-              </View>
-              <AnimatedPressable
-                onPress={onOpenGarden}
-                style={styles.moreLink}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel="庭で全体を見る"
-              >
-                <Text style={styles.moreLinkText}>庭で見る</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-              </AnimatedPressable>
-            </View>
-            <FieldRow seeds={seeds} onPress={onOpenGarden} />
-          </SectionCard>
-        </FadeInView>
-      ) : null}
-
-      {seeds.length > 0 ? (
-        <FadeInView delayMs={80}>
-          <GardenLetterCard letter={gardenLetter} onOpenGarden={onOpenGarden} />
-        </FadeInView>
-      ) : null}
-
-      {seeds.length > 0 ? (
-      <FadeInView delayMs={90}>
-        <SectionCard muted>
-          <Text style={styles.cardTitle}>最近の種</Text>
-          {recent.length > 0 ? (
-            recent.map((seed) => (
-              <AnimatedPressable
-                key={seed.id}
-                onPress={() => onOpenSeed(seed.id)}
-                style={styles.listItem}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel={`種を開く。${toSnippet(seed.body)}`}
-              >
-                <Text style={styles.listBody} numberOfLines={2}>
-                  {seed.body}
-                </Text>
-                <View style={styles.listMetaRow}>
-                  <GrowthBadge state={seed.growthState} />
-                  <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
-                  <LinkCount count={linkCounts.get(seed.id) ?? 0} />
-                  <View style={styles.listMetaSpacer} />
-                  <ImportanceDots value={seed.importance} />
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
-                </View>
-              </AnimatedPressable>
-            ))
-          ) : null}
-        </SectionCard>
-      </FadeInView>
-      ) : null}
 
       <FadeInView delayMs={120}>
         <SectionCard muted>
@@ -417,7 +401,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   banner: {
-    height: 196,
+    height: 172,
     borderRadius: theme.radius.xl,
     overflow: 'hidden',
     backgroundColor: '#f1e4c3',
@@ -438,42 +422,6 @@ const styles = StyleSheet.create({
   todayActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   todayAction: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: theme.radius.full, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder },
   todayActionText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
-  todayLinks: {
-    gap: 6,
-  },
-  todayLinksTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  todayLinksLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.textMuted,
-  },
-  todayLinkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    minHeight: 44,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.rule,
-  },
-  todayLinkText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: theme.fonts.serif,
-    color: theme.colors.text,
-  },
-  fieldHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
   moreLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -485,26 +433,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.primary,
   },
-  openRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 2,
-  },
-  openText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  cardCaption: {
-    marginTop: 2,
-    fontSize: 13,
-    color: theme.colors.textSoft,
   },
   todayMeta: {
     fontSize: 13,
@@ -518,18 +450,6 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.serif,
     letterSpacing: 2,
     color: theme.colors.text,
-  },
-  subheading: {
-    fontSize: theme.typography.subbody,
-    color: theme.colors.textMuted,
-    lineHeight: 22,
-    marginBottom: 4,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
   },
   cardTitle: {
     fontSize: theme.typography.sectionTitle,
@@ -567,18 +487,17 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     lineHeight: 28,
   },
-  seedMeta: {
-    fontSize: 13,
-    color: theme.colors.textMuted,
-  },
   listItem: {
-    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: theme.colors.rule,
-    gap: 6,
+    gap: 10,
   },
   listBody: {
     fontFamily: theme.fonts.serif,
+    lineHeight: 24,
     fontSize: theme.typography.body,
     color: theme.colors.text,
   },
@@ -608,6 +527,16 @@ const styles = StyleSheet.create({
   },
   promiseText: { flex: 1, fontSize: 15, lineHeight: 24, color: theme.colors.textMuted },
   promiseNote: { fontSize: 13, color: theme.colors.textSoft, textAlign: 'center' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  listStage: { width: 40, height: 40 },
+  listText: { flex: 1, gap: 4 },
+  tiles: { flexDirection: 'row', gap: theme.spacing.sm },
+  tileContainer: { flex: 1 },
+  tile: { alignItems: 'center', gap: 4, padding: theme.spacing.sm, borderRadius: theme.radius.lg, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.rule },
+  tileOpen: { borderColor: theme.colors.primary, borderWidth: 2, backgroundColor: theme.colors.primarySoft },
+  tileImage: { width: 64, height: 64 },
+  tileTitle: { fontSize: 15, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  tileSummary: { fontSize: 12, color: theme.colors.textMuted, textAlign: 'center' },
   practiceButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 48, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder, backgroundColor: theme.colors.surface },
   practiceText: { fontSize: theme.typography.body, fontWeight: '700', color: theme.colors.primary },
   settingsToggle: {
@@ -648,9 +577,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.primary,
     fontWeight: '600',
-  },
-  listMetaSpacer: {
-    flex: 1,
   },
   versionText: {
     fontSize: theme.typography.caption,
