@@ -8,6 +8,8 @@ import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { GrowthBadge } from '../components/GrowthBadge';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
 import { ImportanceDots } from '../components/ImportanceDots';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
@@ -73,6 +75,7 @@ export function HomeScreen({
             <View style={styles.titleRow}>
               <Ionicons name="sunny-outline" size={20} color={theme.colors.accent} />
               <Text style={styles.cardTitle}>今日の種</Text>
+              <HelpButton content={helpTexts.today} />
             </View>
             <Text style={styles.cardCaption}>今日、光をあてる種です</Text>
           </View>
@@ -107,6 +110,10 @@ export function HomeScreen({
               <Text style={styles.seedMeta}>{formatRelativeDay(todaySeed.seed.updatedAt)}に更新</Text>
             </View>
             <Text style={styles.reason}>{todaySeed.reason}</Text>
+            <View style={styles.openRow}>
+              <Text style={styles.openText}>タップして開く</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+            </View>
           </AnimatedPressable>
         ) : (
           <EmptyState
@@ -125,9 +132,22 @@ export function HomeScreen({
       {seeds.length > 0 ? (
         <FadeInView delayMs={70}>
           <SectionCard>
-            <View style={styles.titleRow}>
-              <Ionicons name="leaf-outline" size={20} color={theme.colors.primary} />
-              <Text style={styles.cardTitle}>あなたの畑</Text>
+            <View style={styles.fieldHeader}>
+              <View style={styles.titleRow}>
+                <Ionicons name="leaf-outline" size={20} color={theme.colors.primary} />
+                <Text style={styles.cardTitle}>あなたの畑</Text>
+                <HelpButton content={helpTexts.field} />
+              </View>
+              <AnimatedPressable
+                onPress={onOpenGarden}
+                style={styles.moreLink}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="庭で全体を見る"
+              >
+                <Text style={styles.moreLinkText}>庭で見る</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              </AnimatedPressable>
             </View>
             <FieldRow seeds={seeds} onPress={onOpenGarden} />
           </SectionCard>
@@ -156,6 +176,7 @@ export function HomeScreen({
                   <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
                   <View style={styles.listMetaSpacer} />
                   <ImportanceDots value={seed.importance} />
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
                 </View>
               </AnimatedPressable>
             ))
@@ -302,6 +323,33 @@ const styles = StyleSheet.create({
     top: 18,
     left: 20,
     gap: 2,
+  },
+  fieldHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    gap: 2,
+  },
+  moreLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.primary,
+  },
+  openRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 2,
+  },
+  openText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.primary,
   },
   titleRow: {
     flexDirection: 'row',

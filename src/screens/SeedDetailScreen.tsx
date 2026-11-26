@@ -24,6 +24,8 @@ import {
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
 import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
 import { formatDate, parseTags, pickRelatedCandidates } from '../utils/seedUtils';
 
@@ -31,6 +33,8 @@ type SeedDetailScreenProps = {
   seed: Seed;
   allSeeds: Seed[];
   onBack: () => void;
+  /** 戻り先の名前（例: 種一覧）。どこへ戻るかが分かるようにボタンに表示する。 */
+  backLabel: string;
   onSave: (seedId: string, payload: SeedUpdateInput) => void;
   onDelete: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
@@ -71,7 +75,7 @@ const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
 const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
 const MAX_RELATED_CANDIDATES = 20;
 
-export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
+export function SeedDetailScreen({ seed, allSeeds, onBack, backLabel, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -151,15 +155,18 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
           pressedStyle={styles.backButtonPressed}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="戻る"
+          accessibilityLabel={`${backLabel}に戻る`}
         >
           <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
-          <Text style={styles.backButtonText}>戻る</Text>
+          <Text style={styles.backButtonText}>{backLabel}</Text>
         </AnimatedPressable>
 
-        <Text style={styles.heading} accessibilityRole="header">
-          種の詳細
-        </Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading} accessibilityRole="header">
+            種の詳細
+          </Text>
+          <HelpButton content={helpTexts.detail} />
+        </View>
         <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
 
         <FadeInView delayMs={40}>
@@ -260,9 +267,20 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             </View>
           ) : null}
 
+          <View style={styles.saveStatus} accessible accessibilityLiveRegion="polite">
+            <Ionicons
+              name={unsaved ? 'ellipse-outline' : 'checkmark-circle-outline'}
+              size={16}
+              color={unsaved ? theme.colors.warning : theme.colors.primary}
+            />
+            <Text style={styles.saveStatusText}>
+              {unsaved ? '未保存の変更があります（戻ると自動で保存されます）' : '保存済みです。書き換えると、戻るときに自動で保存されます'}
+            </Text>
+          </View>
+
           <PrimaryButton
-            label="変更を保存"
-            disabled={!canSave}
+            label={unsaved ? '変更を保存' : '保存済み'}
+            disabled={!canSave || !unsaved}
             accessibilityHint={saveAccessibilityHint}
             onPress={() => {
               if (!canSave) {
@@ -372,6 +390,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  saveStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  saveStatusText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    lineHeight: 18,
   },
   stateHint: {
     marginTop: -8,

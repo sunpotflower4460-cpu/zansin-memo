@@ -27,6 +27,7 @@ import { SeedsScreen } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
 import { motion } from './src/utils/motion';
+import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import { beginSave, finishSave, getSaveStateMessage, settleSaved, type SaveProgress, type SaveState } from './src/utils/saveState';
 import { exportSeeds } from './src/utils/exportUtils';
@@ -92,7 +93,7 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToastMsg(msg);
     setToastKey((k) => k + 1);
-    toastTimer.current = setTimeout(() => setToastMsg(''), 2500);
+    toastTimer.current = setTimeout(() => setToastMsg(''), 3400);
   }, []);
 
   const blockIfStorageLocked = React.useCallback((): boolean => {
@@ -298,7 +299,7 @@ export default function App() {
     setSeeds((current) => [nextSeed, ...current]);
     setWriteDraft(initialWriteDraft);
     setScreen({ kind: 'home' });
-    showToast('種をまきました 🌱');
+    showToast('種をまきました 🌱 「種一覧」に入りました');
   };
 
   const handleUpdateSeed = (seedId: string, payload: SeedUpdateInput) => {
@@ -320,7 +321,7 @@ export default function App() {
     setSeeds((current) => current.map((seed) => (seed.id === seedId ? softDeleteSeed(seed) : seed)));
     setTodaySeed((current) => (current?.seed.id === seedId ? undefined : current));
     setScreen({ kind: 'seeds' });
-    showToast('種を削除しました（あとで復元できます）');
+    showToast('削除しました。「種一覧」の一番下から元に戻せます');
   };
 
   const handleRestoreSeed = React.useCallback(
@@ -464,6 +465,7 @@ export default function App() {
           seed={selectedSeed}
           allSeeds={activeSeeds}
           onBack={() => setScreen({ kind: screen.from })}
+          backLabel={tabLabels[screen.from]}
           onSave={handleUpdateSeed}
           onDelete={handleDeleteSeed}
           onCreateTransform={handleCreateTransform}
@@ -502,7 +504,18 @@ export default function App() {
     }
 
     if (screen.kind === 'garden') {
-      return <GardenScreen seeds={activeSeeds} onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })} />;
+      return (
+        <GardenScreen
+          seeds={activeSeeds}
+          onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })}
+          onOpenSeedsByState={(state) => {
+            setSeedsSearch('');
+            setTagFilter(null);
+            setStateFilter(state);
+            setScreen({ kind: 'seeds' });
+          }}
+        />
+      );
     }
 
     return (

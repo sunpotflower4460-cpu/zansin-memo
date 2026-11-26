@@ -7,7 +7,9 @@ import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { HelpButton } from '../components/HelpButton';
 import { SectionCard } from '../components/SectionCard';
+import { helpTexts } from '../utils/helpTexts';
 import type { GrowthState, Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
@@ -16,6 +18,8 @@ import { getTagGroupKey, getTagGroupLabel, groupSeedsByTag } from '../utils/seed
 type GardenScreenProps = {
   seeds: Seed[];
   onOpenSeed: (seedId: string) => void;
+  /** 指定した育ち方だけの種一覧へ移る。 */
+  onOpenSeedsByState: (state: GrowthState) => void;
 };
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
@@ -45,7 +49,7 @@ const stateAccents: Record<GrowthState, string> = {
   archived: '#a39d90', // 古紙の灰
 };
 
-export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
+export function GardenScreen({ seeds, onOpenSeed, onOpenSeedsByState }: GardenScreenProps) {
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
 
@@ -79,7 +83,10 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
         <Image source={banner} style={styles.bannerImage} resizeMode="cover" accessibilityIgnoresInvertColors />
         <Text style={styles.heading}>庭</Text>
       </View>
-      <Text style={styles.subheading}>種から芽へ、芽から木へ。育ちの流れを、静かに見渡せる場所です。</Text>
+      <View style={styles.subheadingRow}>
+        <Text style={[styles.subheading, styles.subheadingText]}>種から芽へ、芽から木へ。育ちの流れを、静かに見渡せる場所です。</Text>
+        <HelpButton content={helpTexts.garden} />
+      </View>
 
       {seeds.length === 0 ? (
         <EmptyState image={stageImages.seed} title="この場所は、これから育っていきます。" description="書いた種が増えると、土の上に少しずつ並びます。" />
@@ -102,7 +109,23 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
                   <Text style={styles.sectionHint}>{growthStateHints[state]}</Text>
                 </View>
               </View>
-              <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>{bucket.length}</Text>
+              <View style={styles.sectionRight}>
+                <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>
+                  {bucket.length}
+                </Text>
+                {bucket.length > 0 ? (
+                  <AnimatedPressable
+                    onPress={() => onOpenSeedsByState(state)}
+                    style={styles.listLink}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={`${growthStateLabels[state]}の種を一覧で見る`}
+                  >
+                    <Text style={styles.listLinkText}>一覧で見る</Text>
+                    <Ionicons name="chevron-forward" size={14} color={theme.colors.primary} />
+                  </AnimatedPressable>
+                ) : null}
+              </View>
             </View>
 
             {bucket.length === 0 ? (
@@ -227,6 +250,28 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: '#80603f',
     overflow: 'hidden',
+  },
+  subheadingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  subheadingText: {
+    flex: 1,
+  },
+  sectionRight: {
+    alignItems: 'flex-end',
+  },
+  listLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 32,
+    gap: 2,
+  },
+  listLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.primary,
   },
   stageIcon: {
     width: 52,

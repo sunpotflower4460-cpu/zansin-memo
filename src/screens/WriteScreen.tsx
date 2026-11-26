@@ -3,6 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
 import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
@@ -44,9 +46,12 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
-        <Text style={styles.heading} accessibilityRole="header">
-          種をまく
-        </Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading} accessibilityRole="header">
+            種をまく
+          </Text>
+          <HelpButton content={helpTexts.write} />
+        </View>
         <Text style={styles.subheading}>
           思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
         </Text>
@@ -143,6 +148,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
       </ScrollView>
 
       <View style={styles.bottomBar}>
+        {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「種をまく」を押せるようになります。</Text> : null}
         <PrimaryButton
           label="種をまく"
           disabled={saveDisabled}
@@ -178,6 +184,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  disabledHint: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
   },
   stateHint: {
     marginTop: -8,

@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { GrowthBadge } from '../components/GrowthBadge';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
 import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
 import { SectionCard } from '../components/SectionCard';
@@ -66,6 +68,15 @@ export function SeedsScreen({
     }
   }, [activeTagFilter, tagFilter, onChangeTagFilter]);
 
+  const [moreOpen, setMoreOpen] = useState(false);
+  const stateCounts = useMemo(() => {
+    const counts: Record<GrowthState, number> = { seed: 0, sprout: 0, tree: 0, archived: 0 };
+    for (const seed of seeds) {
+      counts[seed.growthState] += 1;
+    }
+    return counts;
+  }, [seeds]);
+
   const normalizedSearch = useMemo(() => search.trim().toLowerCase(), [search]);
 
   const filteredSeeds = useMemo(
@@ -93,11 +104,21 @@ export function SeedsScreen({
     [seeds, stateFilter, activeTagFilter, normalizedSearch, sortType],
   );
 
+  const hasActiveFilter = search.trim() !== '' || stateFilter !== 'all' || activeTagFilter !== null;
+  const resetFilters = () => {
+    onChangeSearch('');
+    onChangeFilter('all');
+    onChangeTagFilter(null);
+  };
+
   const listHeader = (
     <View style={styles.listHeader}>
-      <Text style={styles.heading} accessibilityRole="header">
-        種一覧
-      </Text>
+      <View style={styles.headingRow}>
+        <Text style={styles.heading} accessibilityRole="header">
+          種一覧
+        </Text>
+        <HelpButton content={helpTexts.seeds} />
+      </View>
       <Text style={styles.subheading}>
         {seeds.length === 0 ? '書いた種がここに並びます。' : `${seeds.length}件の種。検索や絞り込みで、見返したい種を見つけます。`}
       </Text>
@@ -117,21 +138,43 @@ export function SeedsScreen({
         />
       </View>
 
-      <FadeInView delayMs={40}>
-        <SectionCard muted>
-          <Text style={styles.label}>状態</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            <IOSChip label={allLabel} selected={stateFilter === 'all'} onPress={() => onChangeFilter('all')} />
-            {GROWTH_STATE_OPTIONS.map((state) => (
-              <IOSChip
-                key={state}
-                label={growthStateLabels[state]}
-                selected={stateFilter === state}
-                onPress={() => onChangeFilter(state)}
-              />
-            ))}
-          </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} accessibilityLabel="育ち方で絞り込む">
+        <IOSChip
+          label={`${allLabel} ${seeds.length}`}
+          accessibilityLabel={`すべて、${seeds.length}件`}
+          selected={stateFilter === 'all'}
+          onPress={() => onChangeFilter('all')}
+        />
+        {GROWTH_STATE_OPTIONS.map((state) => (
+          <IOSChip
+            key={state}
+            label={`${growthStateLabels[state]} ${stateCounts[state]}`}
+            accessibilityLabel={`${growthStateLabels[state]}、${stateCounts[state]}件`}
+            selected={stateFilter === state}
+            onPress={() => onChangeFilter(state)}
+          />
+        ))}
+      </ScrollView>
 
+      <AnimatedPressable
+        onPress={() => setMoreOpen((value) => !value)}
+        style={styles.moreToggle}
+        haptic="light"
+        accessibilityRole="button"
+        accessibilityState={{ expanded: moreOpen }}
+        accessibilityLabel="カテゴリと並び替え"
+        accessibilityHint={moreOpen ? 'タップして閉じます' : 'タップして開きます'}
+      >
+        <Ionicons name="options-outline" size={18} color={theme.colors.primary} />
+        <Text style={styles.moreToggleTitle}>カテゴリ・並び替え</Text>
+        <Text style={styles.moreToggleSummary} numberOfLines={1}>
+          {activeTagFilter ?? 'すべて'}・{sortLabels[sortType]}順
+        </Text>
+        <Ionicons name={moreOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
+      </AnimatedPressable>
+
+      {moreOpen ? (
+        <SectionCard muted>
           <Text style={styles.label}>カテゴリ</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
             <IOSChip label={allLabel} selected={activeTagFilter === null} onPress={() => onChangeTagFilter(null)} />
@@ -139,6 +182,7 @@ export function SeedsScreen({
               <IOSChip key={tag} label={tag} selected={activeTagFilter === tag} onPress={() => onChangeTagFilter(tag)} />
             ))}
           </ScrollView>
+          {tagOptions.length === 0 ? <Text style={styles.deletedHint}>種にカテゴリを付けると、ここで絞り込めます。</Text> : null}
 
           <ChipSelector<SortType>
             label="並び替え"
@@ -148,7 +192,22 @@ export function SeedsScreen({
             getLabel={(value) => sortLabels[value]}
           />
         </SectionCard>
-      </FadeInView>
+      ) : null}
+
+      {hasActiveFilter ? (
+        <View style={styles.resultRow}>
+          <Text style={styles.resultText}>{filteredSeeds.length}件が見つかりました</Text>
+          <AnimatedPressable
+            onPress={resetFilters}
+            style={styles.resetButton}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="検索と絞り込みをすべて解除する"
+          >
+            <Text style={styles.resetText}>絞り込みを解除</Text>
+          </AnimatedPressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -226,6 +285,7 @@ export function SeedsScreen({
             <Text style={styles.meta}>{formatRelativeDay(seed.updatedAt)}</Text>
             <View style={styles.metaSpacer} />
             <ImportanceDots value={seed.importance} />
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />
           </View>
           {seed.tags.length > 0 ? (
             <View style={styles.tagRow}>
@@ -258,6 +318,11 @@ const styles = StyleSheet.create({
   separator: {
     height: theme.spacing.sm,
   },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
@@ -288,6 +353,46 @@ const styles = StyleSheet.create({
   label: {
     color: theme.colors.textMuted,
     fontSize: theme.typography.subbody,
+  },
+  moreToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+  },
+  moreToggleTitle: {
+    fontSize: theme.typography.subbody,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  moreToggleSummary: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 13,
+    color: theme.colors.textMuted,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  resultText: {
+    fontSize: theme.typography.subbody,
+    color: theme.colors.textMuted,
+  },
+  resetButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  resetText: {
+    fontSize: theme.typography.subbody,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   row: {
     gap: 8,
