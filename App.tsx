@@ -1003,6 +1003,7 @@ export default function App() {
         todaySeed={displayedTodaySeed}
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
+        onOpenSeeds={() => setScreen({ kind: 'seeds' })}
         onOpenGarden={() => setScreen({ kind: 'garden' })}
         onAddMemo={handleAddMemo}
         onOpenSynthesis={(seedId, mode) => openSynthesis(seedId, mode, 'home')}

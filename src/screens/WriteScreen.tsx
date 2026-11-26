@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { HelpButton } from '../components/HelpButton';
 import { helpTexts } from '../utils/helpTexts';
-import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
@@ -20,7 +20,14 @@ import {
 import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
 import { toSeedSnippet } from '../utils/seedText';
+import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { moodLabels } from '../utils/displayLabels';
+
+/** キーボード表示中に、本文欄以外（見出し・題名欄・保存ボタン・余白）が使う高さの目安。 */
+const COMPACT_CHROME_HEIGHT = 180;
+const COMPACT_CONNECT_ROW_HEIGHT = 44;
+const MIN_BODY_HEIGHT = 80;
+const KEYBOARD_SETTLE_MS = 350;
 
 type WriteScreenProps = {
   draft: {
@@ -73,24 +80,49 @@ export function WriteScreen({
   const saveDisabled = draft.body.trim().length === 0 || saving;
   const connecting = Boolean(addTo) && !standalone;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
+  /** 本文か題名を入力中か。カテゴリ欄の入力中は画面を畳まない（欄ごと消えて入力できなくなる）。 */
+  // 開くと本文に自動で入力が始まるので、最初は「入力中」とする。
+  const [writing, setWriting] = React.useState(true);
+  const scrollRef = React.useRef<ScrollView>(null);
+  // 本文・題名の入力中は、書くことに必要なものだけを残し、本文欄を残りの高さに合わせる。
+  const compact = writing && keyboardHeight > 0;
+  const compactBodyHeight = Math.max(
+    MIN_BODY_HEIGHT,
+    windowHeight - insets.top - keyboardHeight - COMPACT_CHROME_HEIGHT - (addTo ? COMPACT_CONNECT_ROW_HEIGHT : 0),
+  );
   const saveAccessibilityHint = saveDisabled ? '本文を入力すると保存できます。' : '今の内容を保存します。';
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, compact && styles.contentCompact]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
-        <View style={styles.headingRow}>
-          <Text style={styles.heading} accessibilityRole="header">
-            メモを書く
-          </Text>
-          <HelpButton content={helpTexts.write} />
-        </View>
-        <Text style={styles.subheading}>なんとなくでも、そのままで大丈夫。</Text>
+        {compact ? null : (
+          <>
+            <View style={styles.headingRow}>
+              <Text style={styles.heading} accessibilityRole="header">
+                メモを書く
+              </Text>
+              <HelpButton content={helpTexts.write} />
+            </View>
+            <Text style={styles.subheading}>なんとなくでも、そのままで大丈夫。</Text>
+          </>
+        )}
 
-        {savedMemo ? (
+        {compact && addTo ? (
+          <Text style={styles.compactTarget} numberOfLines={1}>
+            {connecting ? 'つなぎ先: ' : '単独で残します: '}
+            {toSeedSnippet(addTo, 30)}
+          </Text>
+        ) : null}
+
+        {savedMemo && !compact ? (
           <View style={styles.savedCard} accessible={false}>
             <View style={styles.savedTitleRow}>
               <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
@@ -121,7 +153,7 @@ export function WriteScreen({
                 <Text style={styles.sproutButtonText}>思いついたことを書く（芽にする）</Text>
               </AnimatedPressable>
             ) : isFirstSave ? (
-              <Text style={styles.savedHint}>関係することを思いついたら、あとからつなげられます。</Text>
+              <Text style={styles.savedHint}>{'関係することを思いついたら、\nあとからつなげられます。'}</Text>
             ) : null}
             <View style={styles.savedActions}>
               <AnimatedPressable
@@ -150,7 +182,7 @@ export function WriteScreen({
           </View>
         ) : null}
 
-        {addTo ? (
+        {addTo && !compact ? (
           <View style={styles.continuation}>
             <Ionicons name={connecting ? 'git-branch-outline' : 'document-outline'} size={20} color={theme.colors.primary} />
             <View style={styles.continuationBody}>
@@ -180,17 +212,19 @@ export function WriteScreen({
           </View>
         ) : null}
 
-        <FadeInView delayMs={40}>
-          <SectionCard>
-          <Text style={styles.bodyLabel}>いま浮かんでいること</Text>
+        {/* 開くと同時にキーボードが出るので、入力欄には表示の演出を付けない（透明のまま残ることがある）。 */}
+        <SectionCard style={compact ? styles.cardCompact : undefined}>
+          {compact ? null : <Text style={styles.bodyLabel}>いま浮かんでいること</Text>}
           <TextInput
             value={draft.body}
             onChangeText={(body) => onChange({ body })}
-            style={styles.bodyInput}
+            style={[styles.bodyInput, compact && { minHeight: compactBodyHeight, height: compactBodyHeight }]}
             placeholder="例：朝の光の中だと、考えがまとまりやすい気がする"
             placeholderTextColor={theme.colors.placeholder}
             multiline
             autoFocus
+            onFocus={() => setWriting(true)}
+            onBlur={() => setWriting(false)}
             textAlignVertical="top"
             accessibilityLabel="メモの本文"
           />
@@ -201,13 +235,14 @@ export function WriteScreen({
             style={styles.titleInput}
             placeholder="タイトル（任意）"
             placeholderTextColor={theme.colors.placeholder}
+            onFocus={() => setWriting(true)}
+            onBlur={() => setWriting(false)}
             returnKeyType="done"
             accessibilityLabel="タイトル"
           />
-          </SectionCard>
-        </FadeInView>
+        </SectionCard>
 
-        <FadeInView delayMs={90}>
+        {compact ? null : (
           <SectionCard muted>
           <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
@@ -252,6 +287,8 @@ export function WriteScreen({
                   placeholder="例: 企画, 感覚, 執筆"
                   placeholderTextColor={theme.colors.placeholder}
                   autoCapitalize="none"
+                  // 下の方の欄なので、キーボードが出きってから見える位置へ送る。
+                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), KEYBOARD_SETTLE_MS)}
                   accessibilityLabel="カテゴリ"
                 />
                 <Text style={styles.hint}>カンマ区切りで複数入力できます。空でもOKです。</Text>
@@ -259,27 +296,43 @@ export function WriteScreen({
             </View>
           ) : null}
           </SectionCard>
-        </FadeInView>
+        )}
       </ScrollView>
 
-      <View style={styles.bottomBar}>
-        {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「保存する」を押せるようになります。</Text> : null}
+      <View style={[styles.bottomBar, compact && styles.bottomBarCompact]}>
+        {saveDisabled && !compact ? <Text style={styles.disabledHint}>ひとこと書くと、「保存する」を押せるようになります。</Text> : null}
+        {compact ? (
+          <AnimatedPressable
+            onPress={() => Keyboard.dismiss()}
+            style={styles.keyboardClose}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="キーボードを閉じる"
+          >
+            <Ionicons name="chevron-down" size={20} color={theme.colors.primary} />
+            <Text style={styles.keyboardCloseText}>閉じる</Text>
+          </AnimatedPressable>
+        ) : null}
+        <View style={compact ? styles.saveGrow : undefined}>
         <PrimaryButton
           label={saving ? '保存しています…' : connecting ? '保存してつなぐ' : '保存する'}
           accessibilityLabel={connecting ? '保存してつなぐ' : '保存する'}
           disabled={saveDisabled}
           accessibilityHint={saveAccessibilityHint}
-          onPress={() =>
-            onSave({
+          onPress={() => {
+            // 「保存しました」が見えるよう、キーボードを閉じる。
+            Keyboard.dismiss();
+            void onSave({
               title: draft.title,
               body: draft.body,
               mood: draft.mood,
               importance: draft.importance,
               growthState: draft.growthState,
               tags: parseTags(draft.tags),
-            })
-          }
+            });
+          }}
         />
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -295,6 +348,13 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: theme.spacing.md,
   },
+  contentCompact: { paddingTop: theme.spacing.xs, paddingBottom: theme.spacing.xs, gap: theme.spacing.xs },
+  cardCompact: { padding: theme.spacing.sm },
+  compactTarget: { fontSize: 13, color: theme.colors.primary, fontWeight: '700' },
+  bottomBarCompact: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingTop: 8, paddingBottom: 8 },
+  keyboardClose: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 48, paddingHorizontal: 12, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder },
+  keyboardCloseText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
+  saveGrow: { flex: 1 },
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
@@ -414,9 +474,9 @@ const styles = StyleSheet.create({
   },
   titleInput: {
     borderRadius: theme.radius.sm,
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 0,
     backgroundColor: theme.colors.inputBgSoft,
     fontSize: 15,
     color: theme.colors.text,
