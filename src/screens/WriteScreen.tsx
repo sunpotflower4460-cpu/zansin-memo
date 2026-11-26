@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
 import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
@@ -14,11 +15,13 @@ import {
   type GrowthState,
   type Importance,
   type Mood,
+  type Seed,
   type SeedCreateInput,
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
-import { growthStateLabels, moodLabels } from '../utils/displayLabels';
+import { toSeedSnippet } from '../utils/seedText';
+import { growthStateHints, growthStateLabels, moodLabels } from '../utils/displayLabels';
 
 type WriteScreenProps = {
   draft: {
@@ -30,39 +33,81 @@ type WriteScreenProps = {
     importance: Importance;
   };
   onChange: (value: Partial<WriteScreenProps['draft']>) => void;
-  onSave: (input: SeedCreateInput) => void;
+  /** 「メモを足す」で、いまつなぐ先にしている種（中心）。 */
+  addTo?: Seed;
+  /** 単独のメモとして残す（本文は消さない）。 */
+  standalone: boolean;
+  /** 保存の確定を待っている間は、二重に押せない。 */
+  saving: boolean;
+  onToggleStandalone: () => void;
+  onClearTarget: () => void;
+  onSave: (input: SeedCreateInput) => void | Promise<void>;
 };
 
-const MIN_SCROLL_BOTTOM_PADDING = 150;
-const BOTTOM_BAR_OVERLAY_OFFSET = 110;
-
-export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
-  const insets = useSafeAreaInsets();
-  const saveDisabled = draft.body.trim().length === 0;
+export function WriteScreen({ draft, onChange, addTo, standalone, saving, onToggleStandalone, onClearTarget, onSave }: WriteScreenProps) {
+  const saveDisabled = draft.body.trim().length === 0 || saving;
+  const connecting = Boolean(addTo) && !standalone;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const saveAccessibilityHint = saveDisabled ? '種のことばを入力すると保存できます。' : '今の内容で種を保存します。';
-  const contentStyle = [styles.content, { paddingBottom: Math.max(MIN_SCROLL_BOTTOM_PADDING, insets.bottom + BOTTOM_BAR_OVERLAY_OFFSET) }];
-  const bottomBarStyle = [styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }];
+  const saveAccessibilityHint = saveDisabled ? '種のことばを入力するとまけます。' : '今の内容で種をまきます。';
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={contentStyle}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
-        <Text style={styles.heading}>種を書く</Text>
-        <Text style={styles.subheading}>きれいにまとめなくても大丈夫です。</Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading} accessibilityRole="header">
+            種をまく
+          </Text>
+          <HelpButton content={helpTexts.write} />
+        </View>
+        <Text style={styles.subheading}>
+          思いついたことを、ひとことで。きれいにまとめなくても、タイトルがなくても大丈夫です。あとから育てられます。
+        </Text>
+
+        {addTo ? (
+          <View style={styles.continuation}>
+            <Ionicons name={connecting ? 'git-branch-outline' : 'document-outline'} size={20} color={theme.colors.primary} />
+            <View style={styles.continuationBody}>
+              <Text style={styles.continuationLabel}>{connecting ? 'このメモにつなげます' : '単独のメモとして残します'}</Text>
+              <Text style={styles.continuationText} numberOfLines={2}>
+                {toSeedSnippet(addTo, 40)}
+              </Text>
+              <AnimatedPressable
+                onPress={onToggleStandalone}
+                style={styles.toggleLink}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={connecting ? '単独のメモとして残すに切り替える。本文は消えません' : 'このメモにつなげるに戻す'}
+              >
+                <Text style={styles.toggleLinkText}>{connecting ? '単独のメモとして残す' : 'このメモにつなげる'}</Text>
+              </AnimatedPressable>
+            </View>
+            <AnimatedPressable
+              onPress={onClearTarget}
+              style={styles.continuationClose}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="つなぎ先の指定をやめる。本文は消えません"
+            >
+              <Ionicons name="close-circle-outline" size={24} color={theme.colors.textMuted} />
+            </AnimatedPressable>
+          </View>
+        ) : null}
 
         <FadeInView delayMs={40}>
           <SectionCard>
-          <Text style={styles.bodyLabel}>今の種</Text>
+          <Text style={styles.bodyLabel}>いま浮かんでいること</Text>
           <TextInput
             value={draft.body}
             onChangeText={(body) => onChange({ body })}
             style={styles.bodyInput}
-            placeholder="今浮かんだことを、そのまま置いてください。"
-            placeholderTextColor="#8f9ba6"
+            placeholder="例：朝の光の中だと、考えがまとまりやすい気がする"
+            placeholderTextColor={theme.colors.placeholder}
             multiline
+            autoFocus
             textAlignVertical="top"
             accessibilityLabel="種のことば"
           />
@@ -72,7 +117,8 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
             onChangeText={(title) => onChange({ title })}
             style={styles.titleInput}
             placeholder="タイトル（任意）"
-            placeholderTextColor="#9aa6b2"
+            placeholderTextColor={theme.colors.placeholder}
+            returnKeyType="done"
             accessibilityLabel="タイトル"
           />
           </SectionCard>
@@ -107,11 +153,12 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
               />
 
               <ChipSelector<Importance>
-                label="大切度"
+                label="大切度（1〜5）"
                 options={IMPORTANCE_OPTIONS}
                 selectedValue={draft.importance}
                 onChange={(importance) => onChange({ importance })}
               />
+              <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
 
               <ChipSelector<GrowthState>
                 label="育ち方"
@@ -120,6 +167,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
                 onChange={(growthState) => onChange({ growthState })}
                 getLabel={(state) => growthStateLabels[state]}
               />
+              <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
 
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
@@ -128,7 +176,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
                   onChangeText={(tags) => onChange({ tags })}
                   style={styles.input}
                   placeholder="例: 企画, 感覚, 執筆"
-                  placeholderTextColor="#9aa6b2"
+                  placeholderTextColor={theme.colors.placeholder}
                   autoCapitalize="none"
                   accessibilityLabel="カテゴリ"
                 />
@@ -140,9 +188,11 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
         </FadeInView>
       </ScrollView>
 
-      <View style={bottomBarStyle}>
+      <View style={styles.bottomBar}>
+        {saveDisabled ? <Text style={styles.disabledHint}>ひとこと書くと、「種をまく」を押せるようになります。</Text> : null}
         <PrimaryButton
-          label="種を保存する"
+          label={saving ? '保存しています…' : connecting ? '保存してつなぐ' : '種をまく'}
+          accessibilityLabel={connecting ? '保存してつなぐ' : '種をまく'}
           disabled={saveDisabled}
           accessibilityHint={saveAccessibilityHint}
           onPress={() =>
@@ -168,12 +218,72 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.lg,
+    paddingBottom: 120,
     gap: theme.spacing.md,
   },
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  continuation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  continuationBody: {
+    flex: 1,
+    gap: 2,
+  },
+  continuationLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  continuationText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: theme.fonts.serif,
+    color: theme.colors.text,
+  },
+  toggleLink: {
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  toggleLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    textDecorationLine: 'underline',
+  },
+  continuationClose: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  disabledHint: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  stateHint: {
+    marginTop: -8,
+    marginBottom: 14,
+    fontSize: 13,
+    color: theme.colors.textSoft,
   },
   subheading: {
     color: theme.colors.textMuted,
@@ -188,23 +298,24 @@ const styles = StyleSheet.create({
   bodyInput: {
     minHeight: 220,
     borderRadius: theme.radius.md,
-    backgroundColor: '#fbfcfa',
+    backgroundColor: theme.colors.inputBg,
     paddingHorizontal: 14,
     paddingVertical: 14,
     paddingBottom: 18,
-    fontSize: 17,
+    fontSize: 18,
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    lineHeight: 24,
+    lineHeight: 30,
     borderWidth: 1,
-    borderColor: '#e2e9e3',
+    borderColor: theme.colors.border,
   },
   titleInput: {
     borderRadius: theme.radius.sm,
     minHeight: 42,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#f5f8f4',
-    fontSize: 14,
+    backgroundColor: theme.colors.inputBgSoft,
+    fontSize: 15,
     color: theme.colors.text,
   },
   detailToggle: {
@@ -212,6 +323,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 4,
+    minHeight: 44,
   },
   detailLabelWrap: {
     flexDirection: 'row',
@@ -244,13 +356,14 @@ const styles = StyleSheet.create({
   },
   hint: {
     color: theme.colors.textSoft,
-    fontSize: 12,
+    fontSize: 13,
   },
   bottomBar: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
 });

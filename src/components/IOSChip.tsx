@@ -4,16 +4,19 @@ import { theme } from '../styles/theme';
 
 type IOSChipProps = {
   label: string;
+  accessibilityLabel?: string;
   selected?: boolean;
   onPress: () => void;
 };
 
-export function IOSChip({ label, selected, onPress }: IOSChipProps) {
+export function IOSChip({ label, accessibilityLabel, selected, onPress }: IOSChipProps) {
   return (
     <AnimatedPressable
       onPress={onPress}
       haptic="light"
+      hitSlop={{ top: 4, bottom: 4 }}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected: selected ?? false }}
       style={[styles.chip, selected && styles.chipSelected]}
       pressedStyle={styles.chipPressed}
@@ -31,19 +34,19 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.chipBg,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    minHeight: 36,
+    minHeight: 40,
     justifyContent: 'center',
   },
   chipPressed: {
-    backgroundColor: '#e4eee7',
+    backgroundColor: theme.colors.chipPressed,
   },
   chipSelected: {
-    borderColor: '#8dbca2',
-    backgroundColor: '#dceee1',
+    borderColor: theme.colors.chipSelectedBorder,
+    backgroundColor: theme.colors.leaf,
   },
   label: {
     color: theme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 14,
   },
   labelSelected: {
     color: theme.colors.primary,

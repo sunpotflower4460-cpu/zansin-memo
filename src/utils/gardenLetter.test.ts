@@ -12,7 +12,6 @@ const createSeed = (overrides: Partial<Seed> = {}): Seed => ({
   importance: 3,
   growthState: 'seed',
   tags: [],
-  relatedSeedIds: [],
   schemaVersion: SEED_SCHEMA_VERSION,
   ...overrides,
 });

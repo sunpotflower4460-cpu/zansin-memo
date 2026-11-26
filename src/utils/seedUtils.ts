@@ -1,6 +1,8 @@
+import { getIdsWithRecentlyActiveLinks } from './links';
 import {
   type ResurfacedSeed,
   type Seed,
+  type SeedConnection,
   type SeedCreateInput,
   type SeedUpdateInput,
   type TransformOutput,
@@ -47,7 +49,6 @@ export const createSeed = (input: SeedCreateInput): Seed => {
     importance: clampImportance(input.importance),
     growthState: input.growthState ?? 'seed',
     tags: cleanArray(input.tags),
-    relatedSeedIds: cleanArray(input.relatedSeedIds),
     transformOutputs: [],
     schemaVersion: SEED_SCHEMA_VERSION,
   };
@@ -63,7 +64,6 @@ export const updateSeed = (seed: Seed, patch: SeedUpdateInput): Seed => {
     title: patch.title !== undefined ? patch.title?.trim() || undefined : seed.title,
     body: nextBody || currentBody,
     tags: patch.tags !== undefined ? cleanArray(patch.tags) : seed.tags,
-    relatedSeedIds: patch.relatedSeedIds !== undefined ? cleanArray(patch.relatedSeedIds) : seed.relatedSeedIds,
     transformOutputs: patch.transformOutputs ?? seed.transformOutputs ?? [],
     updatedAt: new Date().toISOString(),
   };
@@ -98,7 +98,9 @@ export const parseTags = (raw: string): string[] =>
       .filter(Boolean),
   );
 
-const buildResurfacingScore = (seed: Seed, now: Date): number => {
+const LINK_ACTIVITY_BONUS = 1.5;
+
+const buildResurfacingScore = (seed: Seed, now: Date, hasActiveLink = false): number => {
   const updatedAt = toTimestamp(seed.updatedAt);
   const ageDays = updatedAt ? Math.max(0, (now.getTime() - updatedAt) / DAY_MS) : SCORE_DECAY_DAYS;
   const lastResurfacedAt = toTimestamp(seed.lastResurfacedAt);
@@ -110,22 +112,25 @@ const buildResurfacingScore = (seed: Seed, now: Date): number => {
   const recencyFactor = Math.min(ageDays, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
   const resurfacingFactor = Math.min(daysSinceResurfaced, SCORE_DECAY_DAYS) / SCORE_DECAY_DAYS;
 
-  const score = seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight;
+  const score =
+    seed.importance * 1.6 + recencyFactor * 2 + resurfacingFactor * 2 + stateWeight + (hasActiveLink ? LINK_ACTIVITY_BONUS : 0);
   return Number.isFinite(score) ? score : FALLBACK_SCORE;
 };
 
 // 今日の種の候補にできるのはアーカイブされていない種だけ。pickTodaySeed と syncResurfacedSeed で同じ条件を使う。
 const isResurfacableSeed = (seed: Seed): boolean => seed.growthState !== 'archived';
 
-export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
+export const pickTodaySeed = (seeds: Seed[], connections: SeedConnection[] = []): ResurfacedSeed | undefined => {
   const candidates = seeds.filter(isResurfacableSeed);
   if (candidates.length === 0) {
     return undefined;
   }
 
   const now = new Date();
+  // つながる種が最近育った種は、同じ話に出会い直しやすいよう少しだけ浮上しやすくする。
+  const withActiveLinks = getIdsWithRecentlyActiveLinks(seeds, connections, now);
   const scored = candidates
-    .map((seed) => ({ seed, score: buildResurfacingScore(seed, now) }))
+    .map((seed) => ({ seed, score: buildResurfacingScore(seed, now, withActiveLinks.has(seed.id)) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
@@ -136,8 +141,9 @@ export const pickTodaySeed = (seeds: Seed[]): ResurfacedSeed | undefined => {
 
   const updatedAt = toTimestamp(picked.seed.updatedAt) ?? now.getTime();
   const days = Math.floor((now.getTime() - updatedAt) / DAY_MS);
-  const reason =
-    days >= 7
+  const reason = withActiveLinks.has(picked.seed.id)
+    ? 'つながる種が、最近育っています'
+    : days >= 7
       ? 'しばらく見返していない種です'
       : picked.seed.importance >= 4
         ? '大切度が高い種です'
@@ -190,6 +196,31 @@ export const formatDate = (isoDate: string): string => {
     .padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 };
 
+const startOfLocalDay = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+// 「今日」「昨日」「3日前」のように、暦日ベースで読みやすい日付にする。古い日付は年月日で示す。
+export const formatRelativeDay = (isoDate: string, now: Date = new Date()): string => {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return '日付不明';
+  }
+
+  const days = Math.round((startOfLocalDay(now) - startOfLocalDay(date)) / DAY_MS);
+  if (days <= 0) {
+    return '今日';
+  }
+  if (days === 1) {
+    return '昨日';
+  }
+  if (days < 7) {
+    return `${days}日前`;
+  }
+  if (days < 30) {
+    return `${Math.floor(days / 7)}週間前`;
+  }
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+};
+
 export const getLocalDateKey = (date = new Date()): string => {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -219,16 +250,6 @@ export const groupSeedsByTag = (seeds: Seed[]): Map<string | undefined, Seed[]> 
     }
   }
   return groups;
-};
-
-// 関連候補は先頭 limit 件だけを表示する。すでに選ばれている種は上限の外でも残し、保存時に黙って外れないようにする。
-export const pickRelatedCandidates = (allSeeds: Seed[], seedId: string, selectedIds: string[], limit: number): Seed[] => {
-  const others = allSeeds.filter((seed) => seed.id !== seedId);
-  const visible = others.slice(0, limit);
-  const visibleIds = new Set(visible.map((seed) => seed.id));
-  const selected = new Set(selectedIds);
-  const selectedBeyondLimit = others.filter((seed) => !visibleIds.has(seed.id) && selected.has(seed.id));
-  return [...visible, ...selectedBeyondLimit];
 };
 
 const UNTAGGED_GROUP_KEY = 'untagged';

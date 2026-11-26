@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { IOSChip } from '../components/IOSChip';
+import { LinksSection } from '../components/LinksSection';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
@@ -18,21 +19,32 @@ import {
   type Importance,
   type Mood,
   type Seed,
+  type SeedConnection,
   type SeedUpdateInput,
   type TransformOutput,
   type TransformType,
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
-import { growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
-import { formatDate, parseTags, pickRelatedCandidates } from '../utils/seedUtils';
+import { HelpButton } from '../components/HelpButton';
+import { helpTexts } from '../utils/helpTexts';
+import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
+import { formatDate, parseTags } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
   seed: Seed;
   allSeeds: Seed[];
+  connections: SeedConnection[];
   onBack: () => void;
-  onSave: (seedId: string, payload: SeedUpdateInput) => void;
+  /** 戻り先の名前（例: 種一覧）。どこへ戻るかが分かるようにボタンに表示する。 */
+  backLabel: string;
+  /** 保存の確定を待って true を返す。失敗時は false（入力はそのまま残す）。 */
+  onSave: (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string) => Promise<boolean>;
   onDelete: (seedId: string) => void;
+  onOpenSeed: (seedId: string) => void;
+  onLinkSeeds: (seedId: string, otherId: string) => void;
+  onUnlinkSeeds: (seedId: string, otherId: string) => void;
+  onAddMemo: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
 };
 
@@ -43,7 +55,6 @@ type DraftState = {
   mood?: Mood;
   growthState: GrowthState;
   importance: Importance;
-  relatedSeedIds: string[];
 };
 
 const toDraft = (seed: Seed): DraftState => ({
@@ -53,60 +64,115 @@ const toDraft = (seed: Seed): DraftState => ({
   mood: seed.mood,
   growthState: seed.growthState,
   importance: seed.importance,
-  relatedSeedIds: seed.relatedSeedIds,
 });
 
-const MAX_RELATED_CHIP_LABEL_LENGTH = 16;
-const MAX_RELATED_CANDIDATES = 20;
+// 保存済みの内容と見比べて、まだ保存していない変更があるかを返す（書式の違い、例えばカテゴリの区切り方は無視する）。
+const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
+  draft.body.trim() !== seed.body ||
+  (draft.title.trim() || undefined) !== seed.title ||
+  draft.mood !== seed.mood ||
+  draft.importance !== seed.importance ||
+  draft.growthState !== seed.growthState ||
+  parseTags(draft.tags).join('\n') !== seed.tags.join('\n');
 
-export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onCreateTransform }: SeedDetailScreenProps) {
+export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabel, onSave, onDelete, onOpenSeed, onLinkSeeds, onUnlinkSeeds, onAddMemo, onCreateTransform }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  /** 編集を始めた時点の更新日時。これと違えば、別の更新が先に確定している。 */
+  const baseUpdatedAtRef = React.useRef(seed.updatedAt);
 
+  // 別の種を開いたときだけ入力内容を読み込み直す。変換候補の追加や「今日の種」の更新で、編集中の文章が巻き戻らないようにする。
+  const seedId = seed.id;
+  const latestSeedRef = React.useRef(seed);
+  latestSeedRef.current = seed;
   React.useEffect(() => {
-    setDraft(toDraft(seed));
-  }, [seed]);
+    setDraft(toDraft(latestSeedRef.current));
+    baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
+  }, [seedId]);
 
-  const relatedCandidates = React.useMemo(
-    () => pickRelatedCandidates(allSeeds, seed.id, seed.relatedSeedIds, MAX_RELATED_CANDIDATES),
-    [allSeeds, seed.id, seed.relatedSeedIds],
-  );
-  const relatedCandidateIds = React.useMemo(() => new Set(relatedCandidates.map((item) => item.id)), [relatedCandidates]);
+  const save = async (): Promise<boolean> => {
+    if (saving) {
+      return false;
+    }
+    setSaving(true);
+    const ok = await onSave(seed.id, buildPayload(), baseUpdatedAtRef.current);
+    setSaving(false);
+    if (ok) {
+      // 自分の保存で進んだ版を、次の編集の起点にする。
+      baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
+    }
+    return ok;
+  };
+
+  const unsaved = hasUnsavedChanges(draft, seed);
+
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
   const canSave = draft.body.trim().length > 0;
   const saveAccessibilityHint = canSave ? '現在の変更内容を保存します。' : '種のことばを入力すると保存できます。';
   const contentStyle = React.useMemo(
-    () => [styles.content, { paddingBottom: Math.max(110, insets.bottom + 80) }],
+    () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
     [insets.bottom],
   );
 
-  const toggleRelatedSeed = (relatedSeedId: string) => {
-    setDraft((current) => {
-      const has = current.relatedSeedIds.includes(relatedSeedId);
-      return {
-        ...current,
-        relatedSeedIds: has ? current.relatedSeedIds.filter((id) => id !== relatedSeedId) : [...current.relatedSeedIds, relatedSeedId],
-      };
-    });
+  const buildPayload = (): SeedUpdateInput => ({
+    title: draft.title,
+    body: draft.body,
+    mood: draft.mood,
+    importance: draft.importance,
+    growthState: draft.growthState,
+    tags: parseTags(draft.tags),
+  });
+
+  // 戻るときは、変更があれば自動で保存する（メモ帳のように、書いたものを失わない）。
+  // 本文が空のときだけは保存できないので、捨てて戻るかを確認する。
+  const handleBack = () => {
+    if (!unsaved) {
+      onBack();
+      return;
+    }
+    if (canSave) {
+      Keyboard.dismiss();
+      // 保存の確定を待ってから戻る。失敗したら、この画面に残して入力を守る。
+      void save().then((ok) => {
+        if (ok) {
+          onBack();
+        }
+      });
+      return;
+    }
+    Alert.alert('本文が空のままです', 'このまま戻ると、変更は残りません。', [
+      { text: '編集を続ける', style: 'cancel' },
+      { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
+    ]);
   };
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={contentStyle} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={contentStyle}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      >
         <AnimatedPressable
-          onPress={onBack}
+          onPress={handleBack}
           style={styles.backButton}
           pressedStyle={styles.backButtonPressed}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="戻る"
+          accessibilityLabel={`${backLabel}に戻る`}
         >
           <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
-          <Text style={styles.backButtonText}>戻る</Text>
+          <Text style={styles.backButtonText}>{backLabel}</Text>
         </AnimatedPressable>
 
-        <Text style={styles.heading}>種の詳細</Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading} accessibilityRole="header">
+            種の詳細
+          </Text>
+          <HelpButton content={helpTexts.detail} />
+        </View>
         <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
 
         <FadeInView delayMs={40}>
@@ -118,7 +184,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             multiline
             textAlignVertical="top"
             placeholder="種のことば"
-            placeholderTextColor="#95a1ac"
+            placeholderTextColor={theme.colors.placeholder}
             accessibilityLabel="種のことば"
           />
           <TextInput
@@ -126,9 +192,18 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
             style={styles.titleInput}
             placeholder="タイトル（任意）"
-            placeholderTextColor="#9ca8b3"
+            placeholderTextColor={theme.colors.placeholder}
             accessibilityLabel="タイトル"
           />
+
+          <ChipSelector<GrowthState>
+            label="育ち方"
+            options={GROWTH_STATE_OPTIONS}
+            selectedValue={draft.growthState}
+            onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
+            getLabel={(state) => growthStateLabels[state]}
+          />
+          <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
 
           <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
@@ -154,19 +229,12 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               />
 
               <ChipSelector<Importance>
-                label="大切度"
+                label="大切度（1〜5）"
                 options={IMPORTANCE_OPTIONS}
                 selectedValue={draft.importance}
                 onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
               />
-
-              <ChipSelector<GrowthState>
-                label="育ち方"
-                options={GROWTH_STATE_OPTIONS}
-                selectedValue={draft.growthState}
-                onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
-                getLabel={(state) => growthStateLabels[state]}
-              />
+              <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
 
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
@@ -177,65 +245,57 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                   accessibilityLabel="カテゴリ"
                 />
               </View>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.label}>関連する種（任意）</Text>
-                {relatedCandidates.length === 0 ? (
-                  <Text style={styles.emptyText}>他の種が作成されるとここで紐づけできます。</Text>
-                ) : (
-                  <View style={styles.relatedList}>
-                    {relatedCandidates.map((candidate) => {
-                      const selected = draft.relatedSeedIds.includes(candidate.id);
-                      return (
-                        <IOSChip
-                          key={candidate.id}
-                          label={
-                            candidate.body.length > MAX_RELATED_CHIP_LABEL_LENGTH
-                              ? `${candidate.body.slice(0, MAX_RELATED_CHIP_LABEL_LENGTH)}…`
-                              : candidate.body
-                          }
-                          selected={selected}
-                          onPress={() => toggleRelatedSeed(candidate.id)}
-                        />
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
             </View>
           ) : null}
 
+          <View style={styles.saveStatus} accessible accessibilityLiveRegion="polite">
+            <Ionicons
+              name={unsaved ? 'ellipse-outline' : 'checkmark-circle-outline'}
+              size={16}
+              color={unsaved ? theme.colors.warning : theme.colors.primary}
+            />
+            <Text style={styles.saveStatusText}>
+              {unsaved ? '未保存の変更があります（戻ると自動で保存されます）' : '保存済みです。書き換えると、戻るときに自動で保存されます'}
+            </Text>
+          </View>
+
           <PrimaryButton
-            label="変更を保存"
-            disabled={!canSave}
+            label={saving ? '保存しています…' : unsaved ? '変更を保存' : '保存済み'}
+            disabled={!canSave || !unsaved || saving}
             accessibilityHint={saveAccessibilityHint}
             onPress={() => {
               if (!canSave) {
-                Alert.alert('保存前に', '種のことばだけ、少し残しておきましょう。');
                 return;
               }
 
-              const nextRelatedSeedIds = Array.from(
-                new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
-              );
-              onSave(seed.id, {
-                title: draft.title,
-                body: draft.body,
-                mood: draft.mood,
-                importance: draft.importance,
-                growthState: draft.growthState,
-                tags: parseTags(draft.tags),
-                relatedSeedIds: nextRelatedSeedIds,
-              });
+              Keyboard.dismiss();
+              void save();
             }}
           />
           </SectionCard>
         </FadeInView>
 
+        <FadeInView delayMs={60}>
+          <LinksSection
+            seed={seed}
+            allSeeds={allSeeds}
+            connections={connections}
+            onOpenSeed={onOpenSeed}
+            onLink={(otherId) => onLinkSeeds(seed.id, otherId)}
+            onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
+            onAddMemo={() => onAddMemo(seed.id)}
+          />
+        </FadeInView>
+
         <FadeInView delayMs={80}>
           <SectionCard muted>
-          <Text style={styles.sectionTitle}>この種を育てる</Text>
-          <Text style={styles.hintText}>問いや行動の候補として、やさしく変換します。</Text>
+          <View style={styles.waterTitleRow}>
+            <Ionicons name="water-outline" size={20} color="#4f7f93" />
+            <Text style={styles.sectionTitle}>この種に水をあげる</Text>
+          </View>
+          <Text style={styles.hintText}>
+            ボタンを押すと、この種から「問い」や「小さな行動」などの候補が、この端末の中で作られます。使うかどうかは自由です。
+          </Text>
           <View style={styles.rowWrap}>
             {TRANSFORM_TYPES.map((type) => (
               <IOSChip
@@ -304,14 +364,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minHeight: 44,
     borderRadius: 999,
-    backgroundColor: '#eaf1ea',
+    backgroundColor: theme.colors.leaf,
     gap: 2,
   },
   backButtonPressed: {
-    backgroundColor: '#dde9dd',
+    backgroundColor: theme.colors.leafPressed,
   },
   backButtonText: {
     color: theme.colors.primary,
@@ -321,32 +381,55 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  saveStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  saveStatusText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.colors.textMuted,
+    lineHeight: 18,
+  },
+  stateHint: {
+    marginTop: -8,
+    fontSize: 13,
+    color: theme.colors.textSoft,
   },
   dateText: {
     color: theme.colors.textSoft,
-    fontSize: 12,
+    fontSize: 13,
   },
   bodyInput: {
     minHeight: 160,
     borderRadius: theme.radius.md,
-    backgroundColor: '#fbfcfa',
+    backgroundColor: theme.colors.inputBg,
     paddingHorizontal: 14,
     paddingVertical: 14,
     paddingBottom: 18,
-    fontSize: 17,
+    fontSize: 18,
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    lineHeight: 24,
+    lineHeight: 30,
     borderWidth: 1,
-    borderColor: '#e2e9e3',
+    borderColor: theme.colors.border,
   },
   titleInput: {
     borderRadius: theme.radius.sm,
     minHeight: 40,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    backgroundColor: '#f5f8f4',
-    fontSize: 14,
+    backgroundColor: theme.colors.inputBgSoft,
+    fontSize: 15,
     color: theme.colors.text,
   },
   toggle: {
@@ -354,7 +437,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
-    paddingVertical: 2,
+    minHeight: 44,
   },
   toggleText: {
     color: theme.colors.primary,
@@ -385,9 +468,15 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  waterTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   hintText: {
@@ -401,12 +490,12 @@ const styles = StyleSheet.create({
   },
   outputCard: {
     borderTopWidth: 1,
-    borderTopColor: '#dbe4dd',
+    borderTopColor: theme.colors.rule,
     paddingTop: 10,
     gap: 4,
   },
   outputType: {
-    fontSize: 12,
+    fontSize: 13,
     color: theme.colors.textMuted,
   },
   outputBody: {
@@ -415,7 +504,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   outputDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: theme.colors.textSoft,
   },
   deleteButton: {
@@ -424,11 +513,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#f4b0b7',
+    borderColor: theme.colors.dangerBorder,
     backgroundColor: theme.colors.dangerBg,
   },
   deleteButtonPressed: {
-    backgroundColor: '#fee4e8',
+    backgroundColor: theme.colors.dangerPressed,
   },
   deleteButtonText: {
     color: theme.colors.dangerText,

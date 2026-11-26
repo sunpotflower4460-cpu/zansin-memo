@@ -1,24 +1,38 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
+// 和紙（生成り）をベースにした配色。墨色の文字、若草色のアクセント、ごく小さな朱を差し色にする。
 export const theme = {
   colors: {
-    background: '#f7f8f4',
-    surface: '#ffffff',
-    surfaceElevated: '#fcfdfb',
-    surfaceMuted: '#f0f5ef',
-    surfaceSoft: '#f4f8f3',
-    text: '#1f2933',
-    textMuted: '#5f6b76',
-    textSoft: '#7a8794',
-    primary: '#1f6b49',
+    background: '#f5efe2', // 生成り
+    surface: '#fbf8f0', // 和紙白
+    surfaceElevated: '#fdfbf5',
+    surfaceMuted: '#efe8d8',
+    surfaceSoft: '#f3ecdd',
+    surfacePressed: '#ebe3d0',
+    inputBg: '#fdfbf6',
+    inputBgSoft: '#f6f0e3',
+    text: '#2b2a26', // 墨
+    textMuted: '#5d5850',
+    textSoft: '#686254',
+    placeholder: '#766f62',
+    primary: '#1f6b49', // 深緑
     primaryPressed: '#19583c',
-    primarySoft: '#e4f1e8',
-    primaryDisabled: '#8fa1af',
-    border: '#dbe4dd',
-    chipBg: '#edf3ee',
-    dangerBg: '#fff1f2',
-    dangerText: '#b42318',
+    primarySoft: '#e1ebd8',
+    primaryDisabled: '#8f9a8a',
+    leaf: '#dfe9d6', // 若草の淡色（ボタン・選択状態）
+    leafPressed: '#d2e0c7',
+    border: '#e0d6c0',
+    rule: '#e2d9c4', // 区切り線
+    chipBg: '#f1eadb',
+    chipPressed: '#e8dfc9',
+    chipSelectedBorder: '#8fb59a',
+    accent: '#b8453a', // 朱
+    dangerBg: '#fbebe6',
+    dangerPressed: '#f6dbd3',
+    dangerBorder: '#e8b8ae',
+    dangerText: '#a8322a',
     warning: '#d97706',
+    shadow: '#4a3b1f',
   },
   spacing: {
     xxs: 4,
@@ -45,19 +59,27 @@ export const theme = {
     subbody: 14,
     caption: 12,
   },
+  fonts: {
+    // 見出しと種の本文は明朝体。端末に入っている書体だけを使い、追加のフォントは同梱しない。
+    serif: Platform.select({
+      ios: 'Hiragino Mincho ProN',
+      android: 'serif',
+      default: '"Hiragino Mincho ProN", "Noto Serif CJK JP", "Yu Mincho", "YuMincho", serif',
+    }) as string,
+  },
   shadows: StyleSheet.create({
     card: {
-      shadowColor: '#0f172a',
-      shadowOpacity: 0.06,
+      shadowColor: '#4a3b1f',
+      shadowOpacity: 0.07,
       shadowRadius: 10,
-      shadowOffset: { width: 0, height: 4 },
+      shadowOffset: { width: 0, height: 3 },
       elevation: 2,
     },
     floating: {
-      shadowColor: '#0f172a',
-      shadowOpacity: 0.14,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 6 },
+      shadowColor: '#4a3b1f',
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 5 },
       elevation: 6,
     },
   }),

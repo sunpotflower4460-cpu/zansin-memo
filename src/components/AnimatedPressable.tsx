@@ -3,6 +3,7 @@ import {
   Animated,
   type AccessibilityRole,
   type GestureResponderEvent,
+  type Insets,
   Pressable,
   type StyleProp,
   type ViewStyle,
@@ -15,6 +16,9 @@ type AnimatedPressableProps = {
   onPress?: (event: GestureResponderEvent) => void;
   onLongPress?: (event: GestureResponderEvent) => void;
   style?: StyleProp<ViewStyle>;
+  /** タップ領域（Pressable本体）側に当てるスタイル。flex指定などで当たり判定を広げたいときに使う。 */
+  containerStyle?: StyleProp<ViewStyle>;
+  hitSlop?: number | Insets;
   pressedStyle?: StyleProp<ViewStyle>;
   disabled?: boolean;
   haptic?: 'none' | 'light';
@@ -29,6 +33,8 @@ export function AnimatedPressable({
   onPress,
   onLongPress,
   style,
+  containerStyle,
+  hitSlop,
   pressedStyle,
   disabled,
   haptic = 'none',
@@ -57,6 +63,8 @@ export function AnimatedPressable({
 
   return (
     <Pressable
+      style={containerStyle}
+      hitSlop={hitSlop}
       disabled={disabled}
       onPress={(event) => {
         if (haptic === 'light' && !disabled) {

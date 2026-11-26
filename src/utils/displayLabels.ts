@@ -7,6 +7,14 @@ export const growthStateLabels: Record<GrowthState, string> = {
   archived: '保管',
 };
 
+// 育ち方をひとこと説明する。「種→芽→木」の意味が初めてでも伝わるようにする。
+export const growthStateHints: Record<GrowthState, string> = {
+  seed: '思いついたままの状態',
+  sprout: '気になり続けているもの',
+  tree: '形になってきたもの',
+  archived: 'ひと区切り。今日の種には出ません',
+};
+
 export const moodLabels: Record<Mood, string> = {
   calm: 'おだやか',
   excited: '高まり',

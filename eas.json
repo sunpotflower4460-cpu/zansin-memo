@@ -5,13 +5,16 @@
   },
   "build": {
     "production": {
-      "distribution": "store"
+      "distribution": "store",
+      "autoIncrement": true
     },
     "preview": {
       "distribution": "internal"
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {}
+    }
   }
 }

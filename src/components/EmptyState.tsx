@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from './AnimatedPressable';
 import { theme } from '../styles/theme';
 
 type EmptyStateProps = {
   icon?: keyof typeof Ionicons.glyphMap;
+  /** 指定すると、アイコンの代わりに大きなイラストを表示する。 */
+  image?: ImageSourcePropType;
   title: string;
   description: string;
   actionLabel?: string;
@@ -13,16 +15,26 @@ type EmptyStateProps = {
 
 export function EmptyState({
   icon = 'leaf-outline',
+  image,
   title,
   description,
   actionLabel,
   onAction,
 }: EmptyStateProps) {
   return (
-    <View style={styles.wrap}>
-      <View style={styles.iconWrap}>
-        <Ionicons name={icon} size={20} color={theme.colors.primary} />
-      </View>
+    <View
+      style={styles.wrap}
+      // ボタンがある場合はまとめず、VoiceOverでボタンにも到達できるようにする。
+      accessible={!(actionLabel && onAction)}
+      accessibilityLabel={`${title}。${description}`}
+    >
+      {image ? (
+        <Image source={image} style={styles.image} accessibilityIgnoresInvertColors />
+      ) : (
+        <View style={styles.iconWrap}>
+          <Ionicons name={icon} size={20} color={theme.colors.primary} />
+        </View>
+      )}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
       {actionLabel && onAction ? (
@@ -37,16 +49,21 @@ export function EmptyState({
 const styles = StyleSheet.create({
   wrap: {
     borderRadius: theme.radius.md,
-    backgroundColor: '#eef5ef',
+    backgroundColor: theme.colors.surfaceMuted,
     padding: theme.spacing.lg,
     alignItems: 'center',
     gap: theme.spacing.sm,
+  },
+  image: {
+    width: 132,
+    height: 132,
+    marginBottom: -theme.spacing.xs,
   },
   iconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#dceee1',
+    backgroundColor: theme.colors.leaf,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -66,16 +83,17 @@ const styles = StyleSheet.create({
   action: {
     marginTop: theme.spacing.sm,
     borderRadius: theme.radius.full,
-    backgroundColor: '#dceee1',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    backgroundColor: theme.colors.leaf,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   actionPressed: {
-    backgroundColor: '#d3e7d9',
+    backgroundColor: theme.colors.leafPressed,
   },
   actionText: {
     color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

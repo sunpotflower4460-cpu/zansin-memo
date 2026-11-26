@@ -16,6 +16,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surfaceElevated,
     borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
     padding: theme.spacing.lg,
     gap: theme.spacing.sm,
     ...theme.shadows.card,

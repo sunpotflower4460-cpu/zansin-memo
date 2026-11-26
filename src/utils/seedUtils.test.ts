@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ResurfacedSeed, Seed } from '../domain/types';
 import { SEED_SCHEMA_VERSION } from '../domain/types';
+import { makeConnection } from '../data/gardenModel';
 import {
   buildTransformOutput,
   createSeed,
+  formatRelativeDay,
   getTagGroupKey,
   getTagGroupLabel,
   groupSeedsByTag,
   isSoftDeletedSeed,
   matchesTagFilter,
   parseTags,
-  pickRelatedCandidates,
   pickTodaySeed,
   resolveTagFilter,
   restoreSeed,
@@ -28,8 +29,7 @@ const createBaseSeed = (): Seed => ({
   importance: 3,
   growthState: 'seed',
   tags: [],
-  relatedSeedIds: [],
-  schemaVersion: 1,
+  schemaVersion: SEED_SCHEMA_VERSION,
 });
 
 test('parseTags trims blanks and removes duplicates', () => {
@@ -41,13 +41,11 @@ test('createSeed normalizes input fields', () => {
     title: '  タイトル  ',
     body: '  本文  ',
     tags: [' idea ', 'idea', ''],
-    relatedSeedIds: [' seed-2 ', 'seed-2', ''],
   });
 
   assert.equal(created.title, 'タイトル');
   assert.equal(created.body, '本文');
   assert.deepEqual(created.tags, ['idea']);
-  assert.deepEqual(created.relatedSeedIds, ['seed-2']);
   assert.equal(created.importance, 3);
   assert.equal(created.growthState, 'seed');
   assert.deepEqual(created.transformOutputs, []);
@@ -67,14 +65,12 @@ test('updateSeed keeps recoverable body and normalizes patch arrays', () => {
       title: '   ',
       body: '   ',
       tags: [' next ', 'next', ''],
-      relatedSeedIds: [' seed-2 ', 'seed-2', ''],
     },
   );
 
   assert.equal(updated.title, undefined);
   assert.equal(updated.body, '元の本文');
   assert.deepEqual(updated.tags, ['next']);
-  assert.deepEqual(updated.relatedSeedIds, ['seed-2']);
   assert.ok(!Number.isNaN(new Date(updated.updatedAt).getTime()));
 });
 
@@ -146,27 +142,6 @@ test('groupSeedsByTag handles tag names that exist on Object.prototype', () => {
   assert.deepEqual(groups.get('constructor')?.map((seed) => seed.id), ['a']);
 });
 
-const createManySeeds = (count: number): Seed[] =>
-  Array.from({ length: count }, (_, index) => ({ ...createBaseSeed(), id: `seed-${index}` }));
-
-test('pickRelatedCandidates lists other seeds up to the limit', () => {
-  const candidates = pickRelatedCandidates(createManySeeds(25), 'seed-0', [], 20);
-
-  assert.deepEqual(
-    candidates.map((seed) => seed.id),
-    Array.from({ length: 20 }, (_, index) => `seed-${index + 1}`),
-  );
-});
-
-test('pickRelatedCandidates keeps selected seeds beyond the limit so saving does not drop them', () => {
-  const candidates = pickRelatedCandidates(createManySeeds(25), 'seed-0', ['seed-24'], 20);
-  const ids = candidates.map((seed) => seed.id);
-
-  assert.equal(ids.length, 21);
-  assert.ok(ids.includes('seed-24'));
-  assert.ok(!ids.includes('seed-0'));
-});
-
 const createResurfaced = (seed: Seed): ResurfacedSeed => ({
   seed,
   reason: 'いまのあなたに合いそうな種です',
@@ -224,4 +199,31 @@ test('resolveTagFilter clears a tag filter whose tag no longer exists', () => {
   assert.equal(resolveTagFilter(null, ['企画']), null);
   assert.equal(resolveTagFilter('企画', ['企画', 'all']), '企画');
   assert.equal(resolveTagFilter('企画', ['all']), null);
+});
+
+test('formatRelativeDay reads naturally by calendar day', () => {
+  const now = new Date(2026, 10, 26, 9, 0, 0);
+  const at = (y: number, m: number, d: number, h = 23) => new Date(y, m, d, h, 30).toISOString();
+
+  assert.equal(formatRelativeDay(at(2026, 10, 26, 0), now), '今日');
+  assert.equal(formatRelativeDay(at(2026, 10, 25), now), '昨日');
+  assert.equal(formatRelativeDay(at(2026, 10, 23), now), '3日前');
+  assert.equal(formatRelativeDay(at(2026, 10, 19), now), '1週間前');
+  assert.equal(formatRelativeDay(at(2026, 10, 5), now), '3週間前');
+  assert.equal(formatRelativeDay(at(2026, 9, 1), now), '2026/10/1');
+  assert.equal(formatRelativeDay('broken', now), '日付不明');
+  // 未来の日付（端末の時計変更など）は今日として扱う
+  assert.equal(formatRelativeDay(at(2026, 10, 30), now), '今日');
+});
+
+test('pickTodaySeed explains a resurfacing caused by a recently active linked seed', () => {
+  const now = Date.now();
+  const old = new Date(now - 20 * 86400000).toISOString();
+  const recent = new Date(now - 3600000).toISOString();
+  const quiet = { ...createBaseSeed(), id: 'quiet', createdAt: old, updatedAt: old };
+  const busy = { ...createBaseSeed(), id: 'busy', createdAt: old, updatedAt: recent, growthState: 'archived' as const };
+
+  const picked = pickTodaySeed([quiet, busy], [makeConnection('quiet', 'busy', 'manual', recent)]);
+  assert.equal(picked?.seed.id, 'quiet');
+  assert.equal(picked?.reason, 'つながる種が、最近育っています');
 });
