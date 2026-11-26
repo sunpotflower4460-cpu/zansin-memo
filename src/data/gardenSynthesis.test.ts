@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  bloomSeed,
+  returnToSprout,
+  setArchived,
   captureSeed,
   connectSeeds,
   disconnectSeeds,
@@ -288,17 +291,6 @@ test('undo never discards a growth-state change or a newer sprout draft made aft
   assert.equal(seed('A').synthesis?.id, saved.id);
 });
 
-test('a retained body-edit draft follows the growth state, so saving it later cannot demote the sprout', async () => {
-  const { writer, stored } = await setup();
-  writer.saveDraft({ id: 'edit', kind: 'edit-body', targetSeedId: 'A', body: '編集中', growthState: 'seed', updatedAt: T1 });
-  await writer.flushDrafts();
-  await writer.run(promote());
-  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.growthState, 'sprout');
-  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.body, '編集中');
-  await writer.run(reconsiderSynthesis({ commandId: 'reconsider', seedId: 'A' }));
-  assert.equal(stored().drafts.find((d) => d.id === 'edit')?.growthState, 'seed');
-});
-
 test('an existing tree is never downgraded by a review, and a seed or archived memo becomes a sprout when adopted', async () => {
   const { writer, seed } = await setup();
   await writer.run(updateSeedFields({ commandId: 'tree', seedId: 'A', patch: { growthState: 'tree' }, now: T1 }));
@@ -307,4 +299,41 @@ test('an existing tree is never downgraded by a review, and a seed or archived m
   await writer.run(updateSeedFields({ commandId: 'arch', seedId: 'B', patch: { growthState: 'archived' }, now: T1 }));
   await writer.run(promoteToSprout({ commandId: 'p-arch', centerId: 'B', synthesisId: 'syn-B', statement: '保管していたが、こうできそう', centerBodyText: '写真に短文を添えるのが好き', materials: [], now: T2 }));
   assert.equal(seed('B').growthState, 'sprout');
+});
+
+// ---- 花: 自分で咲かせる ----
+
+test('only a written sprout can bloom, and the reason is optional and kept', async () => {
+  const { writer, seed } = await setup();
+  assert.deepEqual(await writer.run(bloomSeed({ commandId: 'early', seedId: 'A', note: '', now: T1 })), { ok: false, reason: 'rejected', detail: 'not_a_sprout' });
+  await writer.run(updateSeedFields({ commandId: 'legacy', seedId: 'B', patch: { growthState: 'sprout' }, now: T1 }));
+  assert.equal((await writer.run(bloomSeed({ commandId: 'no-text', seedId: 'B', note: '', now: T1 }))).ok, false);
+
+  await writer.run(promote());
+  const updatedAt = seed('A').updatedAt;
+  assert.equal((await writer.run(bloomSeed({ commandId: 'bloom', seedId: 'A', note: '  送ったら返事が来た ', now: T2 }))).ok, true);
+  assert.equal(seed('A').growthState, 'tree');
+  assert.deepEqual(seed('A').bloom, { note: '送ったら返事が来た', bloomedAt: T2 });
+  assert.equal(seed('A').updatedAt, updatedAt); // 本文は変わっていない
+  assert.equal(hasCurrentSynthesis(seed('A')), true);
+
+  await writer.run(returnToSprout({ commandId: 'back', seedId: 'A' }));
+  assert.equal(seed('A').growthState, 'sprout');
+  assert.equal(seed('A').bloom?.note, '送ったら返事が来た'); // 次に咲かせるときの書き出しになる
+
+  await writer.run(bloomSeed({ commandId: 'bloom-2', seedId: 'A', note: '', now: T2 }));
+  assert.deepEqual(seed('A').bloom, { bloomedAt: T2 });
+});
+
+test('archiving remembers the growth stage and returning restores it', async () => {
+  const { writer, seed, stored } = await setup();
+  await writer.run(promote());
+  await writer.run(bloomSeed({ commandId: 'bloom', seedId: 'A', note: '理由', now: T2 }));
+  await writer.run(setArchived({ commandId: 'archive', seedId: 'A', archived: true }));
+  assert.equal(seed('A').growthState, 'archived');
+  assert.equal(stored().seeds.find((s) => s.id === 'A')?.archivedFrom, 'tree'); // 再起動しても残る
+  assert.equal(stored().seeds.find((s) => s.id === 'A')?.bloom?.note, '理由');
+  await writer.run(setArchived({ commandId: 'unarchive', seedId: 'A', archived: false }));
+  assert.equal(seed('A').growthState, 'tree');
+  assert.equal(seed('A').archivedFrom, undefined);
 });

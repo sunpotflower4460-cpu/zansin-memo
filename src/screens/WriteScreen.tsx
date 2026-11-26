@@ -9,7 +9,6 @@ import { FadeInView } from '../components/FadeInView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
-  GROWTH_STATE_OPTIONS,
   IMPORTANCE_OPTIONS,
   MOOD_OPTIONS,
   type GrowthState,
@@ -21,7 +20,7 @@ import {
 import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
 import { toSeedSnippet } from '../utils/seedText';
-import { growthStateHints, growthStateLabels, moodLabels } from '../utils/displayLabels';
+import { moodLabels } from '../utils/displayLabels';
 
 type WriteScreenProps = {
   draft: {
@@ -45,6 +44,9 @@ type WriteScreenProps = {
   savedMemo?: Seed;
   /** はじめて保存したときだけ、あとからつなげられることを一言添える。 */
   isFirstSave: boolean;
+  /** 保存したメモのつながりの数。つないだら、芽を書く入口を出す。 */
+  savedLinkCount: number;
+  onWriteSprout: () => void;
   onConnectSaved: () => void;
   onDismissSaved: () => void;
   onOpenSaved: () => void;
@@ -61,6 +63,8 @@ export function WriteScreen({
   onClearTarget,
   savedMemo,
   isFirstSave,
+  savedLinkCount,
+  onWriteSprout,
   onConnectSaved,
   onDismissSaved,
   onOpenSaved,
@@ -69,7 +73,7 @@ export function WriteScreen({
   const saveDisabled = draft.body.trim().length === 0 || saving;
   const connecting = Boolean(addTo) && !standalone;
   const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const saveAccessibilityHint = saveDisabled ? '種のことばを入力するとまけます。' : '今の内容で種をまきます。';
+  const saveAccessibilityHint = saveDisabled ? '本文を入力すると保存できます。' : '今の内容を保存します。';
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -105,7 +109,20 @@ export function WriteScreen({
                 {toSeedSnippet(savedMemo, 80)}
               </Text>
             </AnimatedPressable>
-            {isFirstSave ? <Text style={styles.savedHint}>関係することを思いついたら、あとからつなげられます。</Text> : null}
+            {savedLinkCount > 0 ? (
+              <AnimatedPressable
+                onPress={onWriteSprout}
+                style={styles.sproutButton}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={`つなぎました（${savedLinkCount}件）。思いついたことを書いて芽にする`}
+              >
+                <Ionicons name="create-outline" size={18} color="#ffffff" />
+                <Text style={styles.sproutButtonText}>思いついたことを書く（芽にする）</Text>
+              </AnimatedPressable>
+            ) : isFirstSave ? (
+              <Text style={styles.savedHint}>関係することを思いついたら、あとからつなげられます。</Text>
+            ) : null}
             <View style={styles.savedActions}>
               <AnimatedPressable
                 onPress={onConnectSaved}
@@ -226,15 +243,6 @@ export function WriteScreen({
               />
               <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
 
-              <ChipSelector<GrowthState>
-                label="育ち方"
-                options={GROWTH_STATE_OPTIONS}
-                selectedValue={draft.growthState}
-                onChange={(growthState) => onChange({ growthState })}
-                getLabel={(state) => growthStateLabels[state]}
-              />
-              <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
-
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
                 <TextInput
@@ -346,6 +354,8 @@ const styles = StyleSheet.create({
   savedTitle: { fontSize: theme.typography.body, fontWeight: '700', color: theme.colors.primary },
   savedBody: { minHeight: 44, justifyContent: 'center' },
   savedText: { fontSize: 15, lineHeight: 23, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  sproutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 48, borderRadius: theme.radius.md, backgroundColor: theme.colors.primary },
+  sproutButtonText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
   savedHint: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
   savedActions: { flexDirection: 'row', gap: theme.spacing.xs },
   savedActionContainer: { flex: 1 },

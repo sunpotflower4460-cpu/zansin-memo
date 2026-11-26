@@ -64,6 +64,10 @@ type SeedSynthesis = {
 type SeedV2 = Omit<Seed, 'relatedSeedIds' | 'schemaVersion'> & {
   schemaVersion: 2;
   synthesis?: SeedSynthesis;
+  /** 花（growthState: 'tree'）にしたときの記録。2026-11-26 追加 */
+  bloom?: { note?: string; bloomedAt: string };
+  /** 保管する前の育ち方。保管から戻すときに使う。2026-11-26 追加 */
+  archivedFrom?: GrowthState;
 };
 
 type GardenStoreV2 = {

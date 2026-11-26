@@ -70,7 +70,7 @@ const buildReflection = ({
 >): string => {
   // 実際に本人がした操作（芽にした・つないだ）を、意味を断定せずに伝える。
   if (newSproutCount > 0) {
-    return '今週、言葉にした芽が生まれました。材料と一緒に、読み返してみませんか？';
+    return '今週、言葉にした芽が生まれました。読み返してみませんか？';
   }
 
   if (newConnectionCount > 0) {

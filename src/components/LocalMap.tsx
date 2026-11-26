@@ -76,7 +76,7 @@ export function LocalMap({ center, neighbors, selectedId, onSelect }: LocalMapPr
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityLabel={`つながっているメモ。${toSeedSnippet(seed, 40)}${selected ? '。選択中' : ''}`}
-            accessibilityHint="タップで内容を確認します"
+            accessibilityHint={selected ? 'もう一度タップすると選択を解除します' : 'タップで内容を確認します'}
           >
             <Image source={stageImages[seed.growthState]} style={styles.nodeImage} accessibilityIgnoresInvertColors />
             <Text style={styles.nodeText} numberOfLines={3}>

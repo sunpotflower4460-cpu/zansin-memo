@@ -44,7 +44,7 @@ export function AppLaunchIntro({ visible }: AppLaunchIntroProps) {
       <Image source={splashMark} style={styles.mark} accessibilityIgnoresInvertColors />
       <Text style={styles.title}>きざしノート</Text>
       <Text style={styles.titleEn}>Kizashi Notes</Text>
-      <Text style={styles.subtitle}>ひとことを置いて、あとでゆっくり育てるためのノート</Text>
+      <Text style={styles.subtitle}>{'ひとことを置いて、\nあとでゆっくり育てるためのノート'}</Text>
     </Animated.View>
   );
 }

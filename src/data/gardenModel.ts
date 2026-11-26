@@ -211,6 +211,16 @@ export const normalizeSeedV2 = (value: unknown, fallbackId: string): Seed | unde
   if (synthesis) {
     seed.synthesis = synthesis;
   }
+  const bloom = asObject(data.bloom);
+  const bloomedAt = optionalDate(bloom?.bloomedAt);
+  if (bloom && bloomedAt) {
+    const note = asString(bloom.note)?.trim();
+    seed.bloom = { ...(note ? { note } : {}), bloomedAt };
+  }
+  const archivedFrom = asString(data.archivedFrom);
+  if (seed.growthState === 'archived' && archivedFrom && archivedFrom !== 'archived' && GROWTH_STATES.includes(archivedFrom as GrowthState)) {
+    seed.archivedFrom = archivedFrom as GrowthState;
+  }
   return seed;
 };
 

@@ -76,7 +76,11 @@ export const buildTextExport = (store: GardenStoreV2): string => {
     lines.push(meta.join(' · '));
 
     if (seed.synthesis) {
-      lines.push('', `  できそうなこと（芽）: ${seed.synthesis.statement}`, '  芽の材料:');
+      lines.push('', `  できそうなこと（芽）: ${seed.synthesis.statement}`);
+      if (seed.growthState === 'tree' && seed.bloom) {
+        lines.push(`  花: ${formatDate(seed.bloom.bloomedAt)}に咲いた${seed.bloom.note ? ` — ${seed.bloom.note}` : ''}`);
+      }
+      lines.push('  参考にしたメモ:');
       for (const source of seed.synthesis.sources) {
         const origin = byId.get(source.seedId);
         const part = source.sourcePart === 'synthesis' ? '芽の文' : '元のメモ';

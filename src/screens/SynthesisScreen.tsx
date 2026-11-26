@@ -176,7 +176,7 @@ export function SynthesisScreen({
     });
 
   const clash = mode === 'new' && Boolean(existing);
-  const question = reviewing || materials.length > 0 || !reselect ? 'このメモを合わせると、どんなことができそう？' : 'このメモから、どんなことができそう？';
+  const question = materials.length > 0 ? 'メモを合わせると、\nどんなことができそう？' : 'どんなことができそう？';
   const canSave = statement.trim().length > 0 && !saving && !clash && unavailable.length === 0;
 
   const save = async () => {
@@ -206,25 +206,30 @@ export function SynthesisScreen({
         </AnimatedPressable>
 
         <Text style={styles.heading} accessibilityRole="header">
-          {reviewing ? '芽を見直す' : 'このメモから芽をつくる'}
+          {reviewing ? '芽を書き直す' : '芽を書く'}
         </Text>
-        <Text style={styles.lead}>材料を読みながら、「なら、こうできそう」を自分の言葉で。数や期限の条件はありません。</Text>
 
-        {/* 中心: この芽が残る場所 */}
-        <SectionCard>
-          <Text style={styles.label}>この芽は、このメモに残ります</Text>
-          <Text style={styles.centerText}>{toSeedSnippet(center, 80)}</Text>
-          <Text style={styles.note}>元のメモは変わりません。芽の文章は、元のメモとは別に保存されます。</Text>
-          {!reviewing ? (
-            <AnimatedPressable
-              onPress={() => !saving && setCenterPickerOpen(true)}
-              style={styles.linkButton}
-              haptic="light"
-              accessibilityRole="button"
-              accessibilityLabel="芽を残すメモを変更する。入力は残ります"
-            >
-              <Text style={styles.linkButtonText}>変更する</Text>
-            </AnimatedPressable>
+        {/* この芽が残るメモ */}
+        <SectionCard muted>
+          <View style={styles.centerHead}>
+            <Text style={styles.label}>このメモに残ります</Text>
+            {!reviewing ? (
+              <AnimatedPressable
+                onPress={() => !saving && setCenterPickerOpen(true)}
+                style={styles.centerChange}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="芽を残すメモを変更する。入力は残ります"
+              >
+                <Text style={styles.linkButtonText}>変更</Text>
+              </AnimatedPressable>
+            ) : null}
+          </View>
+          <Text style={styles.centerText} numberOfLines={expanded.has('center') ? undefined : 3}>
+            {center.body}
+          </Text>
+          {isLongText(center.body, 60) ? (
+            <SmallToggle label={expanded.has('center') ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded('center')} />
           ) : null}
         </SectionCard>
 
@@ -232,10 +237,10 @@ export function SynthesisScreen({
           <View style={styles.clash} accessibilityLiveRegion="polite">
             <Text style={styles.clashTitle}>このメモには、すでに芽があります</Text>
             <Text style={styles.clashText}>「{toSeedSnippet({ body: existing.statement }, 60)}」</Text>
-            <Text style={styles.note}>いま書いている内容は下書きに残っています。既存の芽は、あなたが保存を選ぶまで変わりません。</Text>
+            <Text style={styles.note}>いま書いた内容は下書きに残ります。</Text>
             <View style={styles.row}>
-              <AnimatedPressable onPress={onSwitchToReview} style={styles.smallPrimary} haptic="light" accessibilityRole="button" accessibilityLabel="既存の芽を見直す。書いた内容は残ります">
-                <Text style={styles.smallPrimaryText}>既存の芽を見直す</Text>
+              <AnimatedPressable onPress={onSwitchToReview} style={styles.smallPrimary} haptic="light" accessibilityRole="button" accessibilityLabel="いまの芽を書き直す。書いた内容は残ります">
+                <Text style={styles.smallPrimaryText}>いまの芽を書き直す</Text>
               </AnimatedPressable>
               <AnimatedPressable onPress={() => setCenterPickerOpen(true)} style={styles.small} haptic="light" accessibilityRole="button" accessibilityLabel="別のメモに芽を残す">
                 <Text style={styles.smallText}>別のメモに残す</Text>
@@ -244,25 +249,36 @@ export function SynthesisScreen({
           </View>
         ) : null}
 
+        {/* ここに書く */}
+        <View style={styles.writeCard}>
+          <Text style={styles.sectionTitle}>{question}</Text>
+          <TextInput
+            value={statement}
+            onChangeText={editStatement}
+            editable={!saving}
+            style={styles.input}
+            multiline
+            textAlignVertical="top"
+            placeholder="ここに書く（例：こうできるかも）"
+            placeholderTextColor={theme.colors.placeholder}
+            accessibilityLabel="できそうなこと"
+          />
+          {reviewing && existing && statement !== existing.statement ? <Text style={styles.note}>いまの芽: {existing.statement}</Text> : null}
+          {exampleStatement ? (
+            <AnimatedPressable onPress={() => editStatement(exampleStatement)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="完成例を入力欄に入れて見る">
+              <Ionicons name="bulb-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.linkButtonText}>完成例を見る</Text>
+            </AnimatedPressable>
+          ) : null}
+        </View>
+
         {/* 材料 */}
         <SectionCard muted>
-          <Text style={styles.sectionTitle}>この芽の材料</Text>
-          <View style={styles.material}>
-            <View style={styles.materialHead}>
-              <Ionicons name="lock-closed-outline" size={16} color={theme.colors.textSoft} />
-              <Text style={styles.materialLabel}>元のメモ（いつも含まれます）</Text>
-            </View>
-            <Text style={styles.materialText} numberOfLines={expanded.has('center') ? undefined : 3}>
-              {center.body}
-            </Text>
-            {isLongText(center.body, 60) ? (
-              <SmallToggle label={expanded.has('center') ? '閉じる' : '全文を表示'} onPress={() => toggleExpanded('center')} />
-            ) : null}
-          </View>
+          <Text style={styles.sectionTitle}>参考にするメモ（任意）</Text>
 
           {sourcesToShow.length > 0 ? (
             <>
-              <Text style={styles.subLabel}>芽をまとめたときの材料</Text>
+              <Text style={styles.subLabel}>前に書いたときに見たメモ</Text>
               {sourcesToShow
                 .filter((source) => !(source.seedId === center.id && source.sourcePart === 'body'))
                 .map((source) => {
@@ -277,28 +293,27 @@ export function SynthesisScreen({
                             ? '（元のメモが見つかりません）'
                             : source.textSnapshot}
                       </Text>
-                      {state.kind === 'changed' ? <Text style={styles.changed}>材料に更新あり（現在の文: {toSeedSnippet({ body: state.currentText }, 40)}）</Text> : null}
+                      {state.kind === 'changed' ? <Text style={styles.changed}>いまは変わっています（{toSeedSnippet({ body: state.currentText }, 40)}）</Text> : null}
                     </View>
                   );
                 })}
-              <AnimatedPressable onPress={() => !saving && setReselect(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="材料を選び直す">
-                <Text style={styles.linkButtonText}>材料を選び直す（現在のメモを読み直します）</Text>
+              <AnimatedPressable onPress={() => !saving && setReselect(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="参考にするメモを選び直す">
+                <Text style={styles.linkButtonText}>選び直す</Text>
               </AnimatedPressable>
             </>
           ) : (
             <>
-              <Text style={styles.subLabel}>ほかの材料（選んだものだけ。0件でも大丈夫です）</Text>
               {unavailable.map((p) => (
                 <View key={pickKey(p)} style={styles.material} accessibilityLiveRegion="polite">
                   <Text style={styles.changed}>
                     {sourceById.get(p.seedId)?.deletedAt
-                      ? '選んだ材料のメモは「最近削除した種」にあります。復元するか、材料から外すと保存できます。'
-                      : '選んだ材料が見つかりません。材料から外すと保存できます。'}
+                      ? '選んだメモは「最近削除した種」にあります。復元するか、外すと保存できます。'
+                      : '選んだメモが見つかりません。外すと保存できます。'}
                   </Text>
-                  <SmallToggle label="材料から外す" onPress={() => toggle(p.seedId, p.part)} />
+                  <SmallToggle label="参考から外す" onPress={() => toggle(p.seedId, p.part)} />
                 </View>
               ))}
-              {candidateIds.length === 0 ? <Text style={styles.note}>つながっているメモはまだありません。「材料を追加」から、ほかのメモも選べます。</Text> : null}
+              {candidateIds.length === 0 ? <Text style={styles.note}>選ばなくても書けます。</Text> : <Text style={styles.note}>チェックしたメモを、芽と一緒に残します。</Text>}
               {candidateIds.map((id) => {
                 const origin = byId.get(id);
                 if (!origin) return null;
@@ -309,11 +324,11 @@ export function SynthesisScreen({
                   <View key={id} style={[styles.material, (bodyOn || synthOn) && styles.materialOn]}>
                     <CheckRow
                       on={bodyOn}
-                      label={`元のメモ${origin.title ? `「${origin.title}」` : ''}${neighborIds.has(id) ? '（つながっています）' : ''}`}
-                      // 材料として採用するのは本文なので、題名があっても本文を読めるようにする。
+                      label={`${origin.title ? `「${origin.title}」` : 'メモ'}${neighborIds.has(id) ? '（つながっています）' : ''}`}
+                      // 参考として残すのは本文なので、題名があっても本文を読めるようにする。
                       text={open ? origin.body : toSeedSnippet({ body: origin.body }, 70)}
                       onPress={() => toggle(id, 'body')}
-                      a11y={`${bodyOn ? '材料にしている' : '材料にしていない'}。元のメモ。${toSeedSnippet(origin, 30)}`}
+                      a11y={`${bodyOn ? '参考にしている' : '参考にしていない'}。元のメモ。${toSeedSnippet(origin, 30)}`}
                     />
                     {origin.synthesis ? (
                       <CheckRow
@@ -321,7 +336,7 @@ export function SynthesisScreen({
                         label="芽の文"
                         text={origin.synthesis.statement}
                         onPress={() => toggle(id, 'synthesis')}
-                        a11y={`${synthOn ? '材料にしている' : '材料にしていない'}。芽の文。${toSeedSnippet({ body: origin.synthesis.statement }, 30)}`}
+                        a11y={`${synthOn ? '参考にしている' : '参考にしていない'}。芽の文。${toSeedSnippet({ body: origin.synthesis.statement }, 30)}`}
                       />
                     ) : null}
                     <View style={styles.row}>
@@ -332,37 +347,12 @@ export function SynthesisScreen({
                   </View>
                 );
               })}
-              <AnimatedPressable onPress={() => setPickerOpen(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="材料にするメモを探して追加する">
+              <AnimatedPressable onPress={() => setPickerOpen(true)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="参考にするメモを探して追加する">
                 <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
-                <Text style={styles.linkButtonText}>材料を追加</Text>
+                <Text style={styles.linkButtonText}>ほかのメモも選ぶ</Text>
               </AnimatedPressable>
-              <Text style={styles.note}>材料にしても、つながりの線は増えません。線を引くときは、別の操作で結びます。</Text>
             </>
           )}
-        </SectionCard>
-
-        {/* 自分の言葉 */}
-        <SectionCard>
-          <Text style={styles.sectionTitle}>{question}</Text>
-          <Text style={styles.note}>「なら、○○できるかも」のように、一言から。</Text>
-          {reviewing && existing ? <Text style={styles.currentSprout}>いまの芽: {existing.statement}</Text> : null}
-          {exampleStatement ? (
-            <AnimatedPressable onPress={() => editStatement(exampleStatement)} style={styles.linkButton} haptic="light" accessibilityRole="button" accessibilityLabel="完成例を入力欄に入れて見る">
-              <Ionicons name="bulb-outline" size={18} color={theme.colors.primary} />
-              <Text style={styles.linkButtonText}>完成例を見る</Text>
-            </AnimatedPressable>
-          ) : null}
-          <TextInput
-            value={statement}
-            onChangeText={editStatement}
-            editable={!saving}
-            style={styles.input}
-            multiline
-            textAlignVertical="top"
-            placeholder="例：写真3枚にひと言を添えて、友人に近況便りを送れそう"
-            placeholderTextColor={theme.colors.placeholder}
-            accessibilityLabel="できそうなこと"
-          />
         </SectionCard>
 
         {errorMessage ? (
@@ -373,9 +363,9 @@ export function SynthesisScreen({
       </ScrollView>
 
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {!statement.trim() ? <Text style={styles.disabledHint}>一言書くと、「芽として保存」を押せます。</Text> : null}
+        {!statement.trim() ? <Text style={styles.disabledHint}>一言書くと、保存できます。</Text> : null}
         <PrimaryButton
-          label={saving ? '保存しています…' : reviewing ? '見直した芽を保存' : '芽として保存'}
+          label={saving ? '保存しています…' : reviewing ? '書き直した芽を保存' : '芽として保存'}
           disabled={!canSave}
           onPress={() => void save()}
           accessibilityHint="この芽を、このメモに残します。元のメモは変わりません。"
@@ -389,8 +379,8 @@ export function SynthesisScreen({
         visible={pickerOpen}
         candidates={seeds.filter((seed) => seed.id !== center.id)}
         linkedIds={pickedSeedIds}
-        title="材料にするメモを選ぶ"
-        caption="選んだメモの文章を、芽の材料として読めます。つながりの線は増えません。"
+        title="参考にするメモを選ぶ"
+        caption="選んでも、つながりは増えません。"
         onToggle={(id) => toggle(id, 'body')}
         onClose={() => setPickerOpen(false)}
       />
@@ -445,15 +435,16 @@ const styles = StyleSheet.create({
   },
   backButtonText: { color: theme.colors.primary, fontSize: 15, fontWeight: '500' },
   heading: { fontSize: theme.typography.title, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
-  lead: { fontSize: 14, lineHeight: 21, color: theme.colors.textMuted },
   label: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
-  centerText: { fontSize: 17, lineHeight: 27, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  centerText: { fontSize: 16, lineHeight: 25, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  centerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  centerChange: { minHeight: 32, justifyContent: 'center', paddingHorizontal: 8 },
+  writeCard: { gap: theme.spacing.xs, padding: theme.spacing.md, borderRadius: theme.radius.lg, backgroundColor: theme.colors.primarySoft, borderWidth: 2, borderColor: theme.colors.primary },
   note: { fontSize: 13, lineHeight: 19, color: theme.colors.textSoft },
   sectionTitle: { fontSize: 17, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
   subLabel: { fontSize: 14, fontWeight: '700', color: theme.colors.textMuted, marginTop: theme.spacing.xs },
   material: { gap: 6, padding: theme.spacing.sm, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.rule },
   materialOn: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
-  materialHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   materialLabel: { fontSize: 12, fontWeight: '700', color: theme.colors.textMuted },
   materialText: { fontSize: 15, lineHeight: 23, fontFamily: theme.fonts.serif, color: theme.colors.text },
   changed: { fontSize: 13, lineHeight: 19, color: theme.colors.accent, fontWeight: '600' },
@@ -470,7 +461,6 @@ const styles = StyleSheet.create({
   clash: { gap: 6, padding: theme.spacing.md, borderRadius: theme.radius.md, backgroundColor: theme.colors.dangerBg, borderWidth: 1, borderColor: theme.colors.dangerBorder },
   clashTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.dangerText },
   clashText: { fontSize: 14, lineHeight: 21, fontFamily: theme.fonts.serif, color: theme.colors.text },
-  currentSprout: { fontSize: 14, lineHeight: 21, color: theme.colors.primary, fontFamily: theme.fonts.serif },
   input: {
     minHeight: 120,
     borderRadius: theme.radius.md,
