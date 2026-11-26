@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import type { Seed } from '../domain/types';
+import type { Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { helpTexts } from '../utils/helpTexts';
-import { getLinkedSeeds, getThread, suggestLinks } from '../utils/links';
+import { getLinkedSeeds, suggestLinks } from '../utils/links';
 import { toSeedSnippet } from '../utils/seedText';
 import { formatRelativeDay } from '../utils/seedUtils';
 import { stageImages } from '../utils/stageImages';
@@ -16,25 +16,23 @@ import { SeedPickerModal } from './SeedPickerModal';
 type LinksSectionProps = {
   seed: Seed;
   allSeeds: Seed[];
+  connections: SeedConnection[];
   onOpenSeed: (seedId: string) => void;
   onLink: (seedId: string) => void;
   onUnlink: (seedId: string) => void;
-  onContinue: () => void;
+  onAddMemo: () => void;
 };
 
 // 種のつながり。同じ話の流れ、つないだ種、つながりそうな種（理由つき）をまとめて見せる。
-export function LinksSection({ seed, allSeeds, onOpenSeed, onLink, onUnlink, onContinue }: LinksSectionProps) {
+export function LinksSection({ seed, allSeeds, connections, onOpenSeed, onLink, onUnlink, onAddMemo }: LinksSectionProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
 
-  const linked = React.useMemo(() => getLinkedSeeds(seed, allSeeds), [seed, allSeeds]);
+  const linked = React.useMemo(() => getLinkedSeeds(seed, allSeeds, connections), [seed, allSeeds, connections]);
   const linkedIds = React.useMemo(() => new Set(linked.map((item) => item.id)), [linked]);
-  const thread = React.useMemo(() => getThread(seed, allSeeds), [seed, allSeeds]);
-  const threadIds = React.useMemo(() => new Set(thread.map((item) => item.id)), [thread]);
-  const otherLinked = linked.filter((item) => !threadIds.has(item.id));
-  const suggestions = React.useMemo(() => suggestLinks(seed, allSeeds, 3), [seed, allSeeds]);
+  const suggestions = React.useMemo(() => suggestLinks(seed, allSeeds, connections, { limit: 3 }), [seed, allSeeds, connections]);
   const candidates = React.useMemo(() => allSeeds.filter((item) => item.id !== seed.id), [allSeeds, seed.id]);
-  const hasThread = thread.length > 1;
-  const hasAnything = hasThread || otherLinked.length > 0;
+  const otherLinked = linked;
+  const hasAnything = linked.length > 0;
 
   const handleToggle = (otherId: string) => {
     if (linkedIds.has(otherId)) {
@@ -51,55 +49,7 @@ export function LinksSection({ seed, allSeeds, onOpenSeed, onLink, onUnlink, onC
         <Text style={styles.title}>つながり</Text>
         <HelpButton content={helpTexts.links} />
       </View>
-      <Text style={styles.caption}>同じ話の続きや、関係のありそうな種を、つなげておけます。</Text>
-
-      {hasThread ? (
-        <View style={styles.block}>
-          <Text style={styles.label}>この話のながれ</Text>
-          {thread.map((item, index) => {
-            const isCurrent = item.id === seed.id;
-            const isDirect = linkedIds.has(item.id);
-            return (
-              <View key={item.id} style={styles.timelineRow}>
-                <View style={styles.rail}>
-                  <View style={[styles.railLine, index === 0 && styles.railHidden]} />
-                  <View style={[styles.railDot, isCurrent && styles.railDotCurrent]} />
-                  <View style={[styles.railLine, index === thread.length - 1 && styles.railHidden]} />
-                </View>
-                <AnimatedPressable
-                  onPress={() => (isCurrent ? undefined : onOpenSeed(item.id))}
-                  disabled={isCurrent}
-                  containerStyle={styles.timelineBody}
-                  style={[styles.linkRow, isCurrent && styles.linkRowCurrent]}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel={`${isCurrent ? 'いま開いている種。' : '話のながれの種を開く。'}${toSeedSnippet(item)}`}
-                >
-                  <Image source={stageImages[item.growthState]} style={styles.stage} accessibilityIgnoresInvertColors />
-                  <View style={styles.linkBody}>
-                    <Text style={[styles.linkText, isCurrent && styles.linkTextCurrent]} numberOfLines={2}>
-                      {toSeedSnippet(item)}
-                    </Text>
-                    <Text style={styles.linkMeta}>{isCurrent ? 'いま見ている種' : formatRelativeDay(item.createdAt)}</Text>
-                  </View>
-                  {isCurrent ? null : <Ionicons name="chevron-forward" size={16} color={theme.colors.textSoft} />}
-                </AnimatedPressable>
-                {isDirect ? (
-                  <AnimatedPressable
-                    onPress={() => onUnlink(item.id)}
-                    style={styles.unlink}
-                    haptic="light"
-                    accessibilityRole="button"
-                    accessibilityLabel={`つながりを外す。${toSeedSnippet(item, 20)}`}
-                  >
-                    <Ionicons name="close-circle-outline" size={22} color={theme.colors.textSoft} />
-                  </AnimatedPressable>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
+      <Text style={styles.caption}>「一緒に考えたい」と感じたメモ同士を結べます。親子や順序はありません。</Text>
 
       {otherLinked.length > 0 ? (
         <View style={styles.block}>
@@ -137,19 +87,19 @@ export function LinksSection({ seed, allSeeds, onOpenSeed, onLink, onUnlink, onC
         </View>
       ) : null}
 
-      {!hasAnything ? <Text style={styles.empty}>まだつながりはありません。続きを書くか、つなぎたい種を選んでみましょう。</Text> : null}
+      {!hasAnything ? <Text style={styles.empty}>まだつながりはありません。関係がありそうだと感じたメモを、あとから結べます。</Text> : null}
 
       <View style={styles.actions}>
         <AnimatedPressable
-          onPress={onContinue}
+          onPress={onAddMemo}
           containerStyle={styles.actionContainer}
           style={[styles.action, styles.actionPrimary]}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="この種の続きを書く"
+          accessibilityLabel="この種につなげて、新しいメモを足す"
         >
           <Ionicons name="create-outline" size={18} color="#ffffff" />
-          <Text style={styles.actionPrimaryText}>続きを書く</Text>
+          <Text style={styles.actionPrimaryText}>メモを足す</Text>
         </AnimatedPressable>
         <AnimatedPressable
           onPress={() => setPickerOpen(true)}
@@ -160,7 +110,7 @@ export function LinksSection({ seed, allSeeds, onOpenSeed, onLink, onUnlink, onC
           accessibilityLabel="つなぐ種を探して選ぶ"
         >
           <Ionicons name="link-outline" size={18} color={theme.colors.primary} />
-          <Text style={styles.actionText}>種をつなぐ</Text>
+          <Text style={styles.actionText}>保存済みのメモをつなげる</Text>
         </AnimatedPressable>
       </View>
 

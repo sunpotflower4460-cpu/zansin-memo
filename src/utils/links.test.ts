@@ -1,143 +1,91 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Seed } from '../domain/types';
-import { SEED_SCHEMA_VERSION } from '../domain/types';
+import { makeConnection } from '../data/gardenModel';
+import { makeSeed } from '../data/testSupport';
 import {
-  buildClusters,
+  dismissKey,
   extractKeywords,
   findRecurringWords,
+  getIdsWithRecentlyActiveLinks,
   getLinkCounts,
   getLinkedSeeds,
-  getThread,
-  linkSeeds,
   suggestLinks,
-  unlinkSeeds,
 } from './links';
 
-const seed = (id: string, overrides: Partial<Seed> = {}): Seed => ({
-  id,
-  body: `種${id}`,
-  createdAt: `2026-01-0${id.length === 1 && /\d/.test(id) ? id : '1'}T00:00:00.000Z`,
-  updatedAt: `2026-01-0${id.length === 1 && /\d/.test(id) ? id : '1'}T00:00:00.000Z`,
-  importance: 3,
-  growthState: 'seed',
-  tags: [],
-  relatedSeedIds: [],
-  schemaVersion: SEED_SCHEMA_VERSION,
-  ...overrides,
+const link = (a: string, b: string) => makeConnection(a, b, 'manual', '2026-01-02T00:00:00.000Z');
+
+test('links are read from both ends, counted per pair, and never inferred transitively', () => {
+  const seeds = [makeSeed('A'), makeSeed('B'), makeSeed('C')];
+  const connections = [link('A', 'B'), link('C', 'B')];
+  assert.deepEqual(getLinkedSeeds(seeds[0], seeds, connections).map((s) => s.id), ['B']);
+  assert.deepEqual(getLinkedSeeds(seeds[1], seeds, connections).map((s) => s.id).sort(), ['A', 'C']);
+  assert.equal(getLinkCounts(seeds, connections).get('A'), 1);
+  assert.equal(getLinkCounts(seeds, connections).get('B'), 2);
 });
 
-test('linkSeeds makes a link visible from both seeds without touching updatedAt', () => {
-  const seeds = [seed('1'), seed('2')];
-  const linked = linkSeeds(seeds, '1', '2');
-
-  assert.deepEqual(linked[0].relatedSeedIds, ['2']);
-  assert.deepEqual(linked[1].relatedSeedIds, ['1']);
-  assert.equal(linked[0].updatedAt, seeds[0].updatedAt);
-  assert.deepEqual(getLinkedSeeds(linked[0], linked).map((s) => s.id), ['2']);
-  assert.deepEqual(getLinkedSeeds(linked[1], linked).map((s) => s.id), ['1']);
+test('connections to seeds that are not in the visible list (deleted or missing) are ignored', () => {
+  const visible = [makeSeed('A')];
+  assert.deepEqual(getLinkedSeeds(visible[0], visible, [link('A', 'gone')]), []);
+  assert.equal(getLinkCounts(visible, [link('A', 'gone')]).get('A'), 0);
 });
 
-test('linkSeeds ignores self links, unknown ids and duplicates', () => {
-  const seeds = [seed('1'), seed('2')];
-  assert.equal(linkSeeds(seeds, '1', '1'), seeds);
-  assert.equal(linkSeeds(seeds, '1', 'missing'), seeds);
-  const twice = linkSeeds(linkSeeds(seeds, '1', '2'), '2', '1');
-  assert.deepEqual(twice[0].relatedSeedIds, ['2']);
-  assert.deepEqual(twice[1].relatedSeedIds, ['1']);
-});
-
-test('old one-sided links are read as two-way', () => {
-  const seeds = [seed('1', { relatedSeedIds: ['2'] }), seed('2')];
-  assert.deepEqual(getLinkedSeeds(seeds[1], seeds).map((s) => s.id), ['1']);
-  assert.equal(getLinkCounts(seeds).get('2'), 1);
-});
-
-test('links to missing or soft-deleted seeds are not shown', () => {
-  const seeds = [seed('1', { relatedSeedIds: ['gone'], continuedFromId: 'gone' })];
-  assert.deepEqual(getLinkedSeeds(seeds[0], seeds), []);
-  assert.equal(getLinkCounts(seeds).get('1'), 0);
-});
-
-test('unlinkSeeds removes both directions and the continuation mark', () => {
-  const seeds = [seed('1', { relatedSeedIds: ['2'] }), seed('2', { relatedSeedIds: ['1'], continuedFromId: '1' })];
-  const result = unlinkSeeds(seeds, '1', '2');
-  assert.deepEqual(result[0].relatedSeedIds, []);
-  assert.deepEqual(result[1].relatedSeedIds, []);
-  assert.equal(result[1].continuedFromId, undefined);
-  assert.deepEqual(getLinkedSeeds(result[0], result), []);
-});
-
-test('getThread follows continuations through the whole story, oldest first', () => {
-  const seeds = [
-    seed('1'),
-    seed('2', { continuedFromId: '1' }),
-    seed('3', { continuedFromId: '2' }),
-    seed('4', { continuedFromId: '1' }), // 枝分かれ
-    seed('5'), // 別の話
-    seed('6', { relatedSeedIds: ['5'] }), // 「つなぐ」だけの関係は話のながれには含めない
-  ];
-  assert.deepEqual(getThread(seeds[2], seeds).map((s) => s.id), ['1', '2', '3', '4']);
-  assert.deepEqual(getThread(seeds[4], seeds).map((s) => s.id), ['5']);
-});
-
-test('buildClusters groups linked seeds, biggest first, and skips lonely seeds', () => {
-  const seeds = [
-    seed('1', { relatedSeedIds: ['2'] }),
-    seed('2'),
-    seed('3', { continuedFromId: '2' }),
-    seed('4', { relatedSeedIds: ['5'] }),
-    seed('5'),
-    seed('6'),
-  ];
-  const clusters = buildClusters(seeds).map((cluster) => cluster.map((s) => s.id));
-  assert.deepEqual(clusters, [['1', '2', '3'], ['4', '5']]);
-});
-
-test('extractKeywords keeps content words and drops hiragana-only words and stop words', () => {
+test('extractKeywords keeps content words, drops hiragana-only words and stop words, and folds width/case', () => {
   assert.deepEqual(extractKeywords('今日は読書会で、カフェに行って Coffee を飲む。自分の時間。'), ['読書会', 'カフェ', 'coffee']);
+  assert.deepEqual(extractKeywords('ＣＯＦＦＥＥ ｃｏｆｆｅｅ'), ['coffee']); // 全角・大文字を吸収
+  assert.deepEqual(extractKeywords('Ａ １'), []); // 単一文字は根拠にしない
 });
 
-test('suggestLinks explains why, prefers stronger matches and skips linked seeds', () => {
-  const base = seed('1', { body: '小さな読書会を開きたい', tags: ['企画'] });
-  const sameWord = seed('2', { body: '読書会のゲストを考える' });
-  const sameTag = seed('3', { body: 'ほかの話', tags: ['企画'] });
-  const both = seed('4', { body: '読書会の場所探し', tags: ['企画'] });
-  const unrelated = seed('5', { body: '朝の散歩' });
-  const alreadyLinked = seed('6', { body: '読書会の記録', relatedSeedIds: ['1'] });
+test('suggestLinks explains why, prefers stronger matches, and skips linked, deleted and archived seeds', () => {
+  const base = makeSeed('1', { body: '小さな読書会を開きたい', tags: ['企画'] });
+  const sameWord = makeSeed('2', { body: '読書会のゲストを考える', updatedAt: '2026-01-05T00:00:00.000Z' });
+  const sameTag = makeSeed('3', { body: 'ほかの話', tags: ['企画'] });
+  const both = makeSeed('4', { body: '読書会の場所探し', tags: ['企画'] });
+  const unrelated = makeSeed('5', { body: '朝の散歩' });
+  const linked = makeSeed('6', { body: '読書会の記録' });
+  const deleted = makeSeed('7', { body: '読書会のメモ', deletedAt: '2026-01-09T00:00:00.000Z' });
+  const archived = makeSeed('8', { body: '読書会の保管', growthState: 'archived' });
+  const seeds = [base, sameWord, sameTag, both, unrelated, linked, deleted, archived];
 
-  const result = suggestLinks(base, [base, sameWord, sameTag, both, unrelated, alreadyLinked], 5);
+  const result = suggestLinks(base, seeds, [link('1', '6')], { limit: 5 });
   assert.deepEqual(result.map((r) => r.seed.id), ['4', '3', '2']);
   assert.match(result[0].reason, /「読書会」という言葉が共通/);
   assert.match(result[0].reason, /カテゴリ「企画」が同じ/);
-  assert.match(result[2].reason, /「読書会」/);
 });
 
-test('suggestLinks does not suggest seeds that are already in the same thread', () => {
-  const first = seed('1', { body: '読書会を開きたい', tags: ['企画'] });
-  const second = seed('2', { body: '読書会の会場', tags: ['企画'], continuedFromId: '1' });
-  const third = seed('3', { body: '読書会の本選び', tags: ['企画'], continuedFromId: '2' });
-  const outsider = seed('4', { body: '読書会の予算', tags: ['企画'] });
-  // third から見ると first は直接はつながっていないが、同じ話のながれなので提案しない
-  assert.deepEqual(suggestLinks(third, [first, second, third, outsider]).map((r) => r.seed.id), ['4']);
+test('suggestLinks treats a word contained in another as shared, and a category with different width/case as the same', () => {
+  const base = makeSeed('1', { body: '読書会を開きたい', tags: ['Idea'] });
+  assert.match(suggestLinks(base, [base, makeSeed('2', { body: '最近の読書の記録' })], [])[0].reason, /「読書」という言葉が共通/);
+  assert.match(suggestLinks(base, [base, makeSeed('3', { body: 'ひとこと', tags: ['ＩＤＥＡ'] })], [])[0].reason, /カテゴリ「ＩＤＥＡ」が同じ/);
 });
 
-test('suggestLinks treats a word contained in another as shared', () => {
-  const base = seed('1', { body: '読書会を開きたい' });
-  const other = seed('2', { body: '最近の読書の記録' });
-  const result = suggestLinks(base, [base, other]);
-  assert.equal(result.length, 1);
-  assert.match(result[0].reason, /「読書」という言葉が共通/);
+test('suggestLinks never suggests a pair the user chose to skip, in either direction', () => {
+  const a = makeSeed('a', { body: '読書会を開く' });
+  const b = makeSeed('b', { body: '読書会の準備' });
+  const dismissed = new Set([dismissKey('b', 'a')]);
+  assert.equal(suggestLinks(a, [a, b], [], { dismissed }).length, 0);
+  assert.equal(suggestLinks(b, [a, b], [], { dismissed }).length, 0);
+  assert.equal(suggestLinks(a, [a, b], []).length, 1);
+});
+
+test('suggestLinks does not use mood or time alone as a reason', () => {
+  const a = makeSeed('a', { body: 'ひとこと', mood: 'calm' });
+  const b = makeSeed('b', { body: 'べつの', mood: 'calm', updatedAt: a.updatedAt });
+  assert.deepEqual(suggestLinks(a, [a, b], []), []);
 });
 
 test('findRecurringWords counts each word once per seed and respects the minimum', () => {
-  const seeds = [
-    seed('1', { body: '読書と散歩 読書' }),
-    seed('2', { body: '読書の散歩' }),
-    seed('3', { body: '散歩の記録' }),
-  ];
+  const seeds = [makeSeed('1', { body: '読書と散歩 読書' }), makeSeed('2', { body: '読書の散歩' }), makeSeed('3', { body: '散歩の記録' })];
   assert.deepEqual(findRecurringWords(seeds, 2, 5), [
     { word: '散歩', count: 3 },
     { word: '読書', count: 2 },
   ]);
+});
+
+test('getIdsWithRecentlyActiveLinks marks quiet seeds whose connected seed was just updated', () => {
+  const now = new Date('2026-03-10T00:00:00.000Z');
+  const quiet = makeSeed('quiet', { updatedAt: '2026-02-01T00:00:00.000Z' });
+  const busy = makeSeed('busy', { updatedAt: '2026-03-09T12:00:00.000Z' });
+  const alsoBusy = makeSeed('also', { updatedAt: '2026-03-09T13:00:00.000Z' });
+  const ids = getIdsWithRecentlyActiveLinks([quiet, busy, alsoBusy], [link('quiet', 'busy'), link('busy', 'also')], now);
+  assert.deepEqual(Array.from(ids), ['quiet']); // 自分も最近動いている種は対象にしない
 });

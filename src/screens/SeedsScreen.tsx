@@ -13,7 +13,7 @@ import { LinkCount } from '../components/LinkCount';
 import { getLinkCounts } from '../utils/links';
 import { IOSChip } from '../components/IOSChip';
 import { SectionCard } from '../components/SectionCard';
-import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
+import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed, type SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { formatDate, formatRelativeDay, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
@@ -27,6 +27,7 @@ function SeedSeparator() {
 
 type SeedsScreenProps = {
   seeds: Seed[];
+  connections: SeedConnection[];
   deletedSeeds: Seed[];
   search: string;
   stateFilter: GrowthState | 'all';
@@ -43,6 +44,7 @@ type SeedsScreenProps = {
 
 export function SeedsScreen({
   seeds,
+  connections,
   deletedSeeds,
   search,
   stateFilter,
@@ -71,7 +73,7 @@ export function SeedsScreen({
   }, [activeTagFilter, tagFilter, onChangeTagFilter]);
 
   const [moreOpen, setMoreOpen] = useState(false);
-  const linkCounts = useMemo(() => getLinkCounts(seeds), [seeds]);
+  const linkCounts = useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
   const stateCounts = useMemo(() => {
     const counts: Record<GrowthState, number> = { seed: 0, sprout: 0, tree: 0, archived: 0 };
     for (const seed of seeds) {

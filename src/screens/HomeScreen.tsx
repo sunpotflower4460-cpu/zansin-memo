@@ -17,7 +17,7 @@ import { toSeedSnippet } from '../utils/seedText';
 import { GardenLetterCard } from '../components/GardenLetterCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
-import type { ResurfacedSeed, Seed } from '../domain/types';
+import type { ResurfacedSeed, Seed, SeedConnection } from '../domain/types';
 import { APP_VERSION } from '../config/appInfo';
 import { theme } from '../styles/theme';
 import { formatRelativeDay } from '../utils/seedUtils';
@@ -27,6 +27,7 @@ import { buildGardenLetter } from '../utils/gardenLetter';
 
 type HomeScreenProps = {
   seeds: Seed[];
+  connections: SeedConnection[];
   todaySeed?: ResurfacedSeed;
   onRefreshToday: () => void;
   onOpenSeed: (seedId: string) => void;
@@ -45,6 +46,7 @@ const toSnippet = (body: string) => (body.length > SNIPPET_LENGTH ? `${body.slic
 
 export function HomeScreen({
   seeds,
+  connections,
   todaySeed,
   onRefreshToday,
   onOpenSeed,
@@ -58,10 +60,10 @@ export function HomeScreen({
   onExportText,
 }: HomeScreenProps) {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
-  const linkCounts = React.useMemo(() => getLinkCounts(seeds), [seeds]);
+  const linkCounts = React.useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
   const todayLinks = React.useMemo(
-    () => (todaySeed ? getLinkedSeeds(todaySeed.seed, seeds).slice(0, 2) : []),
-    [todaySeed, seeds],
+    () => (todaySeed ? getLinkedSeeds(todaySeed.seed, seeds, connections).slice(0, 2) : []),
+    [todaySeed, seeds, connections],
   );
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const gardenLetter = buildGardenLetter(seeds);
