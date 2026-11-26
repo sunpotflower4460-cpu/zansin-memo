@@ -5,7 +5,7 @@ import type { Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { helpTexts } from '../utils/helpTexts';
 import { buildAdjacency, findConnection, suggestLinks } from '../utils/links';
-import { toSeedSnippet } from '../utils/seedText';
+import { normalizeSearchText, toSeedSnippet } from '../utils/seedText';
 import { formatRelativeDay } from '../utils/seedUtils';
 import { stageImages } from '../utils/stageImages';
 import { AnimatedPressable } from './AnimatedPressable';
@@ -91,8 +91,8 @@ export function ConnectionsPanel({
   const selected = selectedId && neighborIds.has(selectedId) ? index.get(selectedId) : undefined;
 
   const filteredList = React.useMemo(() => {
-    const q = listQuery.trim().toLowerCase();
-    return q ? neighbors.filter((seed) => `${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`.toLowerCase().includes(q)) : neighbors;
+    const q = normalizeSearchText(listQuery.trim());
+    return q ? neighbors.filter((seed) => normalizeSearchText(`${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`).includes(q)) : neighbors;
   }, [neighbors, listQuery]);
 
   const toggleExpanded = (id: string) =>

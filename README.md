@@ -14,6 +14,7 @@
 - [実装順・受入条件・公開判定](docs/core-growth-plan.md)
 - [実装担当へ渡す短いスタートプロンプト](docs/core-growth-start-prompt.md)
 - [実装・検証の記録（実装済み／検証済み／未検証）](docs/core-growth-progress.md)
+- [統合検証・公開判定（D01〜D15・実機/初見ユーザーの記録表）](docs/core-growth-verification.md)
 
 実装は既存Phase 0〜8を利用し、[Phase 10.1〜10.6](docs/core-growth-plan.md)へ進めます。状態バッジの変更やテンプレ変換だけで「芽に育つ体験」が完成したとは判定しません。
 

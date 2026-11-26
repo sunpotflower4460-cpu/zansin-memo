@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { makeSeed } from '../data/testSupport';
-import { buildMatchExcerpt, searchableText, toSeedSnippet } from './seedText';
+import { buildMatchExcerpt, matchesSearch, normalizeSearchText, searchableText, toSeedSnippet } from './seedText';
 
 test('toSeedSnippet prefers the title and trims long text', () => {
   assert.equal(toSeedSnippet(makeSeed('a', { title: '題名', body: '本文' })), '題名');
@@ -44,4 +44,30 @@ test('buildMatchExcerpt shows the sprout sentence when it matched, and a window 
     },
   });
   assert.deepEqual(buildMatchExcerpt(withSprout, '便り'), { field: 'synthesis', text: '近況便りを作れそう' });
+});
+
+test('D09 search ignores full/half width and case, finds emoji and long text, and works without a title', () => {
+  const seeds = [
+    makeSeed('w', { title: undefined, body: 'ＡＢＣ写真ｶﾒﾗの話 🌱 と 全角１２３', tags: [] }),
+    makeSeed('l', { title: undefined, body: `${'あ'.repeat(5000)}最後のアザラシ`, tags: [] }),
+  ];
+  const find = (query: string) => seeds.filter((seed) => searchableText(seed).includes(normalizeSearchText(query.trim()))).map((seed) => seed.id);
+  assert.deepEqual(find('abc'), ['w']); // 半角・小文字で全角・大文字を探せる
+  assert.deepEqual(find('ＡＢＣ'), ['w']);
+  assert.deepEqual(find('カメラ'), ['w']); // 全角カナで半角カナを探せる
+  assert.deepEqual(find('ｶﾒﾗ'), ['w']);
+  assert.deepEqual(find('123'), ['w']);
+  assert.deepEqual(find('🌱'), ['w']);
+  assert.deepEqual(find('アザラシ'), ['l']); // 長文の末尾まで探せる
+  assert.deepEqual(find('存在しない'), []);
+  assert.equal(matchesSearch('ＡＢＣ', ''), false); // 空の検索語は一致にしない
+});
+
+test('D09 the excerpt explains the match even when normalization changes the text length', () => {
+  const seed = makeSeed('k', { body: `${'前'.repeat(80)}㌔の重さ${'後'.repeat(80)}`, tags: [] });
+  const excerpt = buildMatchExcerpt(seed, 'キロ');
+  assert.equal(excerpt?.field, 'body'); // 一致の理由（本文）は示す。位置がずれる文字を含むときは先頭から見せる
+  assert.ok(excerpt && excerpt.text.length > 0);
+  const plain = buildMatchExcerpt(makeSeed('p', { body: `${'前'.repeat(60)}ＡＢＣ${'後'.repeat(60)}`, tags: [] }), 'abc');
+  assert.ok(plain?.text.includes('ＡＢＣ') && plain.text.startsWith('…'));
 });

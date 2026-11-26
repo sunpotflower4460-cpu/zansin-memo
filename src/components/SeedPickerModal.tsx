@@ -4,7 +4,7 @@ import { FlatList, Modal, StyleSheet, Text, TextInput, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Seed } from '../domain/types';
 import { theme } from '../styles/theme';
-import { toSeedSnippet } from '../utils/seedText';
+import { normalizeSearchText, toSeedSnippet } from '../utils/seedText';
 import { formatRelativeDay } from '../utils/seedUtils';
 import { AnimatedPressable } from './AnimatedPressable';
 import { GrowthBadge } from './GrowthBadge';
@@ -41,12 +41,12 @@ export function SeedPickerModal({
   }, [visible]);
 
   const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizeSearchText(query.trim());
     const sorted = [...candidates].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     if (!q) {
       return sorted;
     }
-    return sorted.filter((seed) => `${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`.toLowerCase().includes(q));
+    return sorted.filter((seed) => normalizeSearchText(`${seed.title ?? ''} ${seed.body} ${seed.tags.join(' ')}`).includes(q));
   }, [candidates, query]);
 
   return (

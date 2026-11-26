@@ -17,7 +17,7 @@ import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
 import { findConnection, getLinkCounts } from '../utils/links';
-import { buildMatchExcerpt, searchableText, toSeedSnippet } from '../utils/seedText';
+import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { formatDate, formatRelativeDay, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
 
 export type SeedsView = 'all' | 'unconnected' | 'connected' | 'sprout';
@@ -114,7 +114,7 @@ export function SeedsScreen({
   // 検索対象の文字列は、メモが変わったときだけ作り直す（入力のたびに全件を作り直さない）。
   const haystacks = React.useMemo(() => new Map(seeds.map((seed) => [seed.id, searchableText(seed)])), [seeds]);
   const deferredSearch = React.useDeferredValue(search);
-  const normalizedSearch = deferredSearch.trim().toLowerCase();
+  const normalizedSearch = normalizeSearchText(deferredSearch.trim());
 
   const viewCounts = React.useMemo(() => {
     let unconnected = 0;
