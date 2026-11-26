@@ -62,6 +62,8 @@ type SeedsScreenProps = {
   onOpenWrite?: () => void;
   onConnectPair: (aId: string, bId: string) => void;
   onConnectFromCenter: (centerId: string, targetIds: string[]) => void;
+  /** 選んだメモから芽をつくる（最初に選んだメモが中心の初期値）。 */
+  onStartSynthesis: (selectedIds: string[]) => void;
 };
 
 export function SeedsScreen({
@@ -89,6 +91,7 @@ export function SeedsScreen({
   onOpenWrite,
   onConnectPair,
   onConnectFromCenter,
+  onStartSynthesis,
 }: SeedsScreenProps) {
   const [moreOpen, setMoreOpen] = React.useState(false);
   const [planOpen, setPlanOpen] = React.useState(false);
@@ -476,6 +479,22 @@ export function SeedsScreen({
             )
           ) : null}
           {selectedSeeds.length >= 3 ? <PrimaryButton label="つなぎ方を選ぶ" onPress={() => setPlanOpen(true)} /> : null}
+          {selectedSeeds.length >= 1 ? (
+            <AnimatedPressable
+              onPress={() => {
+                const ids = selectedSeeds.map((seed) => seed.id);
+                cancelSelecting();
+                onStartSynthesis(ids);
+              }}
+              style={styles.synthesisButton}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`選んだメモから芽をつくる。最初に選んだメモに芽が残ります。${toSeedSnippet(selectedSeeds[0], 20)}`}
+            >
+              <Ionicons name="leaf-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.synthesisButtonText}>ここから芽をつくる（最初に選んだメモに残ります）</Text>
+            </AnimatedPressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -616,5 +635,18 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   trayChipText: { fontSize: 13, color: theme.colors.text, flexShrink: 1 },
+  synthesisButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+  },
+  synthesisButtonText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary, flexShrink: 1, textAlign: 'center' },
   trayHint: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
 });

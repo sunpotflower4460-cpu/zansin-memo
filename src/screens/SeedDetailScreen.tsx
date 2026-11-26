@@ -12,6 +12,7 @@ import { HelpButton } from '../components/HelpButton';
 import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { SynthesisCard } from '../components/SynthesisCard';
 import { SectionCard } from '../components/SectionCard';
 import {
   GROWTH_STATE_OPTIONS,
@@ -64,6 +65,10 @@ type SeedDetailScreenProps = {
   onSetConnectionNote: (seedId: string, otherId: string, note: string) => void;
   onAddMemo: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
+  /** 芽の入口。mode: new=ここから芽をつくる／review=芽を見直す（考え直し中の再採用を含む）。 */
+  onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
+  onReconsiderSynthesis: (seedId: string) => void;
+  hasSynthesisDraft: boolean;
 };
 
 type DraftState = {
@@ -125,6 +130,9 @@ export function SeedDetailScreen({
   onSetConnectionNote,
   onAddMemo,
   onCreateTransform,
+  onOpenSynthesis,
+  onReconsiderSynthesis,
+  hasSynthesisDraft,
 }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   // 下書きがあれば、編集の続きから開く。本文は明示的に「編集する」を選んだときだけ書き換えられる。
@@ -233,6 +241,7 @@ export function SeedDetailScreen({
   };
 
   const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
+  const byId = React.useMemo(() => new Map(allSeeds.map((item) => [item.id, item])), [allSeeds]);
   const contentStyle = React.useMemo(
     () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
     [insets.bottom],
@@ -478,6 +487,19 @@ export function SeedDetailScreen({
             onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
             onSetNote={(otherId, note) => onSetConnectionNote(seed.id, otherId, note)}
             onAddMemo={() => onAddMemo(seed.id)}
+          />
+        </FadeInView>
+
+        <FadeInView delayMs={70}>
+          <SynthesisCard
+            seed={seed}
+            byId={byId}
+            hasDraft={hasSynthesisDraft}
+            onCreate={() => onOpenSynthesis(seed.id, 'new')}
+            onReview={() => onOpenSynthesis(seed.id, 'review')}
+            onReconsider={() => onReconsiderSynthesis(seed.id)}
+            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
+            onOpenSeed={onOpenSeed}
           />
         </FadeInView>
 

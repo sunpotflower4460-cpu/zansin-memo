@@ -16,10 +16,21 @@ type SeedPickerModalProps = {
   linkedIds: Set<string>;
   onToggle: (seedId: string) => void;
   onClose: () => void;
+  /** 画面の見出しと説明（既定は「つなぐ種を選ぶ」）。 */
+  title?: string;
+  caption?: string;
 };
 
 // つなぐ相手を、検索して選ぶ。つないだ種にはチェックが付き、もう一度押すと外れる。
-export function SeedPickerModal({ visible, candidates, linkedIds, onToggle, onClose }: SeedPickerModalProps) {
+export function SeedPickerModal({
+  visible,
+  candidates,
+  linkedIds,
+  onToggle,
+  onClose,
+  title = 'つなぐ種を選ぶ',
+  caption = 'タップでつながり、もう一度タップで外れます。',
+}: SeedPickerModalProps) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = React.useState('');
 
@@ -43,7 +54,7 @@ export function SeedPickerModal({ visible, candidates, linkedIds, onToggle, onCl
       <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.header}>
           <Text style={styles.title} accessibilityRole="header">
-            つなぐ種を選ぶ
+            {title}
           </Text>
           <AnimatedPressable
             onPress={onClose}
@@ -55,7 +66,7 @@ export function SeedPickerModal({ visible, candidates, linkedIds, onToggle, onCl
             <Text style={styles.doneText}>完了</Text>
           </AnimatedPressable>
         </View>
-        <Text style={styles.caption}>タップでつながり、もう一度タップで外れます。</Text>
+        <Text style={styles.caption}>{caption}</Text>
 
         <View style={styles.searchWrap}>
           <Ionicons name="search-outline" size={18} color={theme.colors.textSoft} />
@@ -90,8 +101,8 @@ export function SeedPickerModal({ visible, candidates, linkedIds, onToggle, onCl
                 haptic="light"
                 accessibilityRole="button"
                 accessibilityState={{ selected: linked }}
-                accessibilityLabel={`${linked ? 'つながっている' : 'つながっていない'}。${toSeedSnippet(item)}`}
-                accessibilityHint={linked ? 'タップでつながりを外します' : 'タップでつなぎます'}
+                accessibilityLabel={`${linked ? '選んでいる' : '選んでいない'}。${toSeedSnippet(item)}`}
+                accessibilityHint={linked ? 'タップで外します' : 'タップで選びます'}
               >
                 <Ionicons
                   name={linked ? 'checkmark-circle' : 'ellipse-outline'}
