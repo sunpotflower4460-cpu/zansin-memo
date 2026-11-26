@@ -13,20 +13,24 @@ import {
   addTransformOutput,
   captureAndConnect,
   captureSeed,
+  connectFromCenter,
   connectSeeds,
   disconnectSeeds,
   restoreSeed,
+  setConnectionNote,
   softDeleteSeed,
   touchResurfacing,
   updateSeedFields,
 } from './src/domain/gardenCommands';
 import type { CommitResult } from './src/data/gardenWriter';
 import type { Draft, GrowthState, ResurfacedSeed, SeedCreateInput, SeedUpdateInput, TransformType, WriteDraft } from './src/domain/types';
+import { SeedPickerModal } from './src/components/SeedPickerModal';
+import type { ConnectionsViewMode } from './src/components/ConnectionsPanel';
 import { GardenScreen } from './src/screens/GardenScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
-import { SeedsScreen } from './src/screens/SeedsScreen';
+import { SeedsScreen, type SeedsView } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
 import { motion } from './src/utils/motion';
@@ -36,6 +40,7 @@ import { exportGarden } from './src/utils/exportUtils';
 import { createId } from './src/utils/ids';
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import { buildTransformOutput, getLocalDateKey, pickTodaySeed, syncResurfacedSeed } from './src/utils/seedUtils';
+import { buildAdjacency } from './src/utils/links';
 
 type MainTab = 'home' | 'write' | 'seeds' | 'garden';
 
@@ -89,6 +94,15 @@ export default function App() {
   const [todaySeed, setTodaySeed] = React.useState<ResurfacedSeed | undefined>();
   const [todayKey, setTodayKey] = React.useState('');
   const [seedsSearch, setSeedsSearch] = React.useState('');
+  const [seedsView, setSeedsView] = React.useState<SeedsView>('all');
+  const [selecting, setSelecting] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const seedsScrollRef = React.useRef(0);
+  /** これまでに中心にして見てきたメモ（古い順）。詳細から一覧へ戻ると空にする。 */
+  const [trail, setTrail] = React.useState<string[]>([]);
+  const [connectionsViewMode, setConnectionsViewMode] = React.useState<ConnectionsViewMode>('map');
+  const [savedMemoId, setSavedMemoId] = React.useState<string | undefined>();
+  const [savedPickerOpen, setSavedPickerOpen] = React.useState(false);
   const [stateFilter, setStateFilter] = React.useState<GrowthState | 'all'>('all');
   const [tagFilter, setTagFilter] = React.useState<string | null>(null);
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
@@ -325,11 +339,25 @@ export default function App() {
     );
     setWriteSaving(false);
 
-    if (!afterCommit(result, center ? '保存して、つなぎました 🌱' : '保存しました 🌱 「種一覧」に入りました')) {
+    if (!afterCommit(result, center ? '保存して、つなぎました。線で結ばれたメモを見られます' : undefined)) {
       return; // 失敗: 入力・接続先・操作IDを残す（もう一度押すと同じ操作を再試行する）
     }
+    const savedId = session.seedId;
     resetWrite();
-    setScreen(center ? { kind: 'detail', seedId: center.id, from: 'home' } : { kind: 'home' });
+    if (center) {
+      // 「メモを足す」は、元のメモへ戻って、加わったメモと線を見せる。
+      openDetail(center.id, 'seeds', true);
+      return;
+    }
+    // 通常の保存は、書く画面にとどまり「保存しました」のカードを見せる（任意で、すぐ別のメモとつなげられる）。
+    setSavedMemoId(savedId);
+  };
+
+  const openDetail = (seedId: string, from: MainTab, resetTrail: boolean) => {
+    if (resetTrail) {
+      setTrail([]);
+    }
+    setScreen({ kind: 'detail', seedId, from });
   };
 
   const handleAddMemo = (seedId: string) => {
@@ -342,12 +370,13 @@ export default function App() {
     setScreen({ kind: 'write' });
   };
 
-  const handleUpdateSeed = async (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string): Promise<boolean> => {
+  const handleUpdateSeed = async (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string, draftId: string): Promise<boolean> => {
     if ((payload.body !== undefined && !payload.body.trim()) || blockIfLocked()) {
       return false;
     }
+    await garden.flushDrafts();
     const result = await garden.run(
-      updateSeedFields({ commandId: createId(), seedId, patch: payload, now: new Date().toISOString(), expectedUpdatedAt }),
+      updateSeedFields({ commandId: createId(), seedId, patch: payload, now: new Date().toISOString(), expectedUpdatedAt, draftId }),
     );
     return afterCommit(result, '更新しました ✨');
   };
@@ -383,6 +412,34 @@ export default function App() {
     }
     const result = await garden.run(connectSeeds({ commandId: createId(), a: seedId, b: otherId, now: new Date().toISOString() }));
     afterCommit(result, 'つなぎました 🌿');
+  };
+
+  const handleSetConnectionNote = async (seedId: string, otherId: string, note: string) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(setConnectionNote({ commandId: createId(), a: seedId, b: otherId, note }));
+    afterCommit(result, note.trim() ? '一言を保存しました' : '一言を消しました');
+  };
+
+  const handleConnectPair = async (aId: string, bId: string) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(connectSeeds({ commandId: createId(), a: aId, b: bId, now: new Date().toISOString() }));
+    if (afterCommit(result, 'つなぎました。線で結ばれた2つのメモを見られます')) {
+      openDetail(aId, 'seeds', true);
+    }
+  };
+
+  const handleConnectFromCenter = async (centerId: string, targetIds: string[]) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(connectFromCenter({ commandId: createId(), centerId, targetIds, now: new Date().toISOString() }));
+    if (afterCommit(result, 'つなぎました。選んだ線だけを追加しています')) {
+      openDetail(centerId, 'seeds', true);
+    }
   };
 
   const handleUnlinkSeeds = async (seedId: string, otherId: string) => {
@@ -509,25 +566,65 @@ export default function App() {
     }
   }, [screen, selectedSeed]);
 
+  // 書く画面を離れたら、「保存しました」のカードは閉じる。入力を始めたときも閉じる。
+  React.useEffect(() => {
+    if (screen.kind !== 'write' || !isBlankDraft(writeDraft)) {
+      setSavedMemoId(undefined);
+    }
+  }, [screen.kind, writeDraft]);
+
+  const savedMemo = savedMemoId ? activeSeeds.find((seed) => seed.id === savedMemoId) : undefined;
+  const savedNeighborIds = React.useMemo(
+    () => (savedMemo ? (buildAdjacency(activeSeeds, activeConnections).get(savedMemo.id) ?? new Set<string>()) : new Set<string>()),
+    [savedMemo, activeSeeds, activeConnections],
+  );
+
   const renderMainScreen = () => {
     if (!isReady) {
       return null;
     }
 
     if (screen.kind === 'detail' && selectedSeed) {
+      const editDraft = store.drafts.find((draft) => draft.kind === 'edit-body' && draft.targetSeedId === selectedSeed.id);
+      const trailSeeds = trail.map((id) => activeSeeds.find((seed) => seed.id === id)).filter((seed): seed is NonNullable<typeof seed> => Boolean(seed));
       return (
         <SeedDetailScreen
           key={selectedSeed.id}
           seed={selectedSeed}
           allSeeds={activeSeeds}
           connections={activeConnections}
-          onBack={() => setScreen({ kind: screen.from })}
+          onBack={() => {
+            setTrail([]);
+            setScreen({ kind: screen.from });
+          }}
           backLabel={tabLabels[screen.from]}
+          trail={trailSeeds}
+          onBackOneCenter={() => {
+            const previous = trail[trail.length - 1];
+            setTrail(trail.slice(0, -1));
+            if (previous) setScreen({ kind: 'detail', seedId: previous, from: screen.from });
+          }}
+          onBackToFirst={() => {
+            const first = trail[0];
+            setTrail([]);
+            if (first) setScreen({ kind: 'detail', seedId: first, from: screen.from });
+          }}
+          connectionsViewMode={connectionsViewMode}
+          onChangeConnectionsViewMode={setConnectionsViewMode}
+          editDraft={editDraft}
+          onEditDraftChange={(draft, draftId) => garden.saveDraft(draft, draftId)}
+          onFlushDrafts={() => void garden.flushDrafts()}
+          onNotify={showToast}
           onSave={handleUpdateSeed}
           onDelete={handleDeleteSeed}
-          onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: screen.from })}
+          onOpenSeed={(seedId) => {
+            // 中心を移す。戻れるよう、いまのメモを経路に積む（親子ではなく、見てきた順）。
+            setTrail((current) => [...current, selectedSeed.id]);
+            setScreen({ kind: 'detail', seedId, from: screen.from });
+          }}
           onLinkSeeds={handleLinkSeeds}
           onUnlinkSeeds={handleUnlinkSeeds}
+          onSetConnectionNote={handleSetConnectionNote}
           onAddMemo={handleAddMemo}
           onCreateTransform={handleCreateTransform}
         />
@@ -547,6 +644,11 @@ export default function App() {
             setWriteTargetId(undefined);
             setWriteStandalone(false);
           }}
+          savedMemo={savedMemo}
+          isFirstSave={activeSeeds.length <= 1}
+          onConnectSaved={() => setSavedPickerOpen(true)}
+          onDismissSaved={() => setSavedMemoId(undefined)}
+          onOpenSaved={() => savedMemo && openDetail(savedMemo.id, 'write', true)}
           onSave={handleCreateSeed}
         />
       );
@@ -559,16 +661,28 @@ export default function App() {
           connections={activeConnections}
           deletedSeeds={deletedSeeds}
           search={seedsSearch}
+          view={seedsView}
           stateFilter={stateFilter}
           tagFilter={tagFilter}
           sortType={sortType}
+          selecting={selecting}
+          selectedIds={selectedIds}
+          scrollOffset={seedsScrollRef.current}
           onChangeSearch={setSeedsSearch}
+          onChangeView={setSeedsView}
           onChangeFilter={setStateFilter}
           onChangeTagFilter={setTagFilter}
           onChangeSort={setSortType}
+          onChangeSelecting={setSelecting}
+          onChangeSelectedIds={setSelectedIds}
+          onScrollOffsetChange={(offset) => {
+            seedsScrollRef.current = offset;
+          }}
           onRestoreSeed={handleRestoreSeed}
-          onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'seeds' })}
+          onOpenSeed={(seedId) => openDetail(seedId, 'seeds', true)}
           onOpenWrite={() => setScreen({ kind: 'write' })}
+          onConnectPair={handleConnectPair}
+          onConnectFromCenter={handleConnectFromCenter}
         />
       );
     }
@@ -578,17 +692,29 @@ export default function App() {
         <GardenScreen
           seeds={activeSeeds}
           connections={activeConnections}
-          onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'garden' })}
+          onOpenSeed={(seedId) => openDetail(seedId, 'garden', true)}
           onOpenSeedsByState={(state) => {
             setSeedsSearch('');
+            setSeedsView('all');
             setTagFilter(null);
             setStateFilter(state);
+            seedsScrollRef.current = 0;
             setScreen({ kind: 'seeds' });
           }}
           onSearchWord={(word) => {
             setSeedsSearch(word);
+            setSeedsView('all');
             setTagFilter(null);
             setStateFilter('all');
+            seedsScrollRef.current = 0;
+            setScreen({ kind: 'seeds' });
+          }}
+          onOpenConnectedList={() => {
+            setSeedsSearch('');
+            setSeedsView('connected');
+            setTagFilter(null);
+            setStateFilter('all');
+            seedsScrollRef.current = 0;
             setScreen({ kind: 'seeds' });
           }}
         />
@@ -604,7 +730,7 @@ export default function App() {
         onOpenWrite={() => setScreen({ kind: 'write' })}
         onOpenGarden={() => setScreen({ kind: 'garden' })}
         onShowIntro={() => setOnboardingVisible(true)}
-        onOpenSeed={(seedId) => setScreen({ kind: 'detail', seedId, from: 'home' })}
+        onOpenSeed={(seedId) => openDetail(seedId, 'home', true)}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
         onClearAllData={handleClearAllData}
@@ -632,6 +758,15 @@ export default function App() {
               message={statusToastMessage}
               tone={toastMsg && !persistentError ? 'default' : 'error'}
               aboveTabBar={tabBarVisible}
+            />
+          ) : null}
+          {savedMemo ? (
+            <SeedPickerModal
+              visible={savedPickerOpen}
+              candidates={activeSeeds.filter((seed) => seed.id !== savedMemo.id)}
+              linkedIds={savedNeighborIds}
+              onToggle={(otherId) => (savedNeighborIds.has(otherId) ? void handleUnlinkSeeds(savedMemo.id, otherId) : void handleLinkSeeds(savedMemo.id, otherId))}
+              onClose={() => setSavedPickerOpen(false)}
             />
           ) : null}
           {onboardingVisible && isReady ? <OnboardingScreen onFinish={handleFinishOnboarding} /> : null}
