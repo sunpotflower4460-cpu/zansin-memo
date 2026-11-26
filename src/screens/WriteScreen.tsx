@@ -17,7 +17,7 @@ import {
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { parseTags } from '../utils/seedUtils';
-import { growthStateLabels, moodLabels } from '../utils/displayLabels';
+import { growthStateHints, growthStateLabels, moodLabels } from '../utils/displayLabels';
 
 type WriteScreenProps = {
   draft: {
@@ -118,6 +118,7 @@ export function WriteScreen({ draft, onChange, onSave }: WriteScreenProps) {
                 onChange={(growthState) => onChange({ growthState })}
                 getLabel={(state) => growthStateLabels[state]}
               />
+              <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
 
               <View style={styles.fieldWrap}>
                 <Text style={styles.label}>カテゴリ（任意）</Text>
@@ -172,7 +173,14 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  stateHint: {
+    marginTop: -8,
+    marginBottom: 14,
+    fontSize: 13,
+    color: theme.colors.textSoft,
   },
   subheading: {
     color: theme.colors.textMuted,
@@ -187,22 +195,23 @@ const styles = StyleSheet.create({
   bodyInput: {
     minHeight: 220,
     borderRadius: theme.radius.md,
-    backgroundColor: '#fbfcfa',
+    backgroundColor: theme.colors.inputBg,
     paddingHorizontal: 14,
     paddingVertical: 14,
     paddingBottom: 18,
-    fontSize: 17,
+    fontSize: 18,
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    lineHeight: 24,
+    lineHeight: 30,
     borderWidth: 1,
-    borderColor: '#e2e9e3',
+    borderColor: theme.colors.border,
   },
   titleInput: {
     borderRadius: theme.radius.sm,
     minHeight: 42,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#f5f8f4',
+    backgroundColor: theme.colors.inputBgSoft,
     fontSize: 15,
     color: theme.colors.text,
   },

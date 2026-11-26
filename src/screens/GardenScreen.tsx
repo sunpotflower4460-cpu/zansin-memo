@@ -7,7 +7,7 @@ import { FadeInView } from '../components/FadeInView';
 import { SectionCard } from '../components/SectionCard';
 import type { GrowthState, Seed } from '../domain/types';
 import { theme } from '../styles/theme';
-import { growthStateLabels } from '../utils/displayLabels';
+import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
 import { getTagGroupKey, getTagGroupLabel, groupSeedsByTag } from '../utils/seedUtils';
 
 type GardenScreenProps = {
@@ -28,10 +28,10 @@ const stateIcons: Record<GrowthState, keyof typeof Ionicons.glyphMap> = {
 };
 
 const stateAccents: Record<GrowthState, string> = {
-  seed: '#a3c4a8',
-  sprout: '#5da36b',
-  tree: '#1f6b49',
-  archived: '#9aabb6',
+  seed: '#b9a67b', // 土の色
+  sprout: '#7fae6a', // 若草
+  tree: theme.colors.primary,
+  archived: '#a39d90', // 古紙の灰
 };
 
 export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
@@ -67,7 +67,7 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
       <Text style={styles.heading} accessibilityRole="header">
         庭
       </Text>
-      <Text style={styles.subheading}>種の流れを、静かに見渡せる場所です。</Text>
+      <Text style={styles.subheading}>種から芽へ、芽から木へ。育ちの流れを、静かに見渡せる場所です。</Text>
 
       {seeds.length === 0 ? (
         <EmptyState icon="flower-outline" title="この場所は、これから育っていきます。" description="書いた種が増えると、庭に少しずつ並びます。" />
@@ -78,11 +78,12 @@ export function GardenScreen({ seeds, onOpenSeed }: GardenScreenProps) {
 
         return (
           <FadeInView key={state} delayMs={40}>
-            <SectionCard muted style={{ borderTopWidth: 3, borderTopColor: stateAccents[state] }}>
+            <SectionCard muted style={{ borderTopWidth: 2, borderTopColor: stateAccents[state] }}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleWrap}>
                 <Ionicons name={stateIcons[state]} size={18} color={stateAccents[state]} />
                 <Text style={styles.sectionTitle}>{growthStateLabels[state]}</Text>
+                <Text style={styles.sectionHint}>{growthStateHints[state]}</Text>
               </View>
               <Text style={styles.countText} accessibilityLabel={`${growthStateLabels[state]} ${bucket.length}件`}>{bucket.length}</Text>
             </View>
@@ -163,6 +164,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   subheading: {
@@ -176,13 +178,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitleWrap: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  sectionHint: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.colors.textSoft,
+  },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   countText: {
@@ -206,12 +215,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardPressed: {
-    backgroundColor: '#f4f8f3',
+    backgroundColor: theme.colors.surfaceSoft,
   },
   body: {
     color: theme.colors.text,
+    fontFamily: theme.fonts.serif,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 23,
     paddingBottom: 2,
   },
   meta: {
@@ -238,7 +248,7 @@ const styles = StyleSheet.create({
   },
   tagItem: {
     borderTopWidth: 1,
-    borderTopColor: '#dbe4dd',
+    borderTopColor: theme.colors.rule,
     paddingTop: 8,
   },
   metaBody: {

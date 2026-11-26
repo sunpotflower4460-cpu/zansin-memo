@@ -38,11 +38,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chipPressed: {
-    backgroundColor: '#e4eee7',
+    backgroundColor: theme.colors.chipPressed,
   },
   chipSelected: {
-    borderColor: '#8dbca2',
-    backgroundColor: '#dceee1',
+    borderColor: theme.colors.chipSelectedBorder,
+    backgroundColor: theme.colors.leaf,
   },
   label: {
     color: theme.colors.textMuted,

@@ -48,6 +48,16 @@ export type ResurfacedSeed = {
   reason: string;
 };
 
+// 書く画面の入力途中の内容。保存前でも、アプリを閉じて戻ったときに失われないよう端末内に退避する。
+export type WriteDraft = {
+  title: string;
+  body: string;
+  tags: string;
+  mood?: Mood;
+  growthState: GrowthState;
+  importance: Importance;
+};
+
 export const MOOD_OPTIONS: Mood[] = ['calm', 'excited', 'uncertain', 'heavy', 'bright'];
 export const GROWTH_STATE_OPTIONS: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
 export const TRANSFORM_TYPES: TransformType[] = ['question', 'task', 'article', 'project'];

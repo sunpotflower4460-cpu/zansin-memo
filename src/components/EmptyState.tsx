@@ -42,7 +42,7 @@ export function EmptyState({
 const styles = StyleSheet.create({
   wrap: {
     borderRadius: theme.radius.md,
-    backgroundColor: '#eef5ef',
+    backgroundColor: theme.colors.surfaceMuted,
     padding: theme.spacing.lg,
     alignItems: 'center',
     gap: theme.spacing.sm,
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#dceee1',
+    backgroundColor: theme.colors.leaf,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -71,13 +71,13 @@ const styles = StyleSheet.create({
   action: {
     marginTop: theme.spacing.sm,
     borderRadius: theme.radius.full,
-    backgroundColor: '#dceee1',
+    backgroundColor: theme.colors.leaf,
     minHeight: 40,
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
   actionPressed: {
-    backgroundColor: '#d3e7d9',
+    backgroundColor: theme.colors.leafPressed,
   },
   actionText: {
     color: theme.colors.primary,

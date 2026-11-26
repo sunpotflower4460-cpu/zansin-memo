@@ -190,6 +190,31 @@ export const formatDate = (isoDate: string): string => {
     .padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 };
 
+const startOfLocalDay = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+// 「今日」「昨日」「3日前」のように、暦日ベースで読みやすい日付にする。古い日付は年月日で示す。
+export const formatRelativeDay = (isoDate: string, now: Date = new Date()): string => {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return '日付不明';
+  }
+
+  const days = Math.round((startOfLocalDay(now) - startOfLocalDay(date)) / DAY_MS);
+  if (days <= 0) {
+    return '今日';
+  }
+  if (days === 1) {
+    return '昨日';
+  }
+  if (days < 7) {
+    return `${days}日前`;
+  }
+  if (days < 30) {
+    return `${Math.floor(days / 7)}週間前`;
+  }
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+};
+
 export const getLocalDateKey = (date = new Date()): string => {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');

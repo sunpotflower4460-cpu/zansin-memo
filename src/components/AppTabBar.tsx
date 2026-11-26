@@ -12,11 +12,11 @@ type AppTabBarProps = {
   onChangeTab: (tab: MainTab) => void;
 };
 
-const tabIcons: Record<MainTab, keyof typeof Ionicons.glyphMap> = {
-  home: 'home-outline',
-  write: 'pencil-outline',
-  seeds: 'leaf-outline',
-  garden: 'flower-outline',
+const tabIcons: Record<MainTab, { off: keyof typeof Ionicons.glyphMap; on: keyof typeof Ionicons.glyphMap }> = {
+  home: { off: 'home-outline', on: 'home' },
+  write: { off: 'pencil-outline', on: 'pencil' },
+  seeds: { off: 'leaf-outline', on: 'leaf' },
+  garden: { off: 'flower-outline', on: 'flower' },
 };
 
 // タブ本体の高さ（上余白8 + ボタン64 + 上罫線1）。トーストなど他の部品が重ならないよう共有する。
@@ -43,7 +43,7 @@ export function AppTabBar({ activeTab, onChangeTab }: AppTabBarProps) {
             accessibilityLabel={`${tabLabels[tabId]}${tabLabelSuffix}`}
             accessibilityState={{ selected }}
           >
-            <Ionicons name={tabIcons[tabId]} size={22} color={selected ? theme.colors.primary : theme.colors.textMuted} />
+            <Ionicons name={selected ? tabIcons[tabId].on : tabIcons[tabId].off} size={22} color={selected ? theme.colors.primary : theme.colors.textMuted} />
             <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]} maxFontSizeMultiplier={1.3} numberOfLines={1}>{tabLabels[tabId]}</Text>
           </AnimatedPressable>
         );
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primarySoft,
   },
   tabButtonPressed: {
-    backgroundColor: '#e7efe9',
+    backgroundColor: theme.colors.surfacePressed,
   },
   tabLabel: {
     color: theme.colors.textMuted,

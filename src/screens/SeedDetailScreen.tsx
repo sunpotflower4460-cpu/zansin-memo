@@ -24,7 +24,7 @@ import {
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
-import { growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
+import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
 import { formatDate, parseTags, pickRelatedCandidates } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
@@ -85,16 +85,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
   }, [seedId]);
 
   const unsaved = hasUnsavedChanges(draft, seed);
-  const handleBack = () => {
-    if (!unsaved) {
-      onBack();
-      return;
-    }
-    Alert.alert('保存していない変更があります', 'このまま戻ると、変更は残りません。', [
-      { text: '編集を続ける', style: 'cancel' },
-      { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
-    ]);
-  };
 
   const relatedCandidates = React.useMemo(
     () => pickRelatedCandidates(allSeeds, seed.id, seed.relatedSeedIds, MAX_RELATED_CANDIDATES),
@@ -108,6 +98,35 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
     () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
     [insets.bottom],
   );
+
+  const buildPayload = (): SeedUpdateInput => ({
+    title: draft.title,
+    body: draft.body,
+    mood: draft.mood,
+    importance: draft.importance,
+    growthState: draft.growthState,
+    tags: parseTags(draft.tags),
+    relatedSeedIds: Array.from(new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id)))),
+  });
+
+  // 戻るときは、変更があれば自動で保存する（メモ帳のように、書いたものを失わない）。
+  // 本文が空のときだけは保存できないので、捨てて戻るかを確認する。
+  const handleBack = () => {
+    if (!unsaved) {
+      onBack();
+      return;
+    }
+    if (canSave) {
+      Keyboard.dismiss();
+      onSave(seed.id, buildPayload());
+      onBack();
+      return;
+    }
+    Alert.alert('本文が空のままです', 'このまま戻ると、変更は残りません。', [
+      { text: '編集を続ける', style: 'cancel' },
+      { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
+    ]);
+  };
 
   const toggleRelatedSeed = (relatedSeedId: string) => {
     setDraft((current) => {
@@ -164,6 +183,15 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
             accessibilityLabel="タイトル"
           />
 
+          <ChipSelector<GrowthState>
+            label="育ち方"
+            options={GROWTH_STATE_OPTIONS}
+            selectedValue={draft.growthState}
+            onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
+            getLabel={(state) => growthStateLabels[state]}
+          />
+          <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
+
           <AnimatedPressable
             onPress={() => setDetailsOpen((value) => !value)}
             style={styles.toggle}
@@ -192,14 +220,6 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
                 options={IMPORTANCE_OPTIONS}
                 selectedValue={draft.importance}
                 onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
-              />
-
-              <ChipSelector<GrowthState>
-                label="育ち方"
-                options={GROWTH_STATE_OPTIONS}
-                selectedValue={draft.growthState}
-                onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
-                getLabel={(state) => growthStateLabels[state]}
               />
 
               <View style={styles.fieldWrap}>
@@ -249,19 +269,7 @@ export function SeedDetailScreen({ seed, allSeeds, onBack, onSave, onDelete, onC
               }
 
               Keyboard.dismiss();
-
-              const nextRelatedSeedIds = Array.from(
-                new Set(draft.relatedSeedIds.filter((id) => relatedCandidateIds.has(id))),
-              );
-              onSave(seed.id, {
-                title: draft.title,
-                body: draft.body,
-                mood: draft.mood,
-                importance: draft.importance,
-                growthState: draft.growthState,
-                tags: parseTags(draft.tags),
-                relatedSeedIds: nextRelatedSeedIds,
-              });
+              onSave(seed.id, buildPayload());
             }}
           />
           </SectionCard>
@@ -342,11 +350,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 44,
     borderRadius: 999,
-    backgroundColor: '#eaf1ea',
+    backgroundColor: theme.colors.leaf,
     gap: 2,
   },
   backButtonPressed: {
-    backgroundColor: '#dde9dd',
+    backgroundColor: theme.colors.leafPressed,
   },
   backButtonText: {
     color: theme.colors.primary,
@@ -356,7 +364,13 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
+  },
+  stateHint: {
+    marginTop: -8,
+    fontSize: 13,
+    color: theme.colors.textSoft,
   },
   dateText: {
     color: theme.colors.textSoft,
@@ -365,22 +379,23 @@ const styles = StyleSheet.create({
   bodyInput: {
     minHeight: 160,
     borderRadius: theme.radius.md,
-    backgroundColor: '#fbfcfa',
+    backgroundColor: theme.colors.inputBg,
     paddingHorizontal: 14,
     paddingVertical: 14,
     paddingBottom: 18,
-    fontSize: 17,
+    fontSize: 18,
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    lineHeight: 24,
+    lineHeight: 30,
     borderWidth: 1,
-    borderColor: '#e2e9e3',
+    borderColor: theme.colors.border,
   },
   titleInput: {
     borderRadius: theme.radius.sm,
     minHeight: 40,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    backgroundColor: '#f5f8f4',
+    backgroundColor: theme.colors.inputBgSoft,
     fontSize: 15,
     color: theme.colors.text,
   },
@@ -421,8 +436,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   hintText: {
@@ -436,7 +452,7 @@ const styles = StyleSheet.create({
   },
   outputCard: {
     borderTopWidth: 1,
-    borderTopColor: '#dbe4dd',
+    borderTopColor: theme.colors.rule,
     paddingTop: 10,
     gap: 4,
   },
@@ -459,11 +475,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#f4b0b7',
+    borderColor: theme.colors.dangerBorder,
     backgroundColor: theme.colors.dangerBg,
   },
   deleteButtonPressed: {
-    backgroundColor: '#fee4e8',
+    backgroundColor: theme.colors.dangerPressed,
   },
   deleteButtonText: {
     color: theme.colors.dangerText,

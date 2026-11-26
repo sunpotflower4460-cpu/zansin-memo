@@ -1,20 +1,22 @@
 import { StatusBar } from 'expo-status-bar';
+// 和紙の質感。内容の上にごく薄く重ねるだけで、操作は妨げない。
+import paperTexture from './assets/paper.png';
 import * as React from 'react';
-import { Alert, Linking, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Image, Linking, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
 import { SaveToast } from './src/components/SaveToast';
 import { seedRepository } from './src/data/asyncStorageSeedRepository';
+import { EMPTY_WRITE_DRAFT, loadDraft, saveDraft } from './src/data/draftStorage';
 import type {
   GrowthState,
-  Importance,
-  Mood,
   ResurfacedSeed,
   Seed,
   SeedCreateInput,
   SeedUpdateInput,
   TransformType,
+  WriteDraft,
 } from './src/domain/types';
 import { GardenScreen } from './src/screens/GardenScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -55,21 +57,7 @@ const STORAGE_LOCKED_MESSAGE = '保存データの読み込みに問題がある
 const CLEAR_ALL_DATA_ALERT_TITLE = 'すべてのデータを削除しますか？';
 const CLEAR_ALL_DATA_ALERT_MESSAGE = '保存されたすべての種（メモ）が削除されます。この操作は元に戻せません。';
 
-const initialWriteDraft: {
-  title: string;
-  body: string;
-  tags: string;
-  mood?: Mood;
-  growthState: GrowthState;
-  importance: Importance;
-} = {
-  title: '',
-  body: '',
-  tags: '',
-  mood: undefined,
-  growthState: 'seed',
-  importance: 3,
-};
+const initialWriteDraft: WriteDraft = EMPTY_WRITE_DRAFT;
 
 export default function App() {
   const [seeds, setSeeds] = React.useState<Seed[]>([]);
@@ -94,6 +82,8 @@ export default function App() {
   const transformTapMapRef = React.useRef<Record<string, number>>({});
   const saveProgressRef = React.useRef<SaveProgress>({ requestId: 0, state: 'idle' });
   const didHydrateSeedsRef = React.useRef(false);
+  const didHydrateDraftRef = React.useRef(false);
+  const latestDraftRef = React.useRef<WriteDraft>(initialWriteDraft);
 
   const showToast = React.useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -142,10 +132,16 @@ export default function App() {
     let active = true;
 
     const load = async () => {
-      const loadResult = await seedRepository.getAll();
+      const [loadResult, savedDraft] = await Promise.all([seedRepository.getAll(), loadDraft()]);
       if (!active) {
         return;
       }
+
+      // 書きかけの種があれば、そのまま続きから書けるようにする。
+      if (savedDraft) {
+        setWriteDraft(savedDraft);
+      }
+      didHydrateDraftRef.current = true;
 
       if (!loadResult.ok) {
         setCanPersistSeeds(false);
@@ -213,6 +209,25 @@ export default function App() {
 
     void persist();
   }, [canPersistSeeds, isReady, seeds]);
+
+  // 書きかけは少し間を置いて端末に退避する。アプリが裏に回るときは即座に退避する。
+  React.useEffect(() => {
+    latestDraftRef.current = writeDraft;
+    if (!didHydrateDraftRef.current) {
+      return;
+    }
+    const timer = setTimeout(() => void saveDraft(writeDraft), 400);
+    return () => clearTimeout(timer);
+  }, [writeDraft]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' && didHydrateDraftRef.current) {
+        void saveDraft(latestDraftRef.current);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   const activeSeeds = React.useMemo(() => seeds.filter((seed) => !isSoftDeletedSeed(seed)), [seeds]);
   const deletedSeeds = React.useMemo(
@@ -490,6 +505,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <View style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="dark" />
         <View style={styles.app}>
@@ -506,11 +522,26 @@ export default function App() {
         </View>
         {tabBarVisible ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
       </SafeAreaView>
+      <View style={styles.paper} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants">
+        <Image source={paperTexture} resizeMode="repeat" style={styles.paperImage} />
+      </View>
+      </View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  paper: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  paperImage: {
+    width: '100%',
+    height: '100%',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,

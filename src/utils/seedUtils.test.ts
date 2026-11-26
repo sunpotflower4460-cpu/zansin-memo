@@ -5,6 +5,7 @@ import { SEED_SCHEMA_VERSION } from '../domain/types';
 import {
   buildTransformOutput,
   createSeed,
+  formatRelativeDay,
   getTagGroupKey,
   getTagGroupLabel,
   groupSeedsByTag,
@@ -224,4 +225,19 @@ test('resolveTagFilter clears a tag filter whose tag no longer exists', () => {
   assert.equal(resolveTagFilter(null, ['企画']), null);
   assert.equal(resolveTagFilter('企画', ['企画', 'all']), '企画');
   assert.equal(resolveTagFilter('企画', ['all']), null);
+});
+
+test('formatRelativeDay reads naturally by calendar day', () => {
+  const now = new Date(2026, 10, 26, 9, 0, 0);
+  const at = (y: number, m: number, d: number, h = 23) => new Date(y, m, d, h, 30).toISOString();
+
+  assert.equal(formatRelativeDay(at(2026, 10, 26, 0), now), '今日');
+  assert.equal(formatRelativeDay(at(2026, 10, 25), now), '昨日');
+  assert.equal(formatRelativeDay(at(2026, 10, 23), now), '3日前');
+  assert.equal(formatRelativeDay(at(2026, 10, 19), now), '1週間前');
+  assert.equal(formatRelativeDay(at(2026, 10, 5), now), '3週間前');
+  assert.equal(formatRelativeDay(at(2026, 9, 1), now), '2026/10/1');
+  assert.equal(formatRelativeDay('broken', now), '日付不明');
+  // 未来の日付（端末の時計変更など）は今日として扱う
+  assert.equal(formatRelativeDay(at(2026, 10, 30), now), '今日');
 });

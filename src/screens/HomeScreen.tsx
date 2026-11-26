@@ -4,13 +4,16 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { GrowthBadge } from '../components/GrowthBadge';
+import { ImportanceDots } from '../components/ImportanceDots';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import type { ResurfacedSeed, Seed } from '../domain/types';
 import { APP_VERSION } from '../config/appInfo';
 import { theme } from '../styles/theme';
-import { formatDate } from '../utils/seedUtils';
-import { toGrowthLabel } from '../utils/displayLabels';
+import { formatRelativeDay } from '../utils/seedUtils';
+import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
+import { GROWTH_STATE_OPTIONS } from '../domain/types';
 
 type HomeScreenProps = {
   seeds: Seed[];
@@ -43,13 +46,13 @@ export function HomeScreen({
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const today = new Date();
-  const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日`;
+  const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
 
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.todayMeta}>今日の種 · {dateLabel}</Text>
-      <Text style={styles.heading} accessibilityRole="header">
-        Kizashi Notes
+      <Text style={styles.heading} accessibilityRole="header" accessibilityLabel="きざしノート">
+        きざしノート
       </Text>
       <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
 
@@ -83,8 +86,11 @@ export function HomeScreen({
             <Text style={styles.seedBody} numberOfLines={6}>
               {todaySeed.seed.body}
             </Text>
-            <Text style={styles.seedMeta}>理由: {todaySeed.reason}</Text>
-            <Text style={styles.seedMeta}>更新: {formatDate(todaySeed.seed.updatedAt)}</Text>
+            <View style={styles.seedMetaRow}>
+              <GrowthBadge state={todaySeed.seed.growthState} />
+              <Text style={styles.seedMeta}>{formatRelativeDay(todaySeed.seed.updatedAt)}に更新</Text>
+            </View>
+            <Text style={styles.reason}>{todaySeed.reason}</Text>
           </AnimatedPressable>
         ) : (
           <EmptyState
@@ -117,10 +123,10 @@ export function HomeScreen({
                   {seed.body}
                 </Text>
                 <View style={styles.listMetaRow}>
-                  <Ionicons name="leaf-outline" size={14} color={theme.colors.textSoft} />
-                  <Text style={styles.listMeta}>
-                    {toGrowthLabel(seed.growthState)} ・ 大切度{seed.importance}
-                  </Text>
+                  <GrowthBadge state={seed.growthState} />
+                  <Text style={styles.listMeta}>{formatRelativeDay(seed.updatedAt)}</Text>
+                  <View style={styles.listMetaSpacer} />
+                  <ImportanceDots value={seed.importance} />
                 </View>
               </AnimatedPressable>
             ))
@@ -150,6 +156,18 @@ export function HomeScreen({
 
           {settingsOpen ? (
             <View style={styles.settingsBody}>
+              <Text style={styles.exportLabel}>種の育ち方</Text>
+              {GROWTH_STATE_OPTIONS.map((state) => (
+                <View key={state} style={styles.howtoRow}>
+                  <GrowthBadge state={state} />
+                  <Text style={styles.howtoText}>{growthStateHints[state]}</Text>
+                </View>
+              ))}
+              <Text style={styles.howtoNote}>
+                詳細の画面で、{growthStateLabels.seed}→{growthStateLabels.sprout}→{growthStateLabels.tree}と育てていけます。急がなくて大丈夫です。
+              </Text>
+
+              <Text style={styles.exportLabel}>プライバシー</Text>
               <Text style={styles.aboutText}>
                 種はこの端末の中だけに保存されます。{'\n'}
                 ログイン・広告・トラッキング・外部への送信はありません。
@@ -236,6 +254,8 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.largeTitle,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
+    letterSpacing: 2,
     color: theme.colors.text,
   },
   subheading: {
@@ -252,7 +272,8 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: theme.typography.sectionTitle,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   secondaryButton: {
@@ -260,10 +281,10 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
     borderRadius: theme.radius.full,
-    backgroundColor: '#dceee1',
+    backgroundColor: theme.colors.leaf,
   },
   secondaryButtonPressed: {
-    backgroundColor: '#d3e7d9',
+    backgroundColor: theme.colors.leafPressed,
   },
   secondaryButtonText: {
     color: theme.colors.primary,
@@ -277,12 +298,13 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   seedCardPressed: {
-    backgroundColor: '#e9f1eb',
+    backgroundColor: theme.colors.surfaceSoft,
   },
   seedBody: {
-    fontSize: 17,
+    fontSize: 18,
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    lineHeight: 24,
+    lineHeight: 28,
   },
   seedMeta: {
     fontSize: 13,
@@ -291,10 +313,11 @@ const styles = StyleSheet.create({
   listItem: {
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#dfe8e0',
+    borderTopColor: theme.colors.rule,
     gap: 6,
   },
   listBody: {
+    fontFamily: theme.fonts.serif,
     fontSize: theme.typography.body,
     color: theme.colors.text,
   },
@@ -320,6 +343,34 @@ const styles = StyleSheet.create({
   },
   settingsBody: {
     gap: theme.spacing.xs,
+  },
+  howtoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  howtoText: {
+    flex: 1,
+    fontSize: theme.typography.subbody,
+    color: theme.colors.textMuted,
+  },
+  howtoNote: {
+    fontSize: 13,
+    color: theme.colors.textSoft,
+    lineHeight: 19,
+  },
+  seedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reason: {
+    fontSize: 13,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  listMetaSpacer: {
+    flex: 1,
   },
   versionText: {
     fontSize: theme.typography.caption,

@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Animated, Image, StyleSheet, Text } from 'react-native';
+// スプラッシュと同じ画像を使い、起動画面からそのままつながって見えるようにする。
+import splashMark from '../../assets/splash-icon.png';
 import { theme } from '../styles/theme';
 import { motion } from '../utils/motion';
 
@@ -40,10 +41,9 @@ export function AppLaunchIntro({ visible }: AppLaunchIntroProps) {
 
   return (
     <Animated.View style={[styles.overlay, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
-      <View style={styles.iconWrap}>
-        <Ionicons name="leaf-outline" size={24} color={theme.colors.primary} />
-      </View>
-      <Text style={styles.title}>Kizashi Notes</Text>
+      <Image source={splashMark} style={styles.mark} accessibilityIgnoresInvertColors />
+      <Text style={styles.title}>きざしノート</Text>
+      <Text style={styles.titleEn}>Kizashi Notes</Text>
       <Text style={styles.subtitle}>ひとことを置いて、あとでゆっくり育てるためのノート</Text>
     </Animated.View>
   );
@@ -59,19 +59,23 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.xl,
   },
-  iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+  mark: {
+    width: 132,
+    height: 132,
+    marginBottom: theme.spacing.xs,
   },
   title: {
     fontSize: 28,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
-    letterSpacing: 0.3,
+    letterSpacing: 2,
+  },
+  titleEn: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textSoft,
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
   },
   subtitle: {
     fontSize: theme.typography.subbody,

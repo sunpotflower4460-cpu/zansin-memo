@@ -5,12 +5,14 @@ import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { GrowthBadge } from '../components/GrowthBadge';
+import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
 import { SectionCard } from '../components/SectionCard';
 import { GROWTH_STATE_OPTIONS, type GrowthState, type Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { allLabel, growthStateLabels, sortLabels } from '../utils/displayLabels';
-import { formatDate, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
+import { formatDate, formatRelativeDay, matchesTagFilter, resolveTagFilter } from '../utils/seedUtils';
 
 type SortType = 'updated' | 'importance';
 const MAX_RECENTLY_DELETED_SEEDS = 10;
@@ -96,7 +98,9 @@ export function SeedsScreen({
       <Text style={styles.heading} accessibilityRole="header">
         種一覧
       </Text>
-      <Text style={styles.subheading}>検索や絞り込みで、いま見返したい種を見つけます。</Text>
+      <Text style={styles.subheading}>
+        {seeds.length === 0 ? '書いた種がここに並びます。' : `${seeds.length}件の種。検索や絞り込みで、見返したい種を見つけます。`}
+      </Text>
 
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={18} color={theme.colors.textSoft} />
@@ -217,10 +221,21 @@ export function SeedsScreen({
           <Text numberOfLines={3} style={styles.body}>
             {seed.body}
           </Text>
-          <Text style={styles.meta}>
-            {growthStateLabels[seed.growthState]} ・ 大切度{seed.importance} ・ {formatDate(seed.updatedAt)}
-          </Text>
-          {seed.tags.length > 0 ? <Text style={styles.tags}>カテゴリ: {seed.tags.join(', ')}</Text> : null}
+          <View style={styles.metaRow}>
+            <GrowthBadge state={seed.growthState} />
+            <Text style={styles.meta}>{formatRelativeDay(seed.updatedAt)}</Text>
+            <View style={styles.metaSpacer} />
+            <ImportanceDots value={seed.importance} />
+          </View>
+          {seed.tags.length > 0 ? (
+            <View style={styles.tagRow}>
+              {seed.tags.map((tag) => (
+                <Text key={tag} style={styles.tagPill}>
+                  {tag}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </AnimatedPressable>
       )}
     />
@@ -246,6 +261,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: theme.typography.title,
     fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   subheading: {
@@ -282,7 +298,7 @@ const styles = StyleSheet.create({
   },
   deletedItem: {
     borderTopWidth: 1,
-    borderTopColor: '#dfe8e0',
+    borderTopColor: theme.colors.rule,
     paddingTop: 10,
     gap: 8,
   },
@@ -315,14 +331,16 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   seedCardPressed: {
-    backgroundColor: '#f4f8f3',
+    backgroundColor: theme.colors.surfaceSoft,
   },
   title: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: theme.fonts.serif,
     color: theme.colors.text,
   },
   body: {
+    fontFamily: theme.fonts.serif,
     fontSize: 16,
     color: theme.colors.text,
     lineHeight: 23,
@@ -331,8 +349,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textMuted,
   },
-  tags: {
-    fontSize: 13,
-    color: theme.colors.textSoft,
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metaSpacer: {
+    flex: 1,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tagPill: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.surfaceMuted,
+    overflow: 'hidden',
   },
 });
