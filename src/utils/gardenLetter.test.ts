@@ -76,3 +76,57 @@ test('a theme appears only when it repeats across at least two active seeds', ()
   assert.equal(letter.leadingTheme, undefined);
   assert.match(letter.reflection, /新しい気配/);
 });
+
+test('the letter counts only connections the user made (not legacy), only sprouts the user adopted, and only while they still stand', () => {
+  const now = new Date('2026-07-14T12:00:00.000Z');
+  const seeds = [
+    createSeed({ id: 'a', createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' }),
+    createSeed({ id: 'b', createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' }),
+    createSeed({ id: 'c', createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z' }),
+    createSeed({ id: 'gone', createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z', deletedAt: '2026-07-13T00:00:00.000Z' }),
+  ];
+  const connection = (a: string, b: string, origin: 'manual' | 'legacy', createdAt?: string) => ({ id: JSON.stringify([a, b].sort()), aSeedId: [a, b].sort()[0], bSeedId: [a, b].sort()[1], origin, createdAt });
+  const letter = buildGardenLetter(
+    seeds,
+    now,
+    [
+      connection('a', 'b', 'manual', '2026-07-12T00:00:00.000Z'), // 今週・本人 → 数える
+      connection('a', 'c', 'legacy'), // 日時不明の旧データ → 数えない
+      connection('b', 'c', 'manual', '2026-06-01T00:00:00.000Z'), // 今週より前 → 数えない
+      connection('a', 'gone', 'manual', '2026-07-13T00:00:00.000Z'), // 削除済みへ → 数えない
+    ],
+  );
+  assert.equal(letter.newConnectionCount, 1);
+  assert.equal(letter.newSproutCount, 0);
+  assert.equal(letter.hasActivity, true);
+  assert.match(letter.reflection, /つなぎました/);
+
+  const withSprout = buildGardenLetter(
+    [
+      createSeed({
+        id: 's',
+        growthState: 'sprout',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+        synthesis: { id: 'x', statement: '案', sources: [], createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z', promotedAt: '2026-07-12T00:00:00.000Z' },
+      }),
+      // 種へ戻した考えは、現在の芽として数えない
+      createSeed({
+        id: 'r',
+        growthState: 'seed',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+        synthesis: { id: 'y', statement: '案', sources: [], createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z', promotedAt: '2026-07-12T00:00:00.000Z' },
+      }),
+    ],
+    now,
+  );
+  assert.equal(withSprout.newSproutCount, 1);
+  assert.match(withSprout.reflection, /芽/);
+});
+
+test('browsing and a quiet week add nothing to the new counts', () => {
+  const letter = buildGardenLetter([createSeed({ createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z', lastResurfacedAt: '2026-07-14T00:00:00.000Z' })], new Date('2026-07-14T12:00:00.000Z'), []);
+  assert.equal(letter.newConnectionCount + letter.newSproutCount, 0);
+  assert.equal(letter.hasActivity, false);
+});

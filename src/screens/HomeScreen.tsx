@@ -31,6 +31,9 @@ type HomeScreenProps = {
   onOpenSeed: (seedId: string) => void;
   onOpenWrite: () => void;
   onOpenGarden: () => void;
+  /** 今日の種から、つながりを足す・芽を見直す。 */
+  onAddMemo: (seedId: string) => void;
+  onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
   onShowPractice: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
@@ -50,6 +53,8 @@ export function HomeScreen({
   onOpenSeed,
   onOpenWrite,
   onOpenGarden,
+  onAddMemo,
+  onOpenSynthesis,
   onShowPractice,
   onOpenPrivacyPolicy,
   onOpenSupport,
@@ -64,7 +69,7 @@ export function HomeScreen({
     [todaySeed, seeds, connections],
   );
   const recent = [...seeds].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
-  const gardenLetter = buildGardenLetter(seeds);
+  const gardenLetter = buildGardenLetter(seeds, new Date(), connections);
   const today = new Date();
   const dateLabel = `${today.getMonth() + 1}月${today.getDate()}日（${'日月火水木金土'[today.getDay()]}）`;
 
@@ -161,6 +166,40 @@ export function HomeScreen({
               <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
             </View>
           </AnimatedPressable>
+          <View style={styles.todayActions}>
+            <AnimatedPressable
+              onPress={() => onOpenSeed(todaySeed.seed.id)}
+              style={styles.todayAction}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="今日の種のつながりを見る"
+            >
+              <Ionicons name="git-network-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.todayActionText}>つながりを見る</Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => onAddMemo(todaySeed.seed.id)}
+              style={styles.todayAction}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="今日の種につなげて、メモを足す"
+            >
+              <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.todayActionText}>メモを足す</Text>
+            </AnimatedPressable>
+            {todaySeed.seed.synthesis && todaySeed.seed.growthState !== 'seed' ? (
+              <AnimatedPressable
+                onPress={() => onOpenSynthesis(todaySeed.seed.id, 'review')}
+                style={styles.todayAction}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel="今日の種の芽を見直す"
+              >
+                <Ionicons name="leaf-outline" size={16} color={theme.colors.primary} />
+                <Text style={styles.todayActionText}>芽を見直す</Text>
+              </AnimatedPressable>
+            ) : null}
+          </View>
           {todayLinks.length > 0 ? (
             <View style={styles.todayLinks}>
               <View style={styles.todayLinksTitle}>
@@ -395,6 +434,9 @@ const styles = StyleSheet.create({
     left: 20,
     gap: 2,
   },
+  todayActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  todayAction: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: theme.radius.full, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.chipSelectedBorder },
+  todayActionText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
   todayLinks: {
     gap: 6,
   },

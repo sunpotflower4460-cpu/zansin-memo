@@ -31,6 +31,12 @@ type ConnectionsPanelProps = {
   onAddMemo: () => void;
   /** 練習など、「メモを足す」を出せない場面で隠す。 */
   hideAddMemo?: boolean;
+  /** 「今回は見送る」にした候補のペア。候補から外す（手動の検索・接続は妨げない）。 */
+  dismissed?: Set<string>;
+  onDismissSuggestion?: (otherId: string) => void;
+  /** 見送った候補を、このメモについて元に戻す。 */
+  onRestoreDismissed?: () => void;
+  dismissedCount?: number;
 };
 
 const LIST_PAGE = 20;
@@ -55,6 +61,10 @@ export function ConnectionsPanel({
   onSetNote,
   onAddMemo,
   hideAddMemo,
+  dismissed,
+  onDismissSuggestion,
+  onRestoreDismissed,
+  dismissedCount = 0,
 }: ConnectionsPanelProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | undefined>();
@@ -74,7 +84,7 @@ export function ConnectionsPanel({
   }, [seeds, connections, center, index]);
   const neighborIds = React.useMemo(() => new Set(neighbors.map((seed) => seed.id)), [neighbors]);
   const candidates = React.useMemo(() => seeds.filter((seed) => seed.id !== center.id), [seeds, center.id]);
-  const suggestions = React.useMemo(() => suggestLinks(center, seeds, connections, { limit: 3 }), [center, seeds, connections]);
+  const suggestions = React.useMemo(() => suggestLinks(center, seeds, connections, { limit: 3, dismissed }), [center, seeds, connections, dismissed]);
 
   const mapNeighbors = neighbors.slice(0, MAP_NEIGHBOR_LIMIT);
   const hiddenCount = neighbors.length - mapNeighbors.length;
@@ -273,13 +283,15 @@ export function ConnectionsPanel({
         </AnimatedPressable>
       </View>
 
-      {suggestions.length > 0 ? (
+      {suggestions.length > 0 || dismissedCount > 0 ? (
         <View style={styles.block}>
           <View style={styles.titleRow}>
             <Ionicons name="sparkles-outline" size={16} color={theme.colors.accent} />
             <Text style={styles.label}>つながるかもしれないメモ（候補）</Text>
           </View>
-          <Text style={styles.hint}>線ではありません。「つなぐ」を押したときだけ、つながりになります。</Text>
+          <Text style={styles.hint}>
+            {suggestions.length > 0 ? '線ではありません。「つなぐ」を押したときだけ、つながりになります。合わなければ「今回は見送る」で外せます。' : '今は候補がありません。「保存済みのメモをつなげる」から、自分で探して結べます。'}
+          </Text>
           {suggestions.map(({ seed: item, reason }) => (
             <View key={item.id} style={styles.suggestion}>
               <View style={styles.suggestionBody}>
@@ -288,17 +300,41 @@ export function ConnectionsPanel({
                 </Text>
                 <Text style={styles.reason}>{reason}</Text>
               </View>
-              <AnimatedPressable
-                onPress={() => onLink(item.id)}
-                style={styles.linkChip}
-                haptic="light"
-                accessibilityRole="button"
-                accessibilityLabel={`この候補とつなぐ。${toSeedSnippet(item, 20)}。${reason}`}
-              >
-                <Text style={styles.linkChipText}>つなぐ</Text>
-              </AnimatedPressable>
+              <View style={styles.suggestionActions}>
+                <AnimatedPressable
+                  onPress={() => onLink(item.id)}
+                  style={styles.linkChip}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`この候補とつなぐ。${toSeedSnippet(item, 20)}。${reason}`}
+                >
+                  <Text style={styles.linkChipText}>つなぐ</Text>
+                </AnimatedPressable>
+                {onDismissSuggestion ? (
+                  <AnimatedPressable
+                    onPress={() => onDismissSuggestion(item.id)}
+                    style={styles.skipChip}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel={`今回は見送る。${toSeedSnippet(item, 20)}。同じ組合せは、もう出しません`}
+                  >
+                    <Text style={styles.skipChipText}>今回は見送る</Text>
+                  </AnimatedPressable>
+                ) : null}
+              </View>
             </View>
           ))}
+          {dismissedCount > 0 && onRestoreDismissed ? (
+            <AnimatedPressable
+              onPress={onRestoreDismissed}
+              style={styles.moreRow}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel={`見送った候補を戻す。${dismissedCount}件`}
+            >
+              <Text style={styles.moreText}>見送った候補を戻す（{dismissedCount}件）</Text>
+            </AnimatedPressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -441,6 +477,9 @@ const styles = StyleSheet.create({
   },
   suggestionBody: { flex: 1, gap: 4 },
   reason: { fontSize: 12, lineHeight: 17, color: theme.colors.accent },
+  suggestionActions: { gap: 6, alignItems: 'stretch' },
+  skipChip: { minHeight: 40, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10, borderRadius: theme.radius.full, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  skipChipText: { fontSize: 12, fontWeight: '600', color: theme.colors.textMuted },
   linkChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: theme.radius.full, backgroundColor: theme.colors.leaf },
   linkChipText: { fontSize: 14, fontWeight: '700', color: theme.colors.primary },
 });

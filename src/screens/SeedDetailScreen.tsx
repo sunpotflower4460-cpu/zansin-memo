@@ -69,6 +69,10 @@ type SeedDetailScreenProps = {
   onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
   onReconsiderSynthesis: (seedId: string) => void;
   hasSynthesisDraft: boolean;
+  dismissedSuggestions: Set<string>;
+  dismissedCount: number;
+  onDismissSuggestion: (seedId: string, otherId: string) => void;
+  onRestoreDismissed: (seedId: string) => void;
 };
 
 type DraftState = {
@@ -133,6 +137,10 @@ export function SeedDetailScreen({
   onOpenSynthesis,
   onReconsiderSynthesis,
   hasSynthesisDraft,
+  dismissedSuggestions,
+  dismissedCount,
+  onDismissSuggestion,
+  onRestoreDismissed,
 }: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
   // 下書きがあれば、編集の続きから開く。本文は明示的に「編集する」を選んだときだけ書き換えられる。
@@ -487,6 +495,10 @@ export function SeedDetailScreen({
             onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
             onSetNote={(otherId, note) => onSetConnectionNote(seed.id, otherId, note)}
             onAddMemo={() => onAddMemo(seed.id)}
+            dismissed={dismissedSuggestions}
+            dismissedCount={dismissedCount}
+            onDismissSuggestion={(otherId) => onDismissSuggestion(seed.id, otherId)}
+            onRestoreDismissed={() => onRestoreDismissed(seed.id)}
           />
         </FadeInView>
 

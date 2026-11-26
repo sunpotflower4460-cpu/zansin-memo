@@ -44,7 +44,8 @@ import { exportGarden } from './src/utils/exportUtils';
 import { createId } from './src/utils/ids';
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import { buildTransformOutput, getLocalDateKey, pickTodaySeed, syncResurfacedSeed } from './src/utils/seedUtils';
-import { buildAdjacency } from './src/utils/links';
+import { buildAdjacency, dismissKey } from './src/utils/links';
+import { dismissedKeysFor, loadDismissed, saveDismissed } from './src/data/suggestionPrefs';
 
 type MainTab = 'home' | 'write' | 'seeds' | 'garden';
 
@@ -127,6 +128,8 @@ export default function App() {
   const [synthesisSaving, setSynthesisSaving] = React.useState(false);
   const [synthesisError, setSynthesisError] = React.useState('');
   const [undo, setUndo] = React.useState<UndoInfo | undefined>();
+  /** 「今回は見送る」にした候補のペア（画面設定。次回起動後も残る）。 */
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set());
   const [stateFilter, setStateFilter] = React.useState<GrowthState | 'all'>('all');
   const [tagFilter, setTagFilter] = React.useState<string | null>(null);
   const [sortType, setSortType] = React.useState<'updated' | 'importance'>('updated');
@@ -552,6 +555,7 @@ export default function App() {
             triggerWarningFeedback();
             setPersistentError('');
             setTodaySeed(undefined);
+            setDismissed(new Set());
             resetWrite();
             setSeedsSearch('');
             setStateFilter('all');
@@ -674,6 +678,31 @@ export default function App() {
     }
   };
 
+  React.useEffect(() => {
+    let active = true;
+    void loadDismissed().then((loaded) => {
+      if (active) setDismissed(loaded);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleDismissSuggestion = (seedId: string, otherId: string) => {
+    const next = new Set(dismissed).add(dismissKey(seedId, otherId));
+    setDismissed(next);
+    void saveDismissed(next);
+    showToast('今回は見送りました。同じ組合せは出しません');
+  };
+
+  const handleRestoreDismissed = (seedId: string) => {
+    const next = new Set(dismissed);
+    for (const key of dismissedKeysFor(dismissed, seedId)) next.delete(key);
+    setDismissed(next);
+    void saveDismissed(next);
+    showToast('見送った候補を戻しました');
+  };
+
   const handleReconsider = async (seedId: string) => {
     if (blockIfLocked()) {
       return;
@@ -746,6 +775,10 @@ export default function App() {
           onOpenSynthesis={(seedId, mode) => openSynthesis(seedId, mode, screen.from)}
           onReconsiderSynthesis={handleReconsider}
           hasSynthesisDraft={store.drafts.some((draft) => draft.kind === 'synthesis' && draft.targetSeedId === selectedSeed.id)}
+          dismissedSuggestions={dismissed}
+          dismissedCount={dismissedKeysFor(dismissed, selectedSeed.id).length}
+          onDismissSuggestion={handleDismissSuggestion}
+          onRestoreDismissed={handleRestoreDismissed}
         />
       );
     }
@@ -887,6 +920,8 @@ export default function App() {
         onRefreshToday={refreshTodaySeed}
         onOpenWrite={() => setScreen({ kind: 'write' })}
         onOpenGarden={() => setScreen({ kind: 'garden' })}
+        onAddMemo={handleAddMemo}
+        onOpenSynthesis={(seedId, mode) => openSynthesis(seedId, mode, 'home')}
         onShowPractice={() => setPracticeOpen(true)}
         onOpenSeed={(seedId) => openDetail(seedId, 'home', true)}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
