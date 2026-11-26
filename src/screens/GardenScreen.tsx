@@ -9,7 +9,8 @@ import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
 import { HelpButton } from '../components/HelpButton';
 import { LinkCount } from '../components/LinkCount';
-import { findRecurringWords, getLinkCounts } from '../utils/links';
+import { findRecurringWords, getLinkCounts, getLinkedSeeds } from '../utils/links';
+import { toSeedSnippet } from '../utils/seedText';
 import { SectionCard } from '../components/SectionCard';
 import { helpTexts } from '../utils/helpTexts';
 import type { GrowthState, Seed, SeedConnection } from '../domain/types';
@@ -25,6 +26,8 @@ type GardenScreenProps = {
   onOpenSeedsByState: (state: GrowthState) => void;
   /** 繰り返し出てくる言葉から、その言葉を含む種を探す。 */
   onSearchWord: (word: string) => void;
+  /** つながりのあるメモの全件を、種一覧のビューで見る。 */
+  onOpenConnectedList: () => void;
 };
 
 const orderedStates: GrowthState[] = ['seed', 'sprout', 'tree', 'archived'];
@@ -54,7 +57,7 @@ const stateAccents: Record<GrowthState, string> = {
   archived: '#a39d90', // 古紙の灰
 };
 
-export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByState, onSearchWord }: GardenScreenProps) {
+export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByState, onSearchWord, onOpenConnectedList }: GardenScreenProps) {
   const { width } = useWindowDimensions();
   const cardWidth = Math.min(Math.max(width * GARDEN_CARD_WIDTH_RATIO, GARDEN_CARD_MIN_WIDTH), GARDEN_CARD_MAX_WIDTH);
 
@@ -66,8 +69,17 @@ export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByStat
     return buckets;
   }, [seeds]);
 
-  const recurringWords = useMemo(() => findRecurringWords(seeds), [seeds]);
   const linkCounts = useMemo(() => getLinkCounts(seeds, connections), [seeds, connections]);
+
+  // つながりのあるメモ（中心にして見られるカード）。同じ集団を「同じテーマ」とまとめず、メモごとに直接のつながりだけを示す。
+  const connectedCenters = useMemo(
+    () =>
+      seeds
+        .filter((seed) => (linkCounts.get(seed.id) ?? 0) > 0)
+        .sort((a, b) => (linkCounts.get(b.id) ?? 0) - (linkCounts.get(a.id) ?? 0) || b.updatedAt.localeCompare(a.updatedAt)),
+    [seeds, linkCounts],
+  );
+  const recurringWords = useMemo(() => findRecurringWords(seeds), [seeds]);
 
   const groupedByTag = useMemo(() => groupSeedsByTag(seeds), [seeds]);
 
@@ -98,6 +110,58 @@ export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByStat
 
       {seeds.length === 0 ? (
         <EmptyState image={stageImages.seed} title="この場所は、これから育っていきます。" description="書いた種が増えると、土の上に少しずつ並びます。" />
+      ) : null}
+
+      {connectedCenters.length > 0 ? (
+        <FadeInView delayMs={30}>
+          <View style={styles.linkSection}>
+            <View style={styles.linkTitleRow}>
+              <Ionicons name="git-network-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.sectionTitle}>つながりのあるメモ</Text>
+            </View>
+            <Text style={styles.emptyText}>あなたが結んだメモです。タップすると、そのメモを中心につながりを見られます。</Text>
+            {connectedCenters.slice(0, 6).map((center) => {
+              const around = getLinkedSeeds(center, seeds, connections);
+              return (
+                <AnimatedPressable
+                  key={center.id}
+                  onPress={() => onOpenSeed(center.id)}
+                  style={styles.centerCard}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`つながりを見る。${toSeedSnippet(center, 30)}。つながり${around.length}件`}
+                >
+                  <Text style={styles.centerText} numberOfLines={2}>
+                    {toSeedSnippet(center, 60)}
+                  </Text>
+                  {around.slice(0, 2).map((other) => (
+                    <Text key={other.id} style={styles.aroundText} numberOfLines={1}>
+                      ─ {toSeedSnippet(other, 40)}
+                    </Text>
+                  ))}
+                  <View style={styles.centerFooter}>
+                    <Text style={styles.centerMeta}>
+                      つながり {around.length}件{around.length > 2 ? `（ほか${around.length - 2}件）` : ''}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                  </View>
+                </AnimatedPressable>
+              );
+            })}
+            {connectedCenters.length > 6 ? (
+              <AnimatedPressable
+                onPress={onOpenConnectedList}
+                style={styles.moreLink}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={`ほか${connectedCenters.length - 6}件を、一覧で見る`}
+              >
+                <Text style={styles.moreLinkText}>ほか{connectedCenters.length - 6}件を一覧で見る</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              </AnimatedPressable>
+            ) : null}
+          </View>
+        </FadeInView>
       ) : null}
 
       {recurringWords.length > 0 ? (
@@ -295,6 +359,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  centerCard: {
+    gap: 6,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.rule,
+    ...theme.shadows.card,
+  },
+  centerText: { fontSize: 16, lineHeight: 24, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  aroundText: { fontSize: 14, lineHeight: 20, fontFamily: theme.fonts.serif, color: theme.colors.textMuted },
+  centerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  centerMeta: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
+  moreLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 44 },
+  moreLinkText: { fontSize: theme.typography.subbody, fontWeight: '700', color: theme.colors.primary },
   wordRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

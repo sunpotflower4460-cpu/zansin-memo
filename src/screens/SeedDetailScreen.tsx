@@ -1,13 +1,16 @@
-import * as React from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as React from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
+import { ConnectionsPanel, type ConnectionsViewMode } from '../components/ConnectionsPanel';
 import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
+import { GrowthBadge } from '../components/GrowthBadge';
+import { HelpButton } from '../components/HelpButton';
+import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
-import { LinksSection } from '../components/LinksSection';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SectionCard } from '../components/SectionCard';
 import {
@@ -15,6 +18,7 @@ import {
   IMPORTANCE_OPTIONS,
   MOOD_OPTIONS,
   TRANSFORM_TYPES,
+  type Draft,
   type GrowthState,
   type Importance,
   type Mood,
@@ -26,24 +30,38 @@ import {
 } from '../domain/types';
 import { theme } from '../styles/theme';
 import { triggerLightFeedback } from '../utils/feedback';
-import { HelpButton } from '../components/HelpButton';
-import { helpTexts } from '../utils/helpTexts';
 import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
+import { helpTexts } from '../utils/helpTexts';
+import { createId } from '../utils/ids';
+import { toSeedSnippet } from '../utils/seedText';
 import { formatDate, parseTags } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
   seed: Seed;
+  /** 削除されていないメモ全体。 */
   allSeeds: Seed[];
   connections: SeedConnection[];
   onBack: () => void;
-  /** 戻り先の名前（例: 種一覧）。どこへ戻るかが分かるようにボタンに表示する。 */
+  /** 戻り先の名前（例: 種一覧）。 */
   backLabel: string;
-  /** 保存の確定を待って true を返す。失敗時は false（入力はそのまま残す）。 */
-  onSave: (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string) => Promise<boolean>;
+  /** これまでに中心にして見てきたメモ（古い順）。現在のメモは含まない。 */
+  trail: Seed[];
+  onBackOneCenter: () => void;
+  onBackToFirst: () => void;
+  connectionsViewMode: ConnectionsViewMode;
+  onChangeConnectionsViewMode: (mode: ConnectionsViewMode) => void;
+  /** 保存済みの編集中の下書き。あれば編集の続きから再開する。 */
+  editDraft?: Draft;
+  onEditDraftChange: (draft: Draft | null, draftId: string) => void;
+  onFlushDrafts: () => void;
+  onNotify: (message: string) => void;
+  /** 保存の確定を待って true。失敗・衝突時は false（入力は残す）。 */
+  onSave: (seedId: string, payload: SeedUpdateInput, expectedUpdatedAt: string, draftId: string) => Promise<boolean>;
   onDelete: (seedId: string) => void;
   onOpenSeed: (seedId: string) => void;
   onLinkSeeds: (seedId: string, otherId: string) => void;
   onUnlinkSeeds: (seedId: string, otherId: string) => void;
+  onSetConnectionNote: (seedId: string, otherId: string, note: string) => void;
   onAddMemo: (seedId: string) => void;
   onCreateTransform: (seedId: string, type: TransformType) => void;
 };
@@ -75,46 +93,88 @@ const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
   draft.growthState !== seed.growthState ||
   parseTags(draft.tags).join('\n') !== seed.tags.join('\n');
 
-export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabel, onSave, onDelete, onOpenSeed, onLinkSeeds, onUnlinkSeeds, onAddMemo, onCreateTransform }: SeedDetailScreenProps) {
+const draftFromStored = (stored: Draft, seed: Seed): DraftState => ({
+  title: stored.title ?? seed.title ?? '',
+  body: stored.body,
+  tags: stored.tags ?? seed.tags.join(', '),
+  mood: stored.mood ?? seed.mood,
+  growthState: stored.growthState ?? seed.growthState,
+  importance: stored.importance ?? seed.importance,
+});
+
+export function SeedDetailScreen({
+  seed,
+  allSeeds,
+  connections,
+  onBack,
+  backLabel,
+  trail,
+  onBackOneCenter,
+  onBackToFirst,
+  connectionsViewMode,
+  onChangeConnectionsViewMode,
+  editDraft,
+  onEditDraftChange,
+  onFlushDrafts,
+  onNotify,
+  onSave,
+  onDelete,
+  onOpenSeed,
+  onLinkSeeds,
+  onUnlinkSeeds,
+  onSetConnectionNote,
+  onAddMemo,
+  onCreateTransform,
+}: SeedDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const [draft, setDraft] = React.useState<DraftState>(() => toDraft(seed));
+  // 下書きがあれば、編集の続きから開く。本文は明示的に「編集する」を選んだときだけ書き換えられる。
+  const [editing, setEditing] = React.useState(Boolean(editDraft));
+  const [draft, setDraft] = React.useState<DraftState>(() => (editDraft ? draftFromStored(editDraft, seed) : toDraft(seed)));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  /** 編集を始めた時点の更新日時。これと違えば、別の更新が先に確定している。 */
+  /** 編集を始めた時点の更新日時・本文。これと違えば、別の操作が先に確定している。 */
   const baseUpdatedAtRef = React.useRef(seed.updatedAt);
-
-  // 別の種を開いたときだけ入力内容を読み込み直す。変換候補の追加や「今日の種」の更新で、編集中の文章が巻き戻らないようにする。
-  const seedId = seed.id;
+  const baseBodyRef = React.useRef(editDraft?.baseBody ?? seed.body);
+  /** 編集の一回分の下書きID。保存や破棄のあと、次の編集では作り直す。 */
+  const draftIdRef = React.useRef(editDraft?.id ?? createId());
   const latestSeedRef = React.useRef(seed);
   latestSeedRef.current = seed;
-  React.useEffect(() => {
-    setDraft(toDraft(latestSeedRef.current));
-    baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
-  }, [seedId]);
 
-  const save = async (): Promise<boolean> => {
-    if (saving) {
-      return false;
-    }
-    setSaving(true);
-    const ok = await onSave(seed.id, buildPayload(), baseUpdatedAtRef.current);
-    setSaving(false);
-    if (ok) {
-      // 自分の保存で進んだ版を、次の編集の起点にする。
-      baseUpdatedAtRef.current = latestSeedRef.current.updatedAt;
-    }
-    return ok;
-  };
-
-  const unsaved = hasUnsavedChanges(draft, seed);
-
-  const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
+  const unsaved = editing && hasUnsavedChanges(draft, seed);
   const canSave = draft.body.trim().length > 0;
-  const saveAccessibilityHint = canSave ? '現在の変更内容を保存します。' : '種のことばを入力すると保存できます。';
-  const contentStyle = React.useMemo(
-    () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
-    [insets.bottom],
-  );
+  const staleBase = editing && (seed.updatedAt !== baseUpdatedAtRef.current || seed.body !== baseBodyRef.current);
+
+  // 編集中の内容は、短い間を置いて下書きとして残す（writer側でまとめて保存）。
+  React.useEffect(() => {
+    if (!editing) {
+      return;
+    }
+    if (!hasUnsavedChanges(draft, latestSeedRef.current)) {
+      onEditDraftChange(null, draftIdRef.current);
+      return;
+    }
+    onEditDraftChange({
+      id: draftIdRef.current,
+      kind: 'edit-body',
+      targetSeedId: latestSeedRef.current.id,
+      body: draft.body,
+      title: draft.title,
+      tags: draft.tags,
+      mood: draft.mood,
+      growthState: draft.growthState,
+      importance: draft.importance,
+      baseBody: baseBodyRef.current,
+      updatedAt: new Date().toISOString(),
+    }, draftIdRef.current);
+    // 下書きの保存は入力ごとに呼ぶ。同じ下書きは writer が1件にまとめる。
+  }, [draft, editing]);
+
+  const startEditing = () => {
+    setDraft(toDraft(seed));
+    baseUpdatedAtRef.current = seed.updatedAt;
+    baseBodyRef.current = seed.body;
+    setEditing(true);
+  };
 
   const buildPayload = (): SeedUpdateInput => ({
     title: draft.title,
@@ -125,28 +185,59 @@ export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabe
     tags: parseTags(draft.tags),
   });
 
-  // 戻るときは、変更があれば自動で保存する（メモ帳のように、書いたものを失わない）。
-  // 本文が空のときだけは保存できないので、捨てて戻るかを確認する。
-  const handleBack = () => {
-    if (!unsaved) {
-      onBack();
-      return;
+  const save = async (): Promise<boolean> => {
+    if (saving || !canSave) {
+      return false;
     }
-    if (canSave) {
-      Keyboard.dismiss();
-      // 保存の確定を待ってから戻る。失敗したら、この画面に残して入力を守る。
-      void save().then((ok) => {
-        if (ok) {
-          onBack();
-        }
-      });
-      return;
+    setSaving(true);
+    Keyboard.dismiss();
+    const ok = await onSave(seed.id, buildPayload(), baseUpdatedAtRef.current, draftIdRef.current);
+    setSaving(false);
+    if (ok) {
+      draftIdRef.current = createId();
+      setEditing(false);
     }
-    Alert.alert('本文が空のままです', 'このまま戻ると、変更は残りません。', [
+    return ok;
+  };
+
+  const discardDraft = () => {
+    Alert.alert('下書きを破棄しますか？', '編集中の内容が消えます。元のメモは変わりません。', [
       { text: '編集を続ける', style: 'cancel' },
-      { text: '変更を捨てて戻る', style: 'destructive', onPress: onBack },
+      {
+        text: '下書きを破棄',
+        style: 'destructive',
+        onPress: () => {
+          onEditDraftChange(null, draftIdRef.current);
+          draftIdRef.current = createId();
+          setEditing(false);
+          setDraft(toDraft(latestSeedRef.current));
+        },
+      },
     ]);
   };
+
+  const adoptLatestBase = () => {
+    baseUpdatedAtRef.current = seed.updatedAt;
+    baseBodyRef.current = seed.body;
+    onNotify('最新の内容を基準にしました。入力はそのまま残っています。');
+  };
+
+  // 戻るだけでは、本文を書き換えない。編集中の内容は下書きに残して戻る。
+  const handleBack = () => {
+    if (editing && unsaved) {
+      Keyboard.dismiss();
+      onFlushDrafts();
+      onNotify('編集中の内容は下書きとして残しました。開くと続きから編集できます。');
+    }
+    onBack();
+  };
+
+  const transformOutputs: TransformOutput[] = seed.transformOutputs ?? [];
+  const contentStyle = React.useMemo(
+    () => [styles.content, { paddingBottom: Math.max(48, insets.bottom + 32) }],
+    [insets.bottom],
+  );
+  const currentSnippet = toSeedSnippet(seed, 30);
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -167,167 +258,270 @@ export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabe
           <Text style={styles.backButtonText}>{backLabel}</Text>
         </AnimatedPressable>
 
+        {trail.length > 0 ? (
+          <View style={styles.trail}>
+            <Text style={styles.trailLabel} accessibilityLiveRegion="polite">
+              いま見ているメモ: 「{currentSnippet}」
+            </Text>
+            <View style={styles.trailActions}>
+              <AnimatedPressable
+                onPress={onBackOneCenter}
+                style={styles.trailButton}
+                haptic="light"
+                accessibilityRole="button"
+                accessibilityLabel={`ひとつ前のつながりへ。${toSeedSnippet(trail[trail.length - 1], 20)}`}
+              >
+                <Ionicons name="arrow-back" size={14} color={theme.colors.primary} />
+                <Text style={styles.trailButtonText}>ひとつ前のつながりへ</Text>
+              </AnimatedPressable>
+              {trail.length > 1 ? (
+                <AnimatedPressable
+                  onPress={onBackToFirst}
+                  style={styles.trailButton}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={`最初のメモへ戻る。${toSeedSnippet(trail[0], 20)}`}
+                >
+                  <Text style={styles.trailButtonText}>最初のメモへ戻る</Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.headingRow}>
           <Text style={styles.heading} accessibilityRole="header">
-            種の詳細
+            メモの詳細
           </Text>
           <HelpButton content={helpTexts.detail} />
         </View>
-        <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}</Text>
+        <Text style={styles.dateText}>
+          作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}
+        </Text>
 
         <FadeInView delayMs={40}>
           <SectionCard>
-          <TextInput
-            value={draft.body}
-            onChangeText={(body) => setDraft((prev) => ({ ...prev, body }))}
-            style={styles.bodyInput}
-            multiline
-            textAlignVertical="top"
-            placeholder="種のことば"
-            placeholderTextColor={theme.colors.placeholder}
-            accessibilityLabel="種のことば"
-          />
-          <TextInput
-            value={draft.title}
-            onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
-            style={styles.titleInput}
-            placeholder="タイトル（任意）"
-            placeholderTextColor={theme.colors.placeholder}
-            accessibilityLabel="タイトル"
-          />
-
-          <ChipSelector<GrowthState>
-            label="育ち方"
-            options={GROWTH_STATE_OPTIONS}
-            selectedValue={draft.growthState}
-            onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
-            getLabel={(state) => growthStateLabels[state]}
-          />
-          <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
-
-          <AnimatedPressable
-            onPress={() => setDetailsOpen((value) => !value)}
-            style={styles.toggle}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityState={{ expanded: detailsOpen }}
-            accessibilityLabel="詳細編集を開閉"
-          >
-            <Text style={styles.toggleText}>詳細を編集する</Text>
-            <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
-          </AnimatedPressable>
-
-          {detailsOpen ? (
-            <View>
-              <ChipSelector<Mood>
-                label="気分"
-                options={MOOD_OPTIONS}
-                selectedValue={draft.mood}
-                onChange={(mood) => setDraft((prev) => ({ ...prev, mood }))}
-                allowClear
-                getLabel={(mood) => moodLabels[mood]}
-              />
-
-              <ChipSelector<Importance>
-                label="大切度（1〜5）"
-                options={IMPORTANCE_OPTIONS}
-                selectedValue={draft.importance}
-                onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
-              />
-              <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.label}>カテゴリ（任意）</Text>
+            {!editing ? (
+              <>
+                {seed.title ? <Text style={styles.readTitle}>{seed.title}</Text> : null}
+                <Text style={styles.readBody} selectable>
+                  {seed.body}
+                </Text>
+                <View style={styles.badgeRow}>
+                  <GrowthBadge state={seed.growthState} />
+                  <ImportanceDots value={seed.importance} />
+                  {seed.mood ? <Text style={styles.badgeText}>気分: {moodLabels[seed.mood]}</Text> : null}
+                </View>
+                {seed.tags.length > 0 ? (
+                  <View style={styles.tagRow}>
+                    {seed.tags.map((tag) => (
+                      <Text key={tag} style={styles.tagPill}>
+                        {tag}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+                <AnimatedPressable
+                  onPress={startEditing}
+                  style={styles.editButton}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel="このメモの本文や情報を編集する"
+                >
+                  <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
+                  <Text style={styles.editButtonText}>編集する</Text>
+                </AnimatedPressable>
+              </>
+            ) : (
+              <>
+                {staleBase ? (
+                  <View style={styles.warning} accessibilityLiveRegion="polite">
+                    <Text style={styles.warningText}>
+                      このメモは、編集を始めたあとに別の操作で更新されました。入力は消えていません。内容を確かめてから保存してください。
+                    </Text>
+                    <AnimatedPressable
+                      onPress={adoptLatestBase}
+                      style={styles.warningButton}
+                      haptic="light"
+                      accessibilityRole="button"
+                      accessibilityLabel="最新の内容を基準にして、入力はそのまま残す"
+                    >
+                      <Text style={styles.warningButtonText}>最新の内容を基準にする</Text>
+                    </AnimatedPressable>
+                  </View>
+                ) : null}
                 <TextInput
-                  value={draft.tags}
-                  onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))}
-                  style={styles.input}
-                  accessibilityLabel="カテゴリ"
+                  value={draft.body}
+                  onChangeText={(body) => setDraft((prev) => ({ ...prev, body }))}
+                  style={styles.bodyInput}
+                  multiline
+                  textAlignVertical="top"
+                  placeholder="メモの本文"
+                  placeholderTextColor={theme.colors.placeholder}
+                  accessibilityLabel="メモの本文"
                 />
-              </View>
-            </View>
-          ) : null}
+                <TextInput
+                  value={draft.title}
+                  onChangeText={(title) => setDraft((prev) => ({ ...prev, title }))}
+                  style={styles.titleInput}
+                  placeholder="タイトル（任意）"
+                  placeholderTextColor={theme.colors.placeholder}
+                  accessibilityLabel="タイトル"
+                />
+                <ChipSelector<GrowthState>
+                  label="育ち方"
+                  options={GROWTH_STATE_OPTIONS}
+                  selectedValue={draft.growthState}
+                  onChange={(growthState) => setDraft((prev) => ({ ...prev, growthState: growthState ?? 'seed' }))}
+                  getLabel={(state) => growthStateLabels[state]}
+                />
+                <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
 
-          <View style={styles.saveStatus} accessible accessibilityLiveRegion="polite">
-            <Ionicons
-              name={unsaved ? 'ellipse-outline' : 'checkmark-circle-outline'}
-              size={16}
-              color={unsaved ? theme.colors.warning : theme.colors.primary}
-            />
-            <Text style={styles.saveStatusText}>
-              {unsaved ? '未保存の変更があります（戻ると自動で保存されます）' : '保存済みです。書き換えると、戻るときに自動で保存されます'}
-            </Text>
-          </View>
+                <AnimatedPressable
+                  onPress={() => setDetailsOpen((value) => !value)}
+                  style={styles.toggle}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: detailsOpen }}
+                  accessibilityLabel="気分・大切度・カテゴリを開閉"
+                >
+                  <Text style={styles.toggleText}>気分・大切度・カテゴリ</Text>
+                  <Ionicons name={detailsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
+                </AnimatedPressable>
+                {detailsOpen ? (
+                  <View>
+                    <ChipSelector<Mood>
+                      label="気分"
+                      options={MOOD_OPTIONS}
+                      selectedValue={draft.mood}
+                      onChange={(mood) => setDraft((prev) => ({ ...prev, mood }))}
+                      allowClear
+                      getLabel={(mood) => moodLabels[mood]}
+                    />
+                    <ChipSelector<Importance>
+                      label="大切度（1〜5）"
+                      options={IMPORTANCE_OPTIONS}
+                      selectedValue={draft.importance}
+                      onChange={(importance) => setDraft((prev) => ({ ...prev, importance: importance ?? 3 }))}
+                    />
+                    <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
+                    <View style={styles.fieldWrap}>
+                      <Text style={styles.label}>カテゴリ（任意）</Text>
+                      <TextInput
+                        value={draft.tags}
+                        onChangeText={(tags) => setDraft((prev) => ({ ...prev, tags }))}
+                        style={styles.input}
+                        accessibilityLabel="カテゴリ"
+                      />
+                    </View>
+                  </View>
+                ) : null}
 
-          <PrimaryButton
-            label={saving ? '保存しています…' : unsaved ? '変更を保存' : '保存済み'}
-            disabled={!canSave || !unsaved || saving}
-            accessibilityHint={saveAccessibilityHint}
-            onPress={() => {
-              if (!canSave) {
-                return;
-              }
-
-              Keyboard.dismiss();
-              void save();
-            }}
-          />
+                <View style={styles.saveStatus} accessible accessibilityLiveRegion="polite">
+                  <Ionicons
+                    name={unsaved ? 'ellipse-outline' : 'checkmark-circle-outline'}
+                    size={16}
+                    color={unsaved ? theme.colors.warning : theme.colors.primary}
+                  />
+                  <Text style={styles.saveStatusText}>
+                    {unsaved ? '変更があります。保存するまで、元のメモは変わりません（下書きとして残っています）' : '変更はありません'}
+                  </Text>
+                </View>
+                <PrimaryButton
+                  label={saving ? '保存しています…' : '変更を保存'}
+                  disabled={!canSave || !unsaved || saving}
+                  accessibilityHint={canSave ? '編集した内容でメモを更新します。' : '本文を入力すると保存できます。'}
+                  onPress={() => void save()}
+                />
+                <View style={styles.editFooter}>
+                  <AnimatedPressable
+                    onPress={() => {
+                      if (unsaved) {
+                        onFlushDrafts();
+                        onNotify('編集中の内容は下書きとして残しました。');
+                      }
+                      setEditing(false);
+                    }}
+                    style={styles.textButton}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="編集をいったん閉じる。下書きは残ります"
+                  >
+                    <Text style={styles.textButtonText}>編集を閉じる（下書きは残ります）</Text>
+                  </AnimatedPressable>
+                  {unsaved ? (
+                    <AnimatedPressable
+                      onPress={discardDraft}
+                      style={styles.textButton}
+                      haptic="light"
+                      accessibilityRole="button"
+                      accessibilityLabel="下書きを破棄する"
+                    >
+                      <Text style={styles.dangerText}>下書きを破棄</Text>
+                    </AnimatedPressable>
+                  ) : null}
+                </View>
+              </>
+            )}
           </SectionCard>
         </FadeInView>
 
         <FadeInView delayMs={60}>
-          <LinksSection
-            seed={seed}
-            allSeeds={allSeeds}
+          <ConnectionsPanel
+            center={seed}
+            seeds={allSeeds}
             connections={connections}
+            viewMode={connectionsViewMode}
+            onChangeViewMode={onChangeConnectionsViewMode}
             onOpenSeed={onOpenSeed}
             onLink={(otherId) => onLinkSeeds(seed.id, otherId)}
             onUnlink={(otherId) => onUnlinkSeeds(seed.id, otherId)}
+            onSetNote={(otherId, note) => onSetConnectionNote(seed.id, otherId, note)}
             onAddMemo={() => onAddMemo(seed.id)}
           />
         </FadeInView>
 
         <FadeInView delayMs={80}>
           <SectionCard muted>
-          <View style={styles.waterTitleRow}>
-            <Ionicons name="water-outline" size={20} color="#4f7f93" />
-            <Text style={styles.sectionTitle}>この種に水をあげる</Text>
-          </View>
-          <Text style={styles.hintText}>
-            ボタンを押すと、この種から「問い」や「小さな行動」などの候補が、この端末の中で作られます。使うかどうかは自由です。
-          </Text>
-          <View style={styles.rowWrap}>
-            {TRANSFORM_TYPES.map((type) => (
-              <IOSChip
-                key={type}
-                label={transformLabels[type]}
-                onPress={() => {
-                  triggerLightFeedback();
-                  onCreateTransform(seed.id, type);
-                }}
-              />
-            ))}
-          </View>
-          {transformOutputs.length === 0 ? (
-            <EmptyState icon="sparkles-outline" title="まだ変換結果はありません" description="必要なときに候補を作ってみましょう。" />
-          ) : (
-            transformOutputs
-              .slice()
-              .reverse()
-              .map((output) => (
-                <View key={output.id} style={styles.outputCard}>
-                  <Text style={styles.outputType}>{transformLabels[output.type]}</Text>
-                  <Text style={styles.outputBody}>{output.content}</Text>
-                  <Text style={styles.outputDate}>{formatDate(output.createdAt)}</Text>
-                </View>
-              ))
-          )}
+            <View style={styles.waterTitleRow}>
+              <Ionicons name="water-outline" size={20} color="#4f7f93" />
+              <Text style={styles.sectionTitle}>別の形に書き出す</Text>
+            </View>
+            <Text style={styles.hintText}>
+              このメモから「問い」や「小さな行動」などの下書きを、端末の中で作ります。これは芽ではなく、書き出しの補助です。
+            </Text>
+            <View style={styles.rowWrap}>
+              {TRANSFORM_TYPES.map((type) => (
+                <IOSChip
+                  key={type}
+                  label={transformLabels[type]}
+                  onPress={() => {
+                    triggerLightFeedback();
+                    onCreateTransform(seed.id, type);
+                  }}
+                />
+              ))}
+            </View>
+            {transformOutputs.length === 0 ? (
+              <EmptyState icon="sparkles-outline" title="まだ書き出しはありません" description="必要なときだけ作ってみましょう。" />
+            ) : (
+              transformOutputs
+                .slice()
+                .reverse()
+                .map((output) => (
+                  <View key={output.id} style={styles.outputCard}>
+                    <Text style={styles.outputType}>{transformLabels[output.type]}</Text>
+                    <Text style={styles.outputBody}>{output.content}</Text>
+                    <Text style={styles.outputDate}>{formatDate(output.createdAt)}</Text>
+                  </View>
+                ))
+            )}
           </SectionCard>
         </FadeInView>
 
         <AnimatedPressable
           onPress={() =>
-            Alert.alert('種を削除しますか？', '種一覧の「最近削除した種」から復元できます。', [
+            Alert.alert('このメモを削除しますか？', '「種一覧」の一番下の「最近削除した種」から復元できます。つながりは、復元すると戻ります。', [
               { text: 'キャンセル', style: 'cancel' },
               {
                 text: '削除',
@@ -343,9 +537,9 @@ export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabe
           pressedStyle={styles.deleteButtonPressed}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="種を削除"
+          accessibilityLabel="このメモを削除"
         >
-          <Text style={styles.deleteButtonText}>種を削除</Text>
+          <Text style={styles.deleteButtonText}>このメモを削除</Text>
         </AnimatedPressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -354,12 +548,7 @@ export function SeedDetailScreen({ seed, allSeeds, connections, onBack, backLabe
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: {
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: 124,
-    gap: theme.spacing.md,
-  },
+  content: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.lg, paddingBottom: 124, gap: theme.spacing.md },
   backButton: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -370,45 +559,70 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.leaf,
     gap: 2,
   },
-  backButtonPressed: {
-    backgroundColor: theme.colors.leafPressed,
+  backButtonPressed: { backgroundColor: theme.colors.leafPressed },
+  backButtonText: { color: theme.colors.primary, fontSize: 15, fontWeight: '500' },
+  trail: {
+    gap: 6,
+    padding: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
   },
-  backButtonText: {
-    color: theme.colors.primary,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  heading: {
-    fontSize: theme.typography.title,
-    fontWeight: '700',
-    fontFamily: theme.fonts.serif,
-    color: theme.colors.text,
-  },
-  headingRow: {
+  trailLabel: { fontSize: 13, lineHeight: 19, color: theme.colors.text, fontFamily: theme.fonts.serif },
+  trailActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  trailButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
   },
-  saveStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  saveStatusText: {
-    flex: 1,
-    fontSize: 13,
+  trailButtonText: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
+  heading: { fontSize: theme.typography.title, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dateText: { color: theme.colors.textSoft, fontSize: 13 },
+  readTitle: { fontSize: 18, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  readBody: { fontSize: 18, lineHeight: 30, fontFamily: theme.fonts.serif, color: theme.colors.text },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  badgeText: { fontSize: 13, color: theme.colors.textMuted },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tagPill: {
+    fontSize: 12,
     color: theme.colors.textMuted,
-    lineHeight: 18,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.surfaceMuted,
+    overflow: 'hidden',
   },
-  stateHint: {
-    marginTop: -8,
-    fontSize: 13,
-    color: theme.colors.textSoft,
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+    backgroundColor: theme.colors.surface,
   },
-  dateText: {
-    color: theme.colors.textSoft,
-    fontSize: 13,
+  editButtonText: { fontSize: theme.typography.body, fontWeight: '700', color: theme.colors.primary },
+  warning: {
+    gap: 8,
+    padding: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.dangerBg,
+    borderWidth: 1,
+    borderColor: theme.colors.dangerBorder,
   },
+  warningText: { fontSize: 13, lineHeight: 19, color: theme.colors.dangerText },
+  warningButton: { minHeight: 40, justifyContent: 'center' },
+  warningButtonText: { fontSize: 14, fontWeight: '700', color: theme.colors.dangerText, textDecorationLine: 'underline' },
   bodyInput: {
     minHeight: 160,
     borderRadius: theme.radius.md,
@@ -425,33 +639,18 @@ const styles = StyleSheet.create({
   },
   titleInput: {
     borderRadius: theme.radius.sm,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: 10,
     paddingVertical: 10,
     backgroundColor: theme.colors.inputBgSoft,
     fontSize: 15,
     color: theme.colors.text,
   },
-  toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 2,
-    minHeight: 44,
-  },
-  toggleText: {
-    color: theme.colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  fieldWrap: {
-    marginTop: 6,
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    color: theme.colors.textMuted,
-  },
+  stateHint: { marginTop: -8, fontSize: 13, color: theme.colors.textSoft },
+  toggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  toggleText: { color: theme.colors.primary, fontSize: 14, fontWeight: '600' },
+  fieldWrap: { marginTop: 6, gap: 8 },
+  label: { fontSize: 14, color: theme.colors.textMuted },
   input: {
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.surface,
@@ -463,50 +662,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
-  relatedList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  waterTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: theme.fonts.serif,
-    color: theme.colors.text,
-  },
-  hintText: {
-    fontSize: 13,
-    color: theme.colors.textMuted,
-  },
-  rowWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  outputCard: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.rule,
-    paddingTop: 10,
-    gap: 4,
-  },
-  outputType: {
-    fontSize: 13,
-    color: theme.colors.textMuted,
-  },
-  outputBody: {
-    fontSize: 14,
-    color: theme.colors.text,
-    lineHeight: 21,
-  },
-  outputDate: {
-    fontSize: 12,
-    color: theme.colors.textSoft,
-  },
+  saveStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  saveStatusText: { flex: 1, fontSize: 13, color: theme.colors.textMuted, lineHeight: 18 },
+  editFooter: { gap: 4 },
+  textButton: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  textButtonText: { fontSize: 14, fontWeight: '600', color: theme.colors.textMuted },
+  dangerText: { fontSize: 14, fontWeight: '700', color: theme.colors.dangerText },
+  sectionTitle: { fontSize: 17, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
+  waterTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hintText: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  outputCard: { borderTopWidth: 1, borderTopColor: theme.colors.rule, paddingTop: 10, gap: 4 },
+  outputType: { fontSize: 13, color: theme.colors.textMuted },
+  outputBody: { fontSize: 14, color: theme.colors.text, lineHeight: 21 },
+  outputDate: { fontSize: 12, color: theme.colors.textSoft },
   deleteButton: {
     minHeight: 44,
     borderRadius: theme.radius.md,
@@ -516,16 +685,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.dangerBorder,
     backgroundColor: theme.colors.dangerBg,
   },
-  deleteButtonPressed: {
-    backgroundColor: theme.colors.dangerPressed,
-  },
-  deleteButtonText: {
-    color: theme.colors.dangerText,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  emptyText: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-  },
+  deleteButtonPressed: { backgroundColor: theme.colors.dangerPressed },
+  deleteButtonText: { color: theme.colors.dangerText, fontSize: 15, fontWeight: '600' },
 });
