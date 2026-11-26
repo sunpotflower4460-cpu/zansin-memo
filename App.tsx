@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 // 和紙の質感。内容の上にごく薄く重ねるだけで、操作は妨げない。
 import paperTexture from './assets/paper.png';
 import * as React from 'react';
-import { Alert, AppState, Image, Linking, StyleSheet, View } from 'react-native';
+import { AppState, Image, Linking, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
@@ -33,6 +33,7 @@ import { SeedDetailScreen } from './src/screens/SeedDetailScreen';
 import { SeedsScreen, type SeedsView } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
+import { showConfirm } from './src/utils/confirm';
 import { motion } from './src/utils/motion';
 import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
@@ -473,7 +474,7 @@ export default function App() {
 
   const handleExportJson = React.useCallback(() => {
     // 削除済み・下書きも含む全データであることを、実行の前に伝える。
-    Alert.alert(EXPORT_JSON_ALERT_TITLE, EXPORT_JSON_ALERT_MESSAGE, [
+    showConfirm(EXPORT_JSON_ALERT_TITLE, EXPORT_JSON_ALERT_MESSAGE, [
       { text: 'キャンセル', style: 'cancel' },
       {
         text: '書き出す',
@@ -527,7 +528,7 @@ export default function App() {
   }, []);
 
   const handleClearAllData = React.useCallback(() => {
-    Alert.alert(CLEAR_ALL_DATA_ALERT_TITLE, CLEAR_ALL_DATA_ALERT_MESSAGE, [
+    showConfirm(CLEAR_ALL_DATA_ALERT_TITLE, CLEAR_ALL_DATA_ALERT_MESSAGE, [
       { text: 'キャンセル', style: 'cancel' },
       {
         text: 'すべて削除',
