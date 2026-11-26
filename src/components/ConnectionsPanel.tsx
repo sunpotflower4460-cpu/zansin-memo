@@ -74,6 +74,9 @@ export function ConnectionsPanel({
   const [noteText, setNoteText] = React.useState('');
   const [listQuery, setListQuery] = React.useState('');
   const [listLimit, setListLimit] = React.useState(LIST_PAGE);
+  const [suggestionsOpen, setSuggestionsOpen] = React.useState(false);
+  /** マップのメモは、もう一度押すと選択を外す。 */
+  const toggleSelectedNode = (id: string) => setSelectedId((current) => (current === id ? undefined : id));
 
   const index = React.useMemo(() => new Map(seeds.map((seed) => [seed.id, seed])), [seeds]);
   const neighbors = React.useMemo(() => {
@@ -127,7 +130,7 @@ export function ConnectionsPanel({
           </View>
         </View>
 
-        {connection?.note && noteEditing !== seed.id ? <Text style={styles.note}>どうつながる？ {connection.note}</Text> : null}
+        {connection?.note && noteEditing !== seed.id ? <Text style={styles.note}>つながる理由: {connection.note}</Text> : null}
 
         {noteEditing === seed.id ? (
           <View style={styles.noteEditor}>
@@ -156,9 +159,9 @@ export function ConnectionsPanel({
         ) : null}
 
         <View style={styles.rowActions}>
-          <SmallButton label="このメモを中心に見る" primary onPress={() => onOpenSeed(seed.id)} accessibilityLabel={`このメモを中心に見る。${toSeedSnippet(seed, 20)}`} />
+          <SmallButton label="このメモを開く" primary onPress={() => onOpenSeed(seed.id)} accessibilityLabel={`このメモを開く。${toSeedSnippet(seed, 20)}`} />
           {withFullText ? <SmallButton label={isExpanded ? '閉じる' : '全文'} onPress={() => toggleExpanded(seed.id)} accessibilityLabel={`${isExpanded ? '短くする' : '全文を読む'}。${toSeedSnippet(seed, 20)}`} /> : null}
-          <SmallButton label={connection?.note ? '一言を直す' : '一言を書く'} onPress={() => startNote(seed.id)} accessibilityLabel={`どうつながるかを書く。${toSeedSnippet(seed, 20)}`} />
+          <SmallButton label={connection?.note ? '理由を直す' : '理由を書く'} onPress={() => startNote(seed.id)} accessibilityLabel={`つながる理由を書く。${toSeedSnippet(seed, 20)}`} />
           <SmallButton label="つながりを外す" onPress={() => onUnlink(seed.id)} accessibilityLabel={`つながりを外す。メモは両方残ります。${toSeedSnippet(seed, 20)}`} />
         </View>
       </View>
@@ -170,14 +173,13 @@ export function ConnectionsPanel({
       <View style={styles.titleRow}>
         <Ionicons name="git-network-outline" size={20} color={theme.colors.primary} />
         <Text style={styles.title} accessibilityRole="header">
-          つながり
+          つながり{neighbors.length > 0 ? ` ${neighbors.length}件` : ''}
         </Text>
         <HelpButton content={helpTexts.links} />
       </View>
-      <Text style={styles.caption}>「一緒に考えたい」と感じたメモ同士を結べます。親子や順序はなく、どちらから見ても同じ関係です。</Text>
 
       {neighbors.length === 0 ? (
-        <Text style={styles.empty}>まだつながりはありません。関係がありそうだと感じたメモを、あとから結べます。</Text>
+        <Text style={styles.empty}>関係がありそうなメモを、つなげられます。</Text>
       ) : (
         <>
           <View style={styles.segment} accessibilityRole="tablist">
@@ -196,14 +198,10 @@ export function ConnectionsPanel({
               </AnimatedPressable>
             ))}
           </View>
-          <Text style={styles.count} accessibilityLiveRegion="polite">
-            つながっているメモ {neighbors.length}件
-          </Text>
-
           {viewMode === 'map' ? (
             <>
               <View accessible={false}>
-                <LocalMap center={center} neighbors={mapNeighbors} selectedId={selected?.id} onSelect={setSelectedId} />
+                <LocalMap center={center} neighbors={mapNeighbors} selectedId={selected?.id} onSelect={toggleSelectedNode} />
               </View>
               {hiddenCount > 0 ? (
                 <AnimatedPressable
@@ -219,10 +217,20 @@ export function ConnectionsPanel({
               ) : null}
               {selected ? (
                 <View style={styles.preview}>
+                  <AnimatedPressable
+                    onPress={() => setSelectedId(undefined)}
+                    style={styles.closePreview}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="選択を解除して閉じる"
+                  >
+                    <Ionicons name="close" size={16} color={theme.colors.textMuted} />
+                    <Text style={styles.closePreviewText}>選択を解除</Text>
+                  </AnimatedPressable>
                   {renderNeighbor(selected, true)}
                 </View>
               ) : (
-                <Text style={styles.hint}>メモをタップすると、内容が読めます。線やマップを使わなくても、リストで同じ操作ができます。</Text>
+                <Text style={styles.hint}>タップすると中身が読めます。</Text>
               )}
             </>
           ) : (
@@ -263,13 +271,13 @@ export function ConnectionsPanel({
         <AnimatedPressable
           onPress={onAddMemo}
           containerStyle={styles.actionContainer}
-          style={[styles.action, styles.actionPrimary]}
+          style={styles.action}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="このメモにつなげて、新しいメモを足す"
+          accessibilityLabel="書いてつなぐ。新しいメモを足します"
         >
-          <Ionicons name="create-outline" size={18} color="#ffffff" />
-          <Text style={styles.actionPrimaryText}>メモを足す</Text>
+          <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
+          <Text style={styles.actionText}>書いてつなぐ</Text>
         </AnimatedPressable>
         )}
         <AnimatedPressable
@@ -278,22 +286,30 @@ export function ConnectionsPanel({
           style={styles.action}
           haptic="light"
           accessibilityRole="button"
-          accessibilityLabel="保存済みのメモを探して、つなげる"
+          accessibilityLabel="選んでつなぐ。保存したメモから探します"
         >
           <Ionicons name="link-outline" size={18} color={theme.colors.primary} />
-          <Text style={styles.actionText}>保存済みのメモをつなげる</Text>
+          <Text style={styles.actionText}>選んでつなぐ</Text>
         </AnimatedPressable>
       </View>
 
       {suggestions.length > 0 || dismissedCount > 0 ? (
         <View style={styles.block}>
-          <View style={styles.titleRow}>
+          <AnimatedPressable
+            onPress={() => setSuggestionsOpen((value) => !value)}
+            style={styles.suggestionToggle}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: suggestionsOpen }}
+            accessibilityLabel={`つながるかもしれないメモ。${suggestions.length}件。開閉`}
+          >
             <Ionicons name="sparkles-outline" size={16} color={theme.colors.accent} />
-            <Text style={styles.label}>つながるかもしれないメモ（候補）</Text>
-          </View>
-          <Text style={styles.hint}>
-            {suggestions.length > 0 ? '線ではありません。「つなぐ」を押したときだけ、つながりになります。合わなければ「今回は見送る」で外せます。' : '今は候補がありません。「保存済みのメモをつなげる」から、自分で探して結べます。'}
-          </Text>
+            <Text style={styles.label}>つながるかもしれないメモ（{suggestions.length}）</Text>
+            <Ionicons name={suggestionsOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
+          </AnimatedPressable>
+          {suggestionsOpen ? (
+            <>
+          {suggestions.length === 0 ? <Text style={styles.hint}>今は候補がありません。</Text> : null}
           {suggestions.map(({ seed: item, reason }) => (
             <View key={item.id} style={styles.suggestion}>
               <View style={styles.suggestionBody}>
@@ -337,6 +353,8 @@ export function ConnectionsPanel({
               <Text style={styles.moreText}>見送った候補を戻す（{dismissedCount}件）</Text>
             </AnimatedPressable>
           ) : null}
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -378,10 +396,11 @@ function SmallButton({
 const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 17, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
-  caption: { fontSize: 13, lineHeight: 19, color: theme.colors.textSoft },
+  suggestionToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  closePreview: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 12, borderRadius: theme.radius.full, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  closePreviewText: { fontSize: 13, fontWeight: '600', color: theme.colors.textMuted },
   empty: { fontSize: theme.typography.subbody, lineHeight: 21, color: theme.colors.textMuted },
   hint: { fontSize: 13, lineHeight: 19, color: theme.colors.textSoft },
-  count: { fontSize: theme.typography.subbody, fontWeight: '700', color: theme.colors.textMuted },
   segment: {
     flexDirection: 'row',
     borderRadius: theme.radius.full,
@@ -460,11 +479,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.chipSelectedBorder,
   },
-  actionPrimary: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   actionText: { fontSize: 13, fontWeight: '700', color: theme.colors.primary, flexShrink: 1, textAlign: 'center' },
-  actionPrimaryText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
   block: { gap: theme.spacing.xs, marginTop: theme.spacing.xs },
-  label: { fontSize: theme.typography.subbody, fontWeight: '700', color: theme.colors.textMuted },
+  label: { flex: 1, fontSize: theme.typography.subbody, fontWeight: '700', color: theme.colors.textMuted },
   suggestion: {
     flexDirection: 'row',
     alignItems: 'center',

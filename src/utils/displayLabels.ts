@@ -3,16 +3,16 @@ import type { GrowthState, Mood, TransformType } from '../domain/types';
 export const growthStateLabels: Record<GrowthState, string> = {
   seed: '種',
   sprout: '芽',
-  tree: '木',
+  tree: '花',
   archived: '保管',
 };
 
-// 育ち方をひとこと説明する。「種→芽→木」の意味が初めてでも伝わるようにする。
+// 育ち方をひとこと説明する。「種→芽→花」の意味が初めてでも伝わるようにする。
 export const growthStateHints: Record<GrowthState, string> = {
-  seed: '思いついたままの状態',
-  sprout: '気になり続けているもの',
-  tree: '形になってきたもの',
-  archived: 'ひと区切り。今日の種には出ません',
+  seed: '思いついたまま',
+  sprout: '「こうできそう」を書いたもの',
+  tree: '「咲いた」と思えたもの',
+  archived: 'ひと区切り（今日の種に出ません）',
 };
 
 export const moodLabels: Record<Mood, string> = {

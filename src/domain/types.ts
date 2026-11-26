@@ -52,6 +52,13 @@ export type SeedSynthesis = {
   promotedAt: string;
 };
 
+/** 花: 本人が「咲いた」と感じたときの記録。育ち方の内部キーは、以前からの 'tree' を使う。 */
+export type SeedBloom = {
+  /** 咲いたと感じた理由（任意）。 */
+  note?: string;
+  bloomedAt: string;
+};
+
 export type Seed = {
   id: string;
   title?: string;
@@ -68,6 +75,9 @@ export type Seed = {
   transformOutputs?: TransformOutput[];
   /** 現在の芽（1件）。growthState を sprout/tree にしただけでは作らない。 */
   synthesis?: SeedSynthesis;
+  bloom?: SeedBloom;
+  /** 保管する前の育ち方。保管から戻すときに使う。 */
+  archivedFrom?: GrowthState;
   schemaVersion: number;
 };
 

@@ -181,8 +181,8 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
           />
           <SectionCard>
             <Text style={styles.sectionTitle}>3. できそうなことを、芽にする</Text>
-            <Text style={styles.note}>材料を読んで、「なら、こうできそう」を自分の言葉で。数は決まっていません。完成例を見ることもできます。</Text>
-            <PrimaryButton label="ここから芽をつくる" onPress={() => setSynthesisOpen(true)} />
+            <Text style={styles.note}>メモを見ながら、「こうできそう」を一言。完成例も見られます。</Text>
+            <PrimaryButton label="ここに書いて芽にする" onPress={() => setSynthesisOpen(true)} />
           </SectionCard>
         </>
       ) : null}
@@ -192,11 +192,11 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
           <SectionCard>
             <View style={styles.doneTitle}>
               <Ionicons name="sparkles-outline" size={20} color={theme.colors.accent} />
-              <Text style={styles.sectionTitle}>芽が育ちました（例）</Text>
+              <Text style={styles.sectionTitle}>芽になりました（例）</Text>
             </View>
-            <Text style={styles.note}>芽の文と、元になった材料を、あとから読み返せます。元のメモは変わりません。</Text>
+            <Text style={styles.note}>書いた考えは、あとから読み返せます。自分で「咲いた」と思えたら、花にできます。</Text>
           </SectionCard>
-          <SynthesisCard seed={center} byId={byId} hasDraft={false} />
+          <SynthesisCard seed={center} byId={byId} />
           <Text style={styles.closing}>数は決まっていません。できそうなことが見えた時に、芽にします。</Text>
           <PrimaryButton label="自分のメモを書く" onPress={onStartWriting} />
           <AnimatedPressable onPress={onClose} style={styles.later} haptic="light" accessibilityRole="button" accessibilityLabel="例を閉じる">

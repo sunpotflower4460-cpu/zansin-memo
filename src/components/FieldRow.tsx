@@ -14,7 +14,7 @@ type FieldRowProps = {
   onPress: () => void;
 };
 
-// 書いた種が、土の上に小さな芽や木として並ぶ。育つほどにっこり畑らしくなる。
+// 書いた種が、土の上に小さな芽や花として並ぶ。育つほどにっこり畑らしくなる。
 export function FieldRow({ seeds, onPress }: FieldRowProps) {
   const counts = STATES.map((state) => ({ state, count: seeds.filter((seed) => seed.growthState === state).length }));
   const shown = [...seeds]

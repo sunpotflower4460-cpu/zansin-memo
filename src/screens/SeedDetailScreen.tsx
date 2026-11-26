@@ -5,9 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '../components/AnimatedPressable';
 import { ChipSelector } from '../components/ChipSelector';
 import { ConnectionsPanel, type ConnectionsViewMode } from '../components/ConnectionsPanel';
-import { EmptyState } from '../components/EmptyState';
 import { FadeInView } from '../components/FadeInView';
-import { GrowthBadge } from '../components/GrowthBadge';
 import { HelpButton } from '../components/HelpButton';
 import { ImportanceDots } from '../components/ImportanceDots';
 import { IOSChip } from '../components/IOSChip';
@@ -15,12 +13,10 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { SynthesisCard } from '../components/SynthesisCard';
 import { SectionCard } from '../components/SectionCard';
 import {
-  GROWTH_STATE_OPTIONS,
   IMPORTANCE_OPTIONS,
   MOOD_OPTIONS,
   TRANSFORM_TYPES,
   type Draft,
-  type GrowthState,
   type Importance,
   type Mood,
   type Seed,
@@ -32,11 +28,11 @@ import {
 import { theme } from '../styles/theme';
 import { showConfirm } from '../utils/confirm';
 import { triggerLightFeedback } from '../utils/feedback';
-import { growthStateHints, growthStateLabels, moodLabels, transformLabels } from '../utils/displayLabels';
+import { moodLabels, transformLabels } from '../utils/displayLabels';
 import { helpTexts } from '../utils/helpTexts';
 import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
-import { formatDate, parseTags } from '../utils/seedUtils';
+import { formatDate, formatRelativeDay, parseTags } from '../utils/seedUtils';
 
 type SeedDetailScreenProps = {
   seed: Seed;
@@ -72,7 +68,11 @@ type SeedDetailScreenProps = {
   /** 芽の入口。mode: new=ここから芽をつくる／review=芽を見直す（考え直し中の再採用を含む）。 */
   onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
   onReconsiderSynthesis: (seedId: string) => void;
-  hasSynthesisDraft: boolean;
+  /** 書きかけの芽の文。 */
+  synthesisDraftText?: string;
+  onBloom: (seedId: string, note: string) => Promise<boolean>;
+  onReturnToSprout: (seedId: string) => void;
+  onSetArchived: (seedId: string, archived: boolean) => void;
   dismissedSuggestions: Set<string>;
   dismissedCount: number;
   onDismissSuggestion: (seedId: string, otherId: string) => void;
@@ -84,7 +84,6 @@ type DraftState = {
   body: string;
   tags: string;
   mood?: Mood;
-  growthState: GrowthState;
   importance: Importance;
 };
 
@@ -93,7 +92,6 @@ const toDraft = (seed: Seed): DraftState => ({
   body: seed.body,
   tags: seed.tags.join(', '),
   mood: seed.mood,
-  growthState: seed.growthState,
   importance: seed.importance,
 });
 
@@ -103,7 +101,6 @@ const hasUnsavedChanges = (draft: DraftState, seed: Seed): boolean =>
   (draft.title.trim() || undefined) !== seed.title ||
   draft.mood !== seed.mood ||
   draft.importance !== seed.importance ||
-  draft.growthState !== seed.growthState ||
   parseTags(draft.tags).join('\n') !== seed.tags.join('\n');
 
 const draftFromStored = (stored: Draft, seed: Seed): DraftState => ({
@@ -111,7 +108,6 @@ const draftFromStored = (stored: Draft, seed: Seed): DraftState => ({
   body: stored.body,
   tags: stored.tags ?? seed.tags.join(', '),
   mood: stored.mood, // 下書きに無ければ「気分なし」にした状態
-  growthState: stored.growthState ?? seed.growthState,
   importance: stored.importance ?? seed.importance,
 });
 
@@ -141,7 +137,10 @@ export function SeedDetailScreen({
   onCreateTransform,
   onOpenSynthesis,
   onReconsiderSynthesis,
-  hasSynthesisDraft,
+  synthesisDraftText,
+  onBloom,
+  onReturnToSprout,
+  onSetArchived,
   dismissedSuggestions,
   dismissedCount,
   onDismissSuggestion,
@@ -152,6 +151,8 @@ export function SeedDetailScreen({
   const [editing, setEditing] = React.useState(Boolean(editDraft));
   const [draft, setDraft] = React.useState<DraftState>(() => (editDraft ? draftFromStored(editDraft, seed) : toDraft(seed)));
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  /** 日付・気分・書き出し・保管・削除は、必要なときだけ開く。 */
+  const [moreOpen, setMoreOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   /** 編集を始めた時点の更新日時・本文。これと違えば、別の操作が先に確定している。 */
   const baseUpdatedAtRef = React.useRef(seed.updatedAt);
@@ -162,15 +163,6 @@ export function SeedDetailScreen({
   const retainedRef = React.useRef(false);
   const latestSeedRef = React.useRef(seed);
   latestSeedRef.current = seed;
-
-  // この画面の外の操作（芽にする・考え直す）で育ち方が変わったら、手元で変えていない入力は追従する。
-  const growthRef = React.useRef(seed.growthState);
-  React.useEffect(() => {
-    const previous = growthRef.current;
-    if (previous === seed.growthState) return;
-    growthRef.current = seed.growthState;
-    setDraft((current) => (current.growthState === previous ? { ...current, growthState: seed.growthState } : current));
-  }, [seed.growthState]);
 
   const unsaved = editing && hasUnsavedChanges(draft, seed);
   const canSave = draft.body.trim().length > 0;
@@ -193,7 +185,6 @@ export function SeedDetailScreen({
       title: draft.title,
       tags: draft.tags,
       mood: draft.mood,
-      growthState: draft.growthState,
       importance: draft.importance,
       baseBody: baseBodyRef.current,
       updatedAt: new Date().toISOString(),
@@ -228,7 +219,6 @@ export function SeedDetailScreen({
     body: draft.body,
     mood: draft.mood,
     importance: draft.importance,
-    growthState: draft.growthState,
     tags: parseTags(draft.tags),
   });
 
@@ -289,6 +279,7 @@ export function SeedDetailScreen({
     [insets.bottom],
   );
   const currentSnippet = toSeedSnippet(seed, 30);
+  const connectionCount = connections.filter((c) => c.aSeedId === seed.id || c.bSeedId === seed.id).length;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -342,13 +333,10 @@ export function SeedDetailScreen({
 
         <View style={styles.headingRow}>
           <Text style={styles.heading} accessibilityRole="header">
-            メモの詳細
+            メモ
           </Text>
           <HelpButton content={helpTexts.detail} />
         </View>
-        <Text style={styles.dateText}>
-          作成: {formatDate(seed.createdAt)} / 更新: {formatDate(seed.updatedAt)}
-        </Text>
 
         <FadeInView delayMs={40}>
           <SectionCard>
@@ -358,38 +346,25 @@ export function SeedDetailScreen({
                 <Text style={styles.readBody} selectable>
                   {seed.body}
                 </Text>
-                <View style={styles.badgeRow}>
-                  <GrowthBadge state={seed.growthState} />
-                  <ImportanceDots value={seed.importance} />
-                  {seed.mood ? <Text style={styles.badgeText}>気分: {moodLabels[seed.mood]}</Text> : null}
+                <View style={styles.memoFooter}>
+                  <Text style={styles.dateText}>{formatRelativeDay(seed.updatedAt)}に更新</Text>
+                  <AnimatedPressable
+                    onPress={startEditing}
+                    style={styles.editButton}
+                    haptic="light"
+                    accessibilityRole="button"
+                    accessibilityLabel="このメモの本文や情報を編集する"
+                  >
+                    <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+                    <Text style={styles.editButtonText}>編集</Text>
+                  </AnimatedPressable>
                 </View>
-                {seed.tags.length > 0 ? (
-                  <View style={styles.tagRow}>
-                    {seed.tags.map((tag) => (
-                      <Text key={tag} style={styles.tagPill}>
-                        {tag}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-                <AnimatedPressable
-                  onPress={startEditing}
-                  style={styles.editButton}
-                  haptic="light"
-                  accessibilityRole="button"
-                  accessibilityLabel="このメモの本文や情報を編集する"
-                >
-                  <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
-                  <Text style={styles.editButtonText}>編集する</Text>
-                </AnimatedPressable>
               </>
             ) : (
               <>
                 {staleBase ? (
                   <View style={styles.warning} accessibilityLiveRegion="polite">
-                    <Text style={styles.warningText}>
-                      このメモは、編集を始めたあとに別の操作で更新されました。入力は消えていません。内容を確かめてから保存してください。
-                    </Text>
+                    <Text style={styles.warningText}>編集中に、このメモが別の操作で更新されました。入力は残っています。</Text>
                     <AnimatedPressable
                       onPress={adoptLatestBase}
                       style={styles.warningButton}
@@ -397,7 +372,7 @@ export function SeedDetailScreen({
                       accessibilityRole="button"
                       accessibilityLabel="最新の内容を基準にして、入力はそのまま残す"
                     >
-                      <Text style={styles.warningButtonText}>最新の内容を基準にする</Text>
+                      <Text style={styles.warningButtonText}>入力を残して保存できるようにする</Text>
                     </AnimatedPressable>
                   </View>
                 ) : null}
@@ -421,14 +396,6 @@ export function SeedDetailScreen({
                   placeholderTextColor={theme.colors.placeholder}
                   accessibilityLabel="タイトル"
                 />
-                <ChipSelector<GrowthState>
-                  label="育ち方"
-                  options={GROWTH_STATE_OPTIONS}
-                  selectedValue={draft.growthState}
-                  onChange={(growthState) => editDraftFields({ growthState: growthState ?? 'seed' })}
-                  getLabel={(state) => growthStateLabels[state]}
-                />
-                <Text style={styles.stateHint}>{growthStateHints[draft.growthState]}</Text>
 
                 <AnimatedPressable
                   onPress={() => setDetailsOpen((value) => !value)}
@@ -457,7 +424,7 @@ export function SeedDetailScreen({
                       selectedValue={draft.importance}
                       onChange={(importance) => editDraftFields({ importance: importance ?? 3 })}
                     />
-                    <Text style={styles.stateHint}>大切なほど、あとで「今日の種」に選ばれやすくなります。</Text>
+                    <Text style={styles.stateHint}>大切なほど、「今日の種」に選ばれやすくなります。</Text>
                     <View style={styles.fieldWrap}>
                       <Text style={styles.label}>カテゴリ（任意）</Text>
                       <TextInput
@@ -471,16 +438,11 @@ export function SeedDetailScreen({
                   </View>
                 ) : null}
 
-                <View style={styles.saveStatus} accessible accessibilityLiveRegion="polite">
-                  <Ionicons
-                    name={unsaved ? 'ellipse-outline' : 'checkmark-circle-outline'}
-                    size={16}
-                    color={unsaved ? theme.colors.warning : theme.colors.primary}
-                  />
-                  <Text style={styles.saveStatusText}>
-                    {unsaved ? '変更があります。保存するまで、元のメモは変わりません（下書きとして残っています）' : '変更はありません'}
+                {unsaved ? (
+                  <Text style={styles.saveStatusText} accessibilityLiveRegion="polite">
+                    まだ保存していません（下書きは自動で残ります）
                   </Text>
-                </View>
+                ) : null}
                 <PrimaryButton
                   label={saving ? '保存しています…' : '変更を保存'}
                   disabled={!canSave || !unsaved || saving}
@@ -495,7 +457,7 @@ export function SeedDetailScreen({
                     accessibilityRole="button"
                     accessibilityLabel="編集をいったん閉じる。下書きは残ります"
                   >
-                    <Text style={styles.textButtonText}>編集を閉じる（下書きは残ります）</Text>
+                    <Text style={styles.textButtonText}>閉じる</Text>
                   </AnimatedPressable>
                   {unsaved ? (
                     <AnimatedPressable
@@ -514,7 +476,24 @@ export function SeedDetailScreen({
           </SectionCard>
         </FadeInView>
 
+        {/* 「思いついたことを書く場所」は、メモのすぐ下に置く。 */}
         <FadeInView delayMs={60}>
+          <SynthesisCard
+            seed={seed}
+            byId={byId}
+            draftText={synthesisDraftText}
+            connectionCount={connectionCount}
+            onCreate={() => onOpenSynthesis(seed.id, 'new')}
+            onReview={() => onOpenSynthesis(seed.id, 'review')}
+            onReconsider={() => onReconsiderSynthesis(seed.id)}
+            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
+            onOpenSeed={onOpenSeed}
+            onBloom={(note) => onBloom(seed.id, note)}
+            onReturnToSprout={() => onReturnToSprout(seed.id)}
+          />
+        </FadeInView>
+
+        <FadeInView delayMs={70}>
           <ConnectionsPanel
             center={seed}
             seeds={allSeeds}
@@ -533,79 +512,101 @@ export function SeedDetailScreen({
           />
         </FadeInView>
 
-        <FadeInView delayMs={70}>
-          <SynthesisCard
-            seed={seed}
-            byId={byId}
-            hasDraft={hasSynthesisDraft}
-            onCreate={() => onOpenSynthesis(seed.id, 'new')}
-            onReview={() => onOpenSynthesis(seed.id, 'review')}
-            onReconsider={() => onReconsiderSynthesis(seed.id)}
-            onResumeDraft={() => onOpenSynthesis(seed.id, seed.synthesis ? 'review' : 'new')}
-            onOpenSeed={onOpenSeed}
-          />
-        </FadeInView>
-
         <FadeInView delayMs={80}>
           <SectionCard muted>
-            <View style={styles.waterTitleRow}>
-              <Ionicons name="water-outline" size={20} color="#4f7f93" />
-              <Text style={styles.sectionTitle}>別の形に書き出す</Text>
-            </View>
-            <Text style={styles.hintText}>
-              このメモから「問い」や「小さな行動」などの下書きを、端末の中で作ります。これは芽ではなく、書き出しの補助です。
-            </Text>
-            <View style={styles.rowWrap}>
-              {TRANSFORM_TYPES.map((type) => (
-                <IOSChip
-                  key={type}
-                  label={transformLabels[type]}
-                  onPress={() => {
-                    triggerLightFeedback();
-                    onCreateTransform(seed.id, type);
-                  }}
-                />
-              ))}
-            </View>
-            {transformOutputs.length === 0 ? (
-              <EmptyState icon="sparkles-outline" title="まだ書き出しはありません" description="必要なときだけ作ってみましょう。" />
-            ) : (
-              transformOutputs
-                .slice()
-                .reverse()
-                .map((output) => (
-                  <View key={output.id} style={styles.outputCard}>
-                    <Text style={styles.outputType}>{transformLabels[output.type]}</Text>
-                    <Text style={styles.outputBody}>{output.content}</Text>
-                    <Text style={styles.outputDate}>{formatDate(output.createdAt)}</Text>
+            <AnimatedPressable
+              onPress={() => setMoreOpen((value) => !value)}
+              style={styles.toggle}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityState={{ expanded: moreOpen }}
+              accessibilityLabel="くわしい情報・保管・削除を開閉"
+            >
+              <Text style={styles.toggleText}>くわしい情報・保管・削除</Text>
+              <Ionicons name={moreOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={theme.colors.textMuted} />
+            </AnimatedPressable>
+            {moreOpen ? (
+              <>
+                <View style={styles.info}>
+                  <Text style={styles.dateText}>作成: {formatDate(seed.createdAt)}</Text>
+                  <Text style={styles.dateText}>更新: {formatDate(seed.updatedAt)}</Text>
+                  <View style={styles.badgeRow}>
+                    <ImportanceDots value={seed.importance} />
+                    {seed.mood ? <Text style={styles.badgeText}>気分: {moodLabels[seed.mood]}</Text> : null}
                   </View>
-                ))
-            )}
+                  {seed.tags.length > 0 ? (
+                    <View style={styles.tagRow}>
+                      {seed.tags.map((tag) => (
+                        <Text key={tag} style={styles.tagPill}>
+                          {tag}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text style={styles.sectionTitle}>ヒントを作る</Text>
+                <Text style={styles.hintText}>このメモから、問いや小さな行動の案を端末の中で作ります。使うかどうかは自由です。</Text>
+                <View style={styles.rowWrap}>
+                  {TRANSFORM_TYPES.map((type) => (
+                    <IOSChip
+                      key={type}
+                      label={transformLabels[type]}
+                      onPress={() => {
+                        triggerLightFeedback();
+                        onCreateTransform(seed.id, type);
+                      }}
+                    />
+                  ))}
+                </View>
+                {transformOutputs
+                  .slice()
+                  .reverse()
+                  .map((output) => (
+                    <View key={output.id} style={styles.outputCard}>
+                      <Text style={styles.outputType}>{transformLabels[output.type]}</Text>
+                      <Text style={styles.outputBody}>{output.content}</Text>
+                      <Text style={styles.outputDate}>{formatDate(output.createdAt)}</Text>
+                    </View>
+                  ))}
+
+                <AnimatedPressable
+                  onPress={() => onSetArchived(seed.id, seed.growthState !== 'archived')}
+                  style={styles.archiveButton}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={seed.growthState === 'archived' ? '保管から戻す' : 'このメモを保管する'}
+                >
+                  <Ionicons name="archive-outline" size={18} color={theme.colors.primary} />
+                  <Text style={styles.editButtonText}>{seed.growthState === 'archived' ? '保管から戻す' : '保管する（今日の種に出さない）'}</Text>
+                </AnimatedPressable>
+
+                <AnimatedPressable
+                  onPress={() =>
+                    showConfirm('このメモを削除しますか？', '「種一覧」の一番下の「最近削除した種」から復元できます。つながりは、復元すると戻ります。', [
+                      { text: 'キャンセル', style: 'cancel' },
+                      {
+                        text: '削除',
+                        style: 'destructive',
+                        onPress: () => {
+                          triggerLightFeedback();
+                          onDelete(seed.id);
+                        },
+                      },
+                    ])
+                  }
+                  style={styles.deleteButton}
+                  pressedStyle={styles.deleteButtonPressed}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel="このメモを削除"
+                >
+                  <Text style={styles.deleteButtonText}>このメモを削除</Text>
+                </AnimatedPressable>
+              </>
+            ) : null}
           </SectionCard>
         </FadeInView>
-
-        <AnimatedPressable
-          onPress={() =>
-            showConfirm('このメモを削除しますか？', '「種一覧」の一番下の「最近削除した種」から復元できます。つながりは、復元すると戻ります。', [
-              { text: 'キャンセル', style: 'cancel' },
-              {
-                text: '削除',
-                style: 'destructive',
-                onPress: () => {
-                  triggerLightFeedback();
-                  onDelete(seed.id);
-                },
-              },
-            ])
-          }
-          style={styles.deleteButton}
-          pressedStyle={styles.deleteButtonPressed}
-          haptic="light"
-          accessibilityRole="button"
-          accessibilityLabel="このメモを削除"
-        >
-          <Text style={styles.deleteButtonText}>このメモを削除</Text>
-        </AnimatedPressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -665,13 +666,27 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceMuted,
     overflow: 'hidden',
   },
-  editButton: {
+  memoFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  info: { gap: 6 },
+  archiveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     minHeight: 48,
     borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.chipSelectedBorder,
+    backgroundColor: theme.colors.surface,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: theme.radius.full,
     borderWidth: 1,
     borderColor: theme.colors.chipSelectedBorder,
     backgroundColor: theme.colors.surface,
@@ -727,14 +742,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
-  saveStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  saveStatusText: { flex: 1, fontSize: 13, color: theme.colors.textMuted, lineHeight: 18 },
+  saveStatusText: { fontSize: 13, color: theme.colors.textMuted, lineHeight: 18 },
   editFooter: { gap: 4 },
   textButton: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   textButtonText: { fontSize: 14, fontWeight: '600', color: theme.colors.textMuted },
   dangerText: { fontSize: 14, fontWeight: '700', color: theme.colors.dangerText },
   sectionTitle: { fontSize: 17, fontWeight: '700', fontFamily: theme.fonts.serif, color: theme.colors.text },
-  waterTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   hintText: { fontSize: 13, lineHeight: 19, color: theme.colors.textMuted },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   outputCard: { borderTopWidth: 1, borderTopColor: theme.colors.rule, paddingTop: 10, gap: 4 },

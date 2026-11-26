@@ -19,7 +19,7 @@ import type { ResurfacedSeed, Seed, SeedConnection } from '../domain/types';
 import { APP_VERSION } from '../config/appInfo';
 import { theme } from '../styles/theme';
 import { formatRelativeDay } from '../utils/seedUtils';
-import { growthStateHints, growthStateLabels } from '../utils/displayLabels';
+import { growthStateHints } from '../utils/displayLabels';
 import { GROWTH_STATE_OPTIONS } from '../domain/types';
 import { buildGardenLetter } from '../utils/gardenLetter';
 
@@ -86,13 +86,14 @@ export function HomeScreen({
         <FadeInView delayMs={40}>
           <SectionCard>
             <Text style={styles.emptyHeading} accessibilityRole="header">
-              思いつきを残し、つなげて、できそうなことへ。
+              {'思いつきを残し、つなげて、\nできそうなことへ。'}
             </Text>
             <View style={styles.promise}>
               {[
-                'まとまっていない一言も、種になります。',
-                'あとから「関係がありそう」と思ったメモをつなげます。',
-                'できそうなことが見えたら、芽として残します。',
+                // 狭い画面で語の途中で折り返さないよう、区切りで改行する。
+                'まとまっていない一言も、\n種になります。',
+                '「関係がありそう」と思った\nメモを、あとからつなげます。',
+                'できそうなことが見えたら、\n芽として残します。',
               ].map((line, index) => (
                 <View key={line} style={styles.promiseRow}>
                   <Text style={styles.promiseNumber}>{index + 1}</Text>
@@ -116,7 +117,7 @@ export function HomeScreen({
         </FadeInView>
       ) : (
         <>
-      <Text style={styles.subheading}>ひとことを置いて、あとでゆっくり育てるためのノートです。</Text>
+      <Text style={styles.subheading}>{'ひとことを置いて、\nあとでゆっくり育てるためのノートです。'}</Text>
 
       <FadeInView delayMs={40}>
         <SectionCard>
@@ -182,10 +183,10 @@ export function HomeScreen({
               style={styles.todayAction}
               haptic="light"
               accessibilityRole="button"
-              accessibilityLabel="今日の種につなげて、メモを足す"
+              accessibilityLabel="今日の種に、書いてつなぐ"
             >
               <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
-              <Text style={styles.todayActionText}>メモを足す</Text>
+              <Text style={styles.todayActionText}>書いてつなぐ</Text>
             </AnimatedPressable>
             {todaySeed.seed.synthesis && todaySeed.seed.growthState !== 'seed' ? (
               <AnimatedPressable
@@ -193,10 +194,10 @@ export function HomeScreen({
                 style={styles.todayAction}
                 haptic="light"
                 accessibilityRole="button"
-                accessibilityLabel="今日の種の芽を見直す"
+                accessibilityLabel="今日の種の芽を書き直す"
               >
                 <Ionicons name="leaf-outline" size={16} color={theme.colors.primary} />
-                <Text style={styles.todayActionText}>芽を見直す</Text>
+                <Text style={styles.todayActionText}>芽を書き直す</Text>
               </AnimatedPressable>
             ) : null}
           </View>
@@ -334,7 +335,7 @@ export function HomeScreen({
                 </View>
               ))}
               <Text style={styles.howtoNote}>
-                詳細の画面で、{growthStateLabels.seed}→{growthStateLabels.sprout}→{growthStateLabels.tree}と育てていけます。急がなくて大丈夫です。
+                {'メモを開いて「こうできそう」を書くと芽に。\n自分で咲いたと思えたら花にできます。'}
               </Text>
 
               <Text style={styles.exportLabel}>プライバシー</Text>

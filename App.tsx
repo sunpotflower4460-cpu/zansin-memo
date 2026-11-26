@@ -10,6 +10,7 @@ import { SaveToast } from './src/components/SaveToast';
 import { useGarden } from './src/data/useGarden';
 import {
   addTransformOutput,
+  bloomSeed,
   captureAndConnect,
   captureSeed,
   connectFromCenter,
@@ -18,6 +19,8 @@ import {
   promoteToSprout,
   reconsiderSynthesis,
   restoreSeed,
+  returnToSprout,
+  setArchived,
   setConnectionNote,
   softDeleteSeed,
   touchResurfacing,
@@ -86,7 +89,7 @@ const CLEAR_ALL_DATA_ALERT_MESSAGE =
 const DRAFT_SAVE_FAILED_MESSAGE = '書きかけを端末に保存できていません。入力は残っています。アプリを閉じずに、もう一度試してください。';
 const EXPORT_JSON_ALERT_TITLE = 'JSONで全データを書き出します';
 const EXPORT_JSON_ALERT_MESSAGE =
-  '削除済みのメモ、つながり、芽と材料、下書きもすべて含まれます。この書き出しからアプリへ復元する機能は、現時点ではありません。';
+  '削除済みのメモ、つながり、芽と花、参考にしたメモ、下書きもすべて含まれます。この書き出しからアプリへ復元する機能は、現時点ではありません。';
 
 const initialWriteDraft: WriteDraft = {
   title: '',
@@ -245,7 +248,7 @@ export default function App() {
         body: restorable.body,
         tags: restorable.tags ?? '',
         mood: restorable.mood,
-        growthState: restorable.growthState ?? 'seed',
+        growthState: 'seed',
         importance: restorable.importance ?? 3,
       });
       setWriteTargetId(restorable.kind === 'add-memo' ? restorable.targetSeedId : undefined);
@@ -609,13 +612,13 @@ export default function App() {
 
   const synthesisErrorMessage = (detail?: string): string => {
     if (detail?.startsWith('source_changed')) {
-      return '材料のメモが、読んだあとに変わりました。内容を確かめて、もう一度保存してください。入力は残っています。';
+      return '参考にしたメモが、読んだあとに変わりました。内容を確かめて、もう一度保存してください。入力は残っています。';
     }
     if (detail?.startsWith('source_missing')) {
-      return '材料にしたメモが、削除されたか見つかりません。材料を確かめてください。入力は残っています。';
+      return '参考にしたメモが、削除されたか見つかりません。選び直してください。入力は残っています。';
     }
     if (detail === 'center_has_synthesis') {
-      return 'このメモにはすでに芽があります。「既存の芽を見直す」から保存してください。入力は残っています。';
+      return 'このメモにはすでに芽があります。「いまの芽を書き直す」から保存してください。入力は残っています。';
     }
     return SAVE_FAILED_MESSAGE;
   };
@@ -692,7 +695,7 @@ export default function App() {
     // 書き込み待ちの下書きも「保存のあとの変更」として確かめられるようにする。
     await garden.flushDrafts();
     if (garden.getDrafts().some((draft) => draft.kind === 'synthesis' && draft.targetSeedId === info.seedId)) {
-      showToast('保存のあとに別の変更があったため、巻き戻せませんでした。「芽を見直す」から直せます');
+      showToast('保存のあとに別の変更があったため、巻き戻せませんでした。「書き直す」から直せます');
       return;
     }
     const result = await garden.run(
@@ -709,7 +712,7 @@ export default function App() {
     if (result.ok) {
       showToast('元に戻しました。書いた文章は下書きに残しています');
     } else if (result.reason === 'rejected' && result.detail === 'changed_since_save') {
-      showToast('保存のあとに別の変更があったため、巻き戻せませんでした。「芽を見直す」から直せます');
+      showToast('保存のあとに別の変更があったため、巻き戻せませんでした。「書き直す」から直せます');
     } else {
       reportFailure(result);
     }
@@ -748,7 +751,34 @@ export default function App() {
       return;
     }
     const result = await garden.run(reconsiderSynthesis({ commandId: createId(), seedId }));
-    afterCommit(result, '種として考え直しています。考えと材料は残っています');
+    const kept = Boolean(seeds.find((seed) => seed.id === seedId)?.synthesis);
+    afterCommit(result, kept ? '種に戻しました。書いた考えは残っています' : '種に戻しました');
+  };
+
+  const handleBloom = async (seedId: string, note: string): Promise<boolean> => {
+    if (blockIfLocked()) {
+      return false;
+    }
+    const result = await garden.run(bloomSeed({ commandId: createId(), seedId, note, now: new Date().toISOString() }));
+    const ok = afterCommit(result, '花が咲きました 🌸');
+    if (ok) setUndo((current) => (current?.seedId === seedId ? undefined : current));
+    return ok;
+  };
+
+  const handleReturnToSprout = async (seedId: string) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(returnToSprout({ commandId: createId(), seedId }));
+    afterCommit(result, '芽に戻しました');
+  };
+
+  const handleSetArchived = async (seedId: string, archived: boolean) => {
+    if (blockIfLocked()) {
+      return;
+    }
+    const result = await garden.run(setArchived({ commandId: createId(), seedId, archived }));
+    afterCommit(result, archived ? '保管しました' : '保管から戻しました');
   };
 
   // 書く画面を離れたら、「保存しました」のカードは閉じる。入力を始めたときも閉じる。
@@ -819,7 +849,10 @@ export default function App() {
           onCreateTransform={handleCreateTransform}
           onOpenSynthesis={(seedId, mode) => openSynthesis(seedId, mode, screen.from)}
           onReconsiderSynthesis={handleReconsider}
-          hasSynthesisDraft={Boolean(latestDraft(drafts, 'synthesis', selectedSeed.id))}
+          synthesisDraftText={latestDraft(drafts, 'synthesis', selectedSeed.id)?.body}
+          onBloom={handleBloom}
+          onReturnToSprout={handleReturnToSprout}
+          onSetArchived={handleSetArchived}
           dismissedSuggestions={dismissed}
           dismissedCount={dismissedKeysFor(dismissed, selectedSeed.id).length}
           onDismissSuggestion={handleDismissSuggestion}
@@ -882,6 +915,8 @@ export default function App() {
             setWriteStandalone(false);
           }}
           savedMemo={savedMemo}
+          savedLinkCount={savedNeighborIds.size}
+          onWriteSprout={() => savedMemo && openSynthesis(savedMemo.id, savedMemo.synthesis ? 'review' : 'new', 'write')}
           isFirstSave={activeSeeds.length <= 1}
           onConnectSaved={() => setSavedPickerOpen(true)}
           onDismissSaved={() => setSavedMemoId(undefined)}

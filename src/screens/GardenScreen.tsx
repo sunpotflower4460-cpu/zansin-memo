@@ -104,7 +104,7 @@ export function GardenScreen({ seeds, connections, onOpenSeed, onOpenSeedsByStat
         <Text style={styles.heading}>庭</Text>
       </View>
       <View style={styles.subheadingRow}>
-        <Text style={[styles.subheading, styles.subheadingText]}>種から芽へ、芽から木へ。育ちの流れを、静かに見渡せる場所です。</Text>
+        <Text style={[styles.subheading, styles.subheadingText]}>種から芽へ、芽から花へ。育ちを静かに見渡せます。</Text>
         <HelpButton content={helpTexts.garden} />
       </View>
 

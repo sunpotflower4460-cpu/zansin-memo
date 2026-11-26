@@ -27,7 +27,7 @@ const VIEWS: Array<{ id: SeedsView; label: string; empty: { title: string; descr
   { id: 'all', label: 'すべて', empty: { title: 'ここに思いつきを残していけます。', description: 'ひとことでも、種になります。' } },
   { id: 'unconnected', label: 'まだつないでいない', empty: { title: '今あるメモには、つながりがあります。', description: 'つながりのないメモが増えたら、ここに出ます。' } },
   { id: 'connected', label: 'つながり', empty: { title: '関係がありそうなメモを2つ選ぶと、つなげられます。', description: '「選ぶ」から、メモを2つ選んでください。' } },
-  { id: 'sprout', label: '芽', empty: { title: 'できそうなことが見えたら、芽として残せます。', description: '芽は、メモの詳細から書けます。' } },
+  { id: 'sprout', label: '芽・花', empty: { title: 'できそうなことが見えたら、芽にできます。', description: 'メモを開いて、「こうできそう」を書いてみてください。' } },
 ];
 
 const MAX_RECENTLY_DELETED_SEEDS = 10;
@@ -488,10 +488,10 @@ export function SeedsScreen({
               style={styles.synthesisButton}
               haptic="light"
               accessibilityRole="button"
-              accessibilityLabel={`選んだメモから芽をつくる。最初に選んだメモに芽が残ります。${toSeedSnippet(selectedSeeds[0], 20)}`}
+              accessibilityLabel={`このメモたちを見ながら芽を書く。最初に選んだメモに残ります。${toSeedSnippet(selectedSeeds[0], 20)}`}
             >
               <Ionicons name="leaf-outline" size={18} color={theme.colors.primary} />
-              <Text style={styles.synthesisButtonText}>ここから芽をつくる（最初に選んだメモに残ります）</Text>
+              <Text style={styles.synthesisButtonText}>芽を書く（1番目のメモに残ります）</Text>
             </AnimatedPressable>
           ) : null}
         </View>

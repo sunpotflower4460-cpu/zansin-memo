@@ -91,3 +91,12 @@ test('text export labels are in the same words as the app (カテゴリ)', () =>
   assert.match(text, /カテゴリ: 日々/);
   assert.doesNotMatch(text, /タグ:/);
 });
+
+test('the text export includes when and why a flower bloomed', () => {
+  const base = store();
+  const seeds = base.seeds.map((seed) => (seed.id === 'A' ? { ...seed, growthState: 'tree' as const, bloom: { note: '返事が来た', bloomedAt: NOW } } : seed));
+  const text = buildTextExport({ ...base, seeds });
+  assert.match(text, /育ち方: 花/);
+  assert.match(text, /花: 2026\/2\/1に咲いた — 返事が来た/);
+});
+
