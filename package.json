@@ -16,6 +16,7 @@
     "deploy": "npx expo export -p web && wrangler deploy",
     "preview": "npx expo export -p web && wrangler dev",
     "measure:store": "node --import tsx scripts/measure-store.ts",
+    "measure:plus-storage": "node --import tsx scripts/measure-plus-storage.ts",
     "measure:logic": "node --import tsx scripts/measure-logic.ts"
   },
   "dependencies": {
