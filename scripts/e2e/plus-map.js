@@ -73,6 +73,21 @@ async function measurePlus(page) {
   await button(page, `${hub} · 選ぶ`).first().click();
   await button(page, '周辺').click();
   await button(page, '検索を閉じる').click();
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.waitForFunction(() => {
+      const plot = document.querySelector('[aria-label="確定したつながりの図"]');
+      if (!plot) return false;
+      const area = plot.getBoundingClientRect();
+      const cards = [...plot.querySelectorAll('[role="button"]')];
+      return cards.length >= 2 && cards.every((card) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.width >= 44 && bounds.height >= 44 && bounds.left >= area.left && bounds.right <= area.right &&
+          bounds.top >= area.top && bounds.bottom <= area.bottom;
+      });
+    });
+  }
+  await page.setViewportSize(options.viewport);
   const find = counter();
   await find.fill(search, '銀杏');
   await page.getByText(`${material} · ${hub}につながる`, { exact: true }).waitFor();
@@ -123,7 +138,7 @@ async function scopeAndRestore(page) {
     await page.setViewportSize({ width, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   }
-  console.log('PASS fixed scope, outside return, pinned selection after reload, viewport widths 320/390/768');
+  console.log('PASS full map cards and touch target bounds, fixed scope, outside return, pinned selection after reload at 320/390/768px');
 }
 
 (async () => {
