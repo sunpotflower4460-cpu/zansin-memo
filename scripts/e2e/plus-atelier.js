@@ -38,6 +38,9 @@ const { chromium } = require('playwright');
     assert.equal(state.adoptionRecords.length, 1);
     assert.equal(state.connections.length, 60);
     assert.equal(state.collectionItems.length, 0);
-    console.log('PASS material tray, draft, fixed excerpt, revision, reload, explicit sprout adoption');
+    await button('制作を始めた地図に戻る').click();
+    await page.getByText('制作を始めた地図に戻りました', { exact: true }).waitFor();
+    assert.equal(await page.getByLabel('地図と全件を探す').inputValue(), '散歩の記録');
+    console.log('PASS material tray, draft, fixed excerpt, revision, reload, explicit sprout adoption and origin map');
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

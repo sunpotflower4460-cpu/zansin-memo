@@ -71,6 +71,7 @@ async function plusLoop(page) {
   await button('例の庭を開く').click();
   await page.getByLabel('地図と全件を探す').fill('散歩の記録');
   await button('散歩の記録 · 選ぶ').first().click();
+  if (process.env.PLUS_EXPECT_AI_DISABLED === '1') assert.equal(await button('候補を見る').count(), 0);
   await button('アトリエで開く').click();
   const text = '見つけた光から、短い便りをつくる。';
   await page.getByLabel('アトリエの下書き').fill(text);

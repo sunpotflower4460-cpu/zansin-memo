@@ -40,3 +40,31 @@ export E2E_OUT=/tmp/e2e-out             # スクリーンショットの出力�
 - Webでは `Alert.alert` が動かない（削除・書出しの確認ダイアログは確認できない）。
 - `localStorage` はAsyncStorageの代用。保存の速度・容量・書込み失敗は端末で異なる。
 - テストデータは `scripts/make-testdata.ts` でも作れる（`node --import tsx scripts/make-testdata.ts 2000 out.json --hub=300`）。
+
+## Plusの開発プレビュー
+
+通常Webと、架空データ専用のPlus開発Webを別のポートで起動する。Playwrightは上の準備を参照。標準のChromiumがある場合は `CHROMIUM_EXEC` にパスを指定できる。
+
+```sh
+npx expo export -p web --output-dir dist
+npx serve dist -l 8102
+```
+
+別のターミナルで実行する。
+
+```sh
+EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW=1 npx expo start --web --port 8101 --offline
+```
+
+```sh
+node scripts/e2e/plus-integration.js
+node --import tsx scripts/e2e/plus-map.js
+PLUS_FIRST=1 node --import tsx scripts/e2e/plus-map.js
+node scripts/e2e/plus-proposals.js
+node scripts/e2e/plus-atelier.js
+PLUS_TEST_EXPIRY=1 node scripts/e2e/plus-collection.js
+```
+
+`FREE_E2E_URL` と `PLUS_E2E_URL` で配信先を変更できる。作品の検証ファイルは `PLUS_EXPORT_DIR` に出力される。指定がなければ一時ディレクトリ下の `kizashi-plus-files` に出力する。失敗は非ゼロの終了コードになる。
+
+プレビューの保存先は `kizashi-plus-preview:` で始まる別の領域。開発ビルドでは `EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_AI=0` などで機能への入口を個別に閉じられる。接尾辞は `MAP`、`AI`、`ATELIER`、`COLLECTION`、`COMMERCE`。保存済みの文章・作品の閲覧と持ち出しは引き続き利用できる。
