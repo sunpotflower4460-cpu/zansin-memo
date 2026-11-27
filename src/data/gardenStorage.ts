@@ -64,7 +64,7 @@ const backupCorruptRaw = async (storage: StorageLike, raw: string): Promise<void
   }
 };
 
-const readLegacyDraft = (raw: string | null): Draft | undefined => {
+export const readLegacyDraft = (raw: string | null, fallbackAt = new Date().toISOString()): Draft | undefined => {
   if (!raw) {
     return undefined;
   }
@@ -84,7 +84,7 @@ const readLegacyDraft = (raw: string | null): Draft | undefined => {
       mood: data.mood,
       growthState: data.growthState,
       importance: data.importance,
-      updatedAt: new Date().toISOString(),
+      updatedAt: fallbackAt,
     });
   } catch {
     return undefined;
