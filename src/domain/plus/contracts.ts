@@ -99,7 +99,7 @@ const mapReturnContext = object({
     object({ kind: z.literal('unsaved'), localViewId: id, localRevision: count }),
   ]),
   scope, focus, layoutSnapshot, viewport, expandedGroupIds: ids, selectedSeedIds: ids, navigationTrail: ids,
-  searchText: text.optional(), presentation: z.enum(['plot', 'list']).optional(), focusedControlId: id.optional(),
+  rangeSeedIds: ids.optional(), searchText: text.optional(), presentation: z.enum(['plot', 'list']).optional(), focusedControlId: id.optional(),
   listScrollOffset: z.number().nonnegative().optional(),
 });
 
