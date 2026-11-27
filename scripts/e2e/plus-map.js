@@ -9,6 +9,26 @@ const button = (page, name) => page.getByRole('button', { name, exact: typeof na
 const hub = '散歩の記録';
 const material = '川辺の銀杏';
 const crossing = '同じ散歩を音と写真で記録した';
+const notesLabel = '確定したつながりの図';
+const overviewLabel = 'まとまりの地図';
+const notePlot = (page) => page.getByLabel(notesLabel, { exact: true });
+const cardsAt = (plot) => plot.getByRole('button').evaluateAll((cards) => cards.map((card) => [card.getAttribute('aria-label'), card.offsetLeft, card.offsetTop]));
+
+async function checkCardBounds(page, label, minimum) {
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.waitForFunction(({ label, minimum }) => {
+      const plot = document.querySelector(`[aria-label="${label}"]`);
+      if (!plot) return false;
+      const area = plot.getBoundingClientRect();
+      const boxes = [...plot.querySelectorAll('[role="button"]')].map((card) => card.getBoundingClientRect());
+      return boxes.length >= minimum && boxes.every((box, i) =>
+        box.width >= 44 && box.height >= 44 && box.left >= area.left && box.right <= area.right && box.top >= area.top && box.bottom <= area.bottom &&
+        boxes.slice(i + 1).every((other) => box.right <= other.left || box.left >= other.right || box.bottom <= other.top || box.top >= other.bottom));
+    }, { label, minimum });
+  }
+  await page.setViewportSize(options.viewport);
+}
 
 function counter() {
   let actions = 0;
@@ -59,47 +79,88 @@ async function measureFree(page) {
 async function measurePlus(page) {
   await page.goto(plusUrl);
   await button(page, '例の庭を開く').click();
+  const overview = page.getByLabel(overviewLabel, { exact: true });
+  await overview.getByTestId('map-link-layer').locator(':scope > *').waitFor();
+  assert.equal(await overview.getByTestId('map-link-layer').locator(':scope > *').count(), 1);
+  await page.getByText('実線はまとまりをまたぐ確定接続 · 1件', { exact: true }).waitFor();
+  await checkCardBounds(page, overviewLabel, 5);
   const group = counter();
-  await group.click(button(page, /^散歩で見つけたこと · 3件/));
+  await group.click(overview.getByRole('button', { name: /^散歩で見つけたこと · 3件/ }));
   await page.getByRole('heading', { name: 'まとまりをまたぐ確定接続 1件' }).waitFor();
   await page.getByText(crossing, { exact: true }).waitFor();
   for (const label of ['散歩の記録', '雨の日の音', '光の色']) await button(page, `${label} · 選ぶ`).waitFor();
   await group.click(button(page, /^写真と便り · 2件/));
   await page.getByText(crossing, { exact: true }).waitFor();
   for (const label of ['写真を一枚選ぶ', '一日の便り']) await button(page, `${label} · 選ぶ`).waitFor();
+  const groupOriginal = button(page, '雨の日の音の原文を開く');
+  await groupOriginal.click();
+  await page.getByRole('heading', { name: '元のメモ', exact: true }).waitFor();
+  await button(page, '地図に戻る').click();
+  await button(page, /^写真と便り · 2件/).and(page.locator('[aria-pressed="true"]')).waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '雨の日の音の原文を開く' ||
+    document.activeElement?.textContent === '雨の日の音の原文を開く');
 
   const search = page.getByLabel('地図と全件を探す');
   await search.fill(hub);
   await button(page, `${hub} · 選ぶ`).first().click();
   await button(page, '周辺').click();
   await button(page, '検索を閉じる').click();
-  await page.getByLabel('確定したつながりの図').getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
-  for (const width of [320, 390, 768]) {
-    await page.setViewportSize({ width, height: 844 });
-    await page.waitForFunction(() => {
-      const plot = document.querySelector('[aria-label="確定したつながりの図"]');
-      if (!plot) return false;
-      const area = plot.getBoundingClientRect();
-      const cards = [...plot.querySelectorAll('[role="button"]')];
-      return cards.length >= 2 && cards.every((card) => {
-        const bounds = card.getBoundingClientRect();
-        return bounds.width >= 44 && bounds.height >= 44 && bounds.left >= area.left && bounds.right <= area.right &&
-          bounds.top >= area.top && bounds.bottom <= area.bottom;
-      });
-    });
-  }
-  await page.setViewportSize(options.viewport);
+  await notePlot(page).getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
+  await checkCardBounds(page, notesLabel, 2);
   const find = counter();
   await find.fill(search, '銀杏');
   await page.getByText(`${material} · ${hub}につながる`, { exact: true }).waitFor();
+  const beforeRead = await cardsAt(notePlot(page));
   await find.click(button(page, `${material}の原文を開く`));
   await page.getByText(`${material}。写真に残したあとの印象。`, { exact: true }).filter({ visible: true }).waitFor();
   const back = counter();
   await back.click(button(page, '地図に戻る'));
-  await page.getByText('選択中 · 範囲内の確定接続 1件', { exact: true }).waitFor();
+  await page.getByText('選択中 · 範囲内の確定接続 57件', { exact: true }).waitFor();
+  await notePlot(page).getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
+  assert.deepEqual(await cardsAt(notePlot(page)), beforeRead);
   await page.waitForFunction((label) => document.activeElement?.textContent === label, `${material}の原文を開く`);
   assert.equal(await search.inputValue(), '銀杏');
   return { group: group.report(), find: find.report(), back: back.report(), expectedEdgeFound: true, returnSucceeded: true, repeatedSearch: 0 };
+}
+
+async function cameraAndLayout(page) {
+  await button(page, '検索を閉じる').click();
+  const plot = notePlot(page);
+  const before = await cardsAt(plot);
+  await plot.getByRole('button', { name: '雨の日の音', exact: true }).click();
+  await plot.getByRole('button', { name: '雨の日の音', exact: true, pressed: true }).waitFor();
+  assert.deepEqual(await cardsAt(plot), before);
+  await plot.getByRole('button', { name: hub, exact: true }).click();
+  assert.equal(await button(page, '上へ').isDisabled(), true);
+  await button(page, '右へ').click();
+  assert.notDeepEqual(await cardsAt(plot), before);
+  await button(page, '選択中の種へ').click();
+  await plot.getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
+  assert.deepEqual(await cardsAt(plot), before);
+
+  const filter = page.getByLabel('この種のつながりを探す');
+  await filter.fill('手がかり');
+  await page.getByText('つながりの検索結果 1件', { exact: true }).waitFor();
+  await button(page, '雨の日の音の原文を開く').click();
+  await page.getByRole('heading', { name: '雨の日の音', exact: true }).waitFor();
+  await button(page, '地図に戻る').click();
+  assert.equal(await filter.inputValue(), '手がかり');
+  await plot.getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
+  assert.deepEqual(await cardsAt(plot), before);
+
+  await button(page, '配置を変える').click();
+  await button(page, '右に置く').click();
+  await page.getByRole('heading', { name: '配置のプレビュー', exact: true }).waitFor();
+  assert.notDeepEqual(await cardsAt(plot), before);
+  await button(page, '配置の変更をやめる').click();
+  assert.deepEqual(await cardsAt(plot), before);
+  await button(page, '右に置く').click();
+  await button(page, 'この配置にする').click();
+  await page.getByText('配置を更新しました。見方を保存すると次回も開けます。', { exact: true }).waitFor();
+  await button(page, '前の配置に戻す').click();
+  assert.deepEqual(await cardsAt(plot), before);
+  await button(page, '配置を変える').click();
+  console.log('PASS map selection, reason search, panning boundary, recenter, placement cancel and undo preserve the intended camera');
 }
 
 async function scopeAndRestore(page) {
@@ -155,6 +216,7 @@ async function scopeAndRestore(page) {
     const order = process.env.PLUS_FIRST === '1' ? ['plus', 'free'] : ['free', 'plus'];
     const results = {};
     for (const type of order) results[type] = await (type === 'free' ? measureFree(free) : measurePlus(plus));
+    await cameraAndLayout(plus);
     await scopeAndRestore(plus);
     assert.deepEqual(errors, []);
     console.log('PASS scripted comparison', { order, viewport: options.viewport, results });
