@@ -156,7 +156,7 @@ const collectionExportReceipt = object({
 const quotaReceipt = object({
   reservationId: id, quotaPeriodId: id, state: z.enum(['reserved', 'committed', 'released']), reservationExpiresAt: time,
 });
-const aiRequestReceipt = object({
+export const aiRequestReceipt = object({
   id, consent: consentReceipt, contextId: id, contextGeneration: count, processingRootSeedIds: ids,
   permissionEpochs: z.record(id, count), inputFingerprint: id, resultId: id.optional(), quota: quotaReceipt.optional(),
   status: z.enum(['waiting', 'received', 'cancelled', 'failed']),
@@ -194,6 +194,7 @@ export type MapReturnContext = z.infer<typeof mapReturnContext>;
 export type AtelierProject = z.infer<typeof atelierProject>;
 export type AtelierDraft = z.infer<typeof atelierDraft>;
 export type AtelierRevision = z.infer<typeof atelierRevision>;
+export type AtelierSuggestion = z.infer<typeof atelierSuggestion>;
 export type CollectionRevision = z.infer<typeof collectionRevision>;
 export type CollectionReturnContext = {
   collectionItemId: string;

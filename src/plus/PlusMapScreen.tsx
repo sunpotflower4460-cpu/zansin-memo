@@ -4,20 +4,30 @@ import { SectionCard } from '../components/SectionCard';
 import type { CommitResult } from '../data/gardenWriter';
 import type { PlusCommand } from '../data/gardenV3Writer';
 import type { GardenStoreV3, MapReturnContext, MapView } from '../domain/plus/contracts';
-import { allNotes, captureMapReturn, focusMap, indexMap, mapCell, mapGroups, mapInScope, newMapView,
-  outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
-import type { Seed } from '../domain/types';
+import { allNotes, captureMapReturn, focusMap, indexMap, mapCell, mapGroupLinks, mapGroups, mapInScope, mapViewportBounds, newMapView,
+  outsideMap, placeMap, restoreMapReturn, saveMapView, type MapGroup } from '../domain/plus/map';
+import type { Seed, SeedConnection } from '../domain/types';
 import { pairIsBlocked } from '../domain/plus/proposals';
 import { createId } from '../utils/ids';
 import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
+import { PlusMapOverview } from './PlusMapOverview';
 import { PlusMapPlot } from './PlusMapPlot';
 import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 
 const now = () => new Date().toISOString();
 const pageSize = 20;
+const groupPageSize = 6;
+type OpenSeed = (id: string, onReturn: () => void) => void;
 
-function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }: {
+function ReadSeedButton({ seed, onRead }: { seed: Seed; onRead: OpenSeed }) {
+  const control = React.useRef<View>(null);
+  return <PlusButton label={`${toSeedSnippet(seed, 65)}の原文を開く`} focusRef={control}
+    onPress={() => onRead(seed.id, () => focusControl(control.current))} />;
+}
+
+function SeedRows({ seeds, onPick, inside, search, details, onRead, action = '選ぶ' }: {
   seeds: Seed[]; onPick: (id: string) => void; inside?: Set<string>; search?: string; details?: Map<string, string>; action?: string;
+  onRead?: OpenSeed;
 }) {
   const [page, setPage] = React.useState(0);
   const last = Math.max(0, Math.ceil(seeds.length / pageSize) - 1);
@@ -32,7 +42,9 @@ function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }:
       return <View key={seed.id} style={plusStyles.rule}>
         {match && <Text style={plusStyles.meta}>{match.text}</Text>}
         {detail && <Text style={plusStyles.meta}>{snippet} · {detail}</Text>}
-        <PlusButton label={`${snippet} · ${out ? '地図の外で周辺を開く' : action}`} onPress={() => onPick(seed.id)} />
+        <Actions><PlusButton label={`${snippet} · ${out ? '地図の外で周辺を開く' : action}`} onPress={() => onPick(seed.id)} />
+          {onRead && !out && <ReadSeedButton seed={seed} onRead={onRead} />}
+        </Actions>
       </View>;
     })}
     {last > 0 && <Actions>
@@ -43,32 +55,81 @@ function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }:
   </View>;
 }
 
+function RelatedNotes({ seeds, notes, onPick, onRead }: {
+  seeds: Seed[]; notes: Map<string, string>; onPick: (id: string) => void; onRead: OpenSeed;
+}) {
+  const [search, setSearch] = React.useState('');
+  const query = normalizeSearchText(search.trim());
+  const results = query ? seeds.filter((seed) => searchableText(seed).includes(query) || normalizeSearchText(notes.get(seed.id) ?? '').includes(query)) : seeds;
+  return <View style={plusStyles.row}>
+    <Heading>つないだ関係</Heading>
+    {seeds.length > pageSize && <PlusInput accessibilityLabel="この種のつながりを探す" placeholder="この種のつながりを探す" value={search} onChangeText={setSearch} />}
+    {query && <Text style={plusStyles.meta}>つながりの検索結果 {results.length}件</Text>}
+    {results.length > 0 ? <SeedRows key={query} seeds={results} details={notes} search={search} onPick={onPick} onRead={onRead} /> :
+      <Text style={plusStyles.meta}>一致するつながりはありません</Text>}
+  </View>;
+}
+
+function GroupConnections({ edges, otherCount, seeds, onRead }: {
+  edges: SeedConnection[]; otherCount: number; seeds: ReadonlyMap<string, Seed>; onRead: OpenSeed;
+}) {
+  const [shown, setShown] = React.useState(8);
+  return <SectionCard><Heading>まとまりをまたぐ確定接続 {edges.length}件</Heading>
+    {edges.slice(0, shown).map((edge) => {
+      const a = seeds.get(edge.aSeedId)!;
+      const b = seeds.get(edge.bSeedId)!;
+      return <View key={edge.id} style={plusStyles.rule}>
+        <Text style={plusStyles.text}>{toSeedSnippet(a, 38)} ↔ {toSeedSnippet(b, 38)}</Text>
+        {edge.note && <Text style={plusStyles.meta}>{edge.note}</Text>}
+        <Actions><ReadSeedButton seed={a} onRead={onRead} /><ReadSeedButton seed={b} onRead={onRead} /></Actions>
+      </View>;
+    })}
+    {edges.length > shown && <PlusButton label={`さらに見る · 残り${edges.length - shown}件`} onPress={() => setShown(shown + 8)} />}
+    {otherCount > 0 && <Text style={plusStyles.meta}>このまとまりの外の種との確定接続が、ほかに{otherCount}件あります。</Text>}
+  </SectionCard>;
+}
+
 type MapProps = {
   store: GardenStoreV3; commit: (command: PlusCommand) => Promise<CommitResult>; initialGroups: MapView['displayGroups'];
-  onOpenSeed: (seedId: string, onReturn: () => void) => void; canArrange?: boolean;
+  onOpenSeed: OpenSeed; canArrange?: boolean;
   onOpenCandidates?: (seedId: string, scope: string[], context: MapReturnContext) => void;
+  onOpenAtelier?: (seedId: string, materials: string[], context: MapReturnContext) => void;
+  restoreContext?: MapReturnContext;
 };
 
-export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates }: MapProps) {
+export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier, restoreContext }: MapProps) {
   const [view, setView] = React.useState<MapView>(() => ({ ...newMapView(createId(), now()), displayGroups: initialGroups }));
   const [scopeMenu, setScopeMenu] = React.useState(false);
   const [layoutMenu, setLayoutMenu] = React.useState(false);
   const [name, setName] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
   const [marked, setMarked] = React.useState<string[]>([]);
+  const [materials, setMaterials] = React.useState<string[]>([]);
   const [temporary, setTemporary] = React.useState<MapReturnContext>();
   const [notice, setNotice] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [showCandidates, setShowCandidates] = React.useState(false);
   const [groupPage, setGroupPage] = React.useState(0);
-  const [preview, setPreview] = React.useState<{ layout: MapView['positions']; scope: MapView['scope']; original: MapView['positions']; revision: number }>();
-  const [undo, setUndo] = React.useState<MapView['positions']>();
+  const [preview, setPreview] = React.useState<{
+    layout: MapView['positions']; scope: MapView['scope']; original: MapView['positions']; revision: number; beforeViewport: MapView['viewport'];
+  }>();
+  const [undo, setUndo] = React.useState<Pick<MapView, 'positions' | 'viewport'>>();
   const savingRef = React.useRef(false);
   const saveAttempt = React.useRef<{ fingerprint: string; id: string; at: string }>(undefined);
   const scroller = React.useRef<ScrollView>(null);
   const readControl = React.useRef<View>(null);
   const scroll = React.useRef(0);
   const { fontScale } = useWindowDimensions();
+  const restoredContext = React.useRef<MapReturnContext>(undefined);
+  React.useEffect(() => {
+    if (!restoreContext || restoredContext.current === restoreContext) return;
+    restoredContext.current = restoreContext;
+    const restored = restoreMapReturn(restoreContext, store.mapViews, createId(), now());
+    setView(restored.view); setName(restored.view.name ?? ''); setMarked(restoreContext.rangeSeedIds ?? []);
+    setTemporary(undefined); setPreview(undefined); setUndo(undefined);
+    setNotice(restored.changed ? '元の見方に更新がありました。当時の配置を一時表示しています。' : '制作を始めた地図に戻りました');
+    requestAnimationFrame(() => scroller.current?.scrollTo({ y: restored.scroll, animated: false }));
+  }, [restoreContext, store.mapViews]);
 
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.seeds, store.connections]);
   const graph = React.useMemo(() => mapInScope(index, view.scope), [index, view.scope]);
@@ -85,25 +146,49 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   const search = view.searchText ?? '';
   const query = normalizeSearchText(search.trim());
   const results = React.useMemo(() => query ? index.live.filter((seed) => searchableText(seed).includes(query)) : [], [index, query]);
+  const searchDetails = new Map(center ? [...graph.adjacent.get(center) ?? []].map((id) =>
+    [id, `${toSeedSnippet(graph.byId.get(center)!, 38)}につながる`] as const) : []);
   const scopedIds = React.useMemo(() => new Set(graph.byId.keys()), [graph]);
   const expandedId = view.expandedGroupIds?.[0];
   const expanded = view.viewMode === 'overview' ? groups.find((group) => group.id === expandedId) : undefined;
   const plotIds = React.useMemo(() => expanded ? new Set(expanded.seedIds) : focus, [expanded, focus]);
   const plotSeeds = React.useMemo(() => graph.seeds.filter(({ id }) => plotIds.has(id)), [graph.seeds, plotIds]);
   const plotLines = React.useMemo(() => graph.edges.filter((edge) => plotIds.has(edge.aSeedId) && plotIds.has(edge.bSeedId)), [graph.edges, plotIds]);
+  const plotPositions = preview?.layout ?? positions;
+  const bounds = React.useMemo(() => mapViewportBounds(plotIds, plotPositions), [plotIds, plotPositions]);
   const candidates = showCandidates && selected ? store.connectionProposals.filter((proposal) => proposal.decision === 'pending' && proposal.availability === 'ready' &&
     proposal.pair.includes(selected.id) && proposal.pair.every((id) => plotIds.has(id)) && !pairIsBlocked(store, ...proposal.pair)) : undefined;
   const related = selected ? [...graph.adjacent.get(selected.id) ?? []].flatMap((id) => graph.byId.get(id) ?? []) : [];
   const outside = selected ? outsideMap(index, graph, selected.id) : [];
   const selectedEdges = selected ? graph.edges.filter((edge) => edge.aSeedId === selected.id || edge.bSeedId === selected.id) : [];
   const connectionNotes = new Map(selectedEdges.flatMap((edge) => edge.note ? [[edge.aSeedId === selected?.id ? edge.bSeedId : edge.aSeedId, edge.note] as const] : []));
-  const otherGroups = new Set(groups.filter((group) => group.kind === 'manual' && group.id !== expanded?.id).flatMap((group) => group.seedIds));
-  const crosses = expanded?.kind === 'manual' ? graph.edges.filter((edge) => plotIds.has(edge.aSeedId) !== plotIds.has(edge.bSeedId)) : [];
-  const crossGroup = crosses.filter((edge) => otherGroups.has(plotIds.has(edge.aSeedId) ? edge.bSeedId : edge.aSeedId));
-  const scopeLabel = view.scope.kind === 'selection' ? '選んだ種を保存' : 'この条件で見る';
+  const groupConnections = React.useMemo(() => {
+    if (expanded?.kind !== 'manual') return { edges: [], otherCount: 0 };
+    const shared = new Set(mapGroupLinks(graph.edges, groups, expanded.id).flatMap(({ edges }) => edges.map(({ id }) => id)));
+    const crossing = graph.edges.filter(({ aSeedId, bSeedId }) => plotIds.has(aSeedId) !== plotIds.has(bSeedId));
+    return { edges: crossing.filter(({ id }) => shared.has(id)), otherCount: crossing.length - shared.size };
+  }, [expanded, graph.edges, groups, plotIds]);
+  const scopeQuery = view.scope.kind === 'query' ? view.scope.query : allNotes.query;
+  const filtered = scopeQuery.text.trim() || scopeQuery.tags.length > 0 || scopeQuery.growthStates.length > 0 ||
+    scopeQuery.connection !== 'all' || scopeQuery.hasSynthesis !== undefined;
+  const scopeLabel = view.scope.kind === 'selection' ? '選んだ種を保存' : filtered ? 'この条件で見る' : 'すべての種';
   const overview = view.viewMode === 'overview';
-  const showPlot = view.presentation !== 'list' && view.viewport.scale > 0.8 && fontScale <= 1.3 && plotSeeds.length > 0;
-  const currentGroupPage = Math.min(groupPage, Math.max(0, Math.ceil(groups.length / 8) - 1));
+  const largeText = fontScale > 1.3;
+  const listMode = view.presentation === 'list' || largeText;
+  const showPlot = !listMode && plotSeeds.length > 0 && (view.viewport.scale > 0.8 || Boolean(expanded));
+  const lastGroupPage = Math.max(0, Math.ceil(groups.length / groupPageSize) - 1);
+  const currentGroupPage = Math.min(groupPage, lastGroupPage);
+  const pageGroups = React.useMemo(() => groups.slice(currentGroupPage * groupPageSize, (currentGroupPage + 1) * groupPageSize), [currentGroupPage, groups]);
+  const cameraAnchor = [selected?.id, center].find((id) => id && plotIds.has(id)) ?? plotSeeds[0]?.id;
+  const anchorPosition = cameraAnchor && Object.hasOwn(plotPositions, cameraAnchor) ? plotPositions[cameraAnchor] : undefined;
+
+  function readSeed(id: string, onReturn: () => void) {
+    const offset = scroll.current;
+    onOpenSeed(id, () => {
+      scroller.current?.scrollTo({ y: offset, animated: false });
+      onReturn();
+    });
+  }
 
   function select(id: string, center = false) {
     const { x, y } = positions[id] ?? { x: 0, y: 0 };
@@ -143,13 +228,15 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   }
 
   function changeScope(scope: MapView['scope']) {
-    setView((before) => ({ ...before, scope }));
+    setView((before) => ({ ...before, scope, viewport: preview?.beforeViewport ?? before.viewport }));
     setGroupPage(0);
+    setPreview(undefined);
+    setUndo(undefined);
     setNotice('');
   }
 
   async function persistView() {
-    if (savingRef.current || !canArrange) return;
+    if (savingRef.current || !canArrange || preview) return;
     const draft = { ...view, positions, name: name.trim() || undefined };
     const fingerprint = JSON.stringify(draft);
     if (saveAttempt.current?.fingerprint !== fingerprint) saveAttempt.current = { fingerprint, id: createId(), at: now() };
@@ -169,17 +256,21 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
 
   function toggleOverview() {
     setView((before) => {
-      if (before.viewMode === 'overview') return { ...before, viewport: { ...before.viewport, scale: 0.75 } };
+      const viewport = { ...before.viewport, scale: 0.75 };
+      if (before.viewMode === 'overview') return { ...before, expandedGroupIds: [], viewport };
       const { centerSeedId: _center, expandedHop: _hop, ...rest } = before;
-      return { ...rest, viewMode: 'overview', viewport: { ...rest.viewport, scale: 0.75 } };
+      return { ...rest, viewMode: 'overview', expandedGroupIds: [], viewport };
     });
   }
 
-  function toggleGroup(id: string, firstSeedId: string) {
+  function toggleGroup(group: MapGroup) {
+    const { id, seedIds } = group;
     setView((before) => {
       const open = before.expandedGroupIds?.includes(id);
-      const pos = positions[firstSeedId];
-      return { ...before, expandedGroupIds: open ? [] : [id], viewport: open ? { ...before.viewport, scale: 0.75 }
+      const selection = before.selectedSeedId && seedIds.includes(before.selectedSeedId) ? before.selectedSeedId : undefined;
+      const first = selection ?? seedIds[0];
+      const pos = plotPositions[first] ?? positions[first];
+      return { ...before, expandedGroupIds: open ? [] : [id], selectedSeedId: open ? before.selectedSeedId : selection, viewport: open || !pos ? { ...before.viewport, scale: 0.75 }
         : { x: pos.x, y: pos.y, scale: 1 } };
     });
   }
@@ -188,12 +279,25 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     if (!preview || !canArrange) return;
     if (preview.scope !== view.scope || preview.original !== view.positions || preview.revision !== store.revision) {
       setNotice('表示する内容が変わりました。配置を考え直せます。');
+      cancelLayout();
     } else {
-      setUndo(positions);
+      setUndo({ positions, viewport: preview.beforeViewport });
       setView((before) => ({ ...before, positions: preview.layout }));
       setNotice('配置を更新しました。見方を保存すると次回も開けます。');
+      setPreview(undefined);
     }
+  }
+
+  function cancelLayout() {
+    if (preview) setView((before) => ({ ...before, viewport: preview.beforeViewport }));
     setPreview(undefined);
+  }
+
+  function stageLayout(layout: MapView['positions'], anchorId = cameraAnchor) {
+    if (!canArrange) return;
+    setPreview({ layout, scope: view.scope, original: view.positions, revision: store.revision, beforeViewport: preview?.beforeViewport ?? view.viewport });
+    const target = anchorId && Object.hasOwn(layout, anchorId) ? layout[anchorId] : undefined;
+    if (target) setView((before) => ({ ...before, viewport: { x: target.x, y: target.y, scale: 1 } }));
   }
 
   function stageMove(dx: number, dy: number) {
@@ -205,8 +309,7 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     if (occupied?.[1].pinned) { setNotice('その位置には固定した種があります'); return; }
     const moved = { ...positions, [selected.id]: to };
     if (occupied) moved[occupied[0]] = from;
-    setPreview({ layout: moved, scope: view.scope, original: view.positions, revision: store.revision });
-    setView((before) => ({ ...before, viewport: { ...before.viewport, x: to.x, y: to.y, scale: 1 } }));
+    stageLayout(moved, selected.id);
   }
 
   function addGroup() {
@@ -216,10 +319,14 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     setGroupName(''); setMarked([]); setNotice('まとまりを追加しました。見方と一緒に保存できます。');
   }
 
-  const pickSeed = (id: string) => scopedIds.has(id) ? select(id, !focus.has(id)) : openTemporary(id);
-  const pan = (dx: number, dy: number) => setView((before) => ({ ...before, viewport: { ...before.viewport, x: before.viewport.x + dx, y: before.viewport.y + dy } }));
-  const scopeQuery = view.scope.kind === 'query' ? view.scope.query : allNotes.query;
-
+  const pickSeed = (id: string) => scopedIds.has(id) ? select(id, !plotIds.has(id)) : openTemporary(id);
+  function pan(dx: number, dy: number) {
+    if (!bounds) return;
+    setView((before) => ({ ...before, viewport: { ...before.viewport,
+      x: Math.max(bounds.left, Math.min(bounds.right, before.viewport.x + dx)),
+      y: Math.max(bounds.top, Math.min(bounds.bottom, before.viewport.y + dy)),
+    } }));
+  }
   return <ScrollView ref={scroller} contentContainerStyle={plusStyles.page} keyboardShouldPersistTaps="handled"
     onScroll={({ nativeEvent }) => { scroll.current = nativeEvent.contentOffset.y; }} scrollEventThrottle={48}>
     <Heading title>考えの地図</Heading>
@@ -228,14 +335,16 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     <Actions>
       <PlusButton label="全体" selected={overview} onPress={toggleOverview} />
       <PlusButton label="周辺" selected={!overview} disabled={!selected} onPress={() => selected && select(selected.id, true)} />
-      <PlusButton label="図" selected={view.presentation !== 'list'} onPress={() => setView((before) => ({ ...before, presentation: 'plot' }))} />
-      <PlusButton label="リスト" selected={view.presentation === 'list'} onPress={() => setView((before) => ({ ...before, presentation: 'list' }))} />
+      <PlusButton label="図" selected={!listMode} disabled={largeText} onPress={() => setView((before) => ({ ...before, presentation: 'plot' }))} />
+      <PlusButton label="リスト" selected={listMode} onPress={() => setView((before) => ({ ...before, presentation: 'list' }))} />
       <PlusButton label="範囲と保存した見方" selected={scopeMenu} onPress={() => setScopeMenu(!scopeMenu)} />
     </Actions>
+    {largeText && <Text style={plusStyles.meta}>大きい文字ではリストで表示します。</Text>}
     <PlusInput accessibilityLabel="地図と全件を探す" placeholder="地図と全件を探す" value={search} onChangeText={(searchText) => setView((before) => ({ ...before, searchText }))} />
     {query && <SectionCard>
       <Heading>検索結果 {results.length}件</Heading>
-      {results.length ? <SeedRows key={query} seeds={results} onPick={pickSeed} inside={scopedIds} search={search} /> : <Text style={plusStyles.meta}>一致する種はありません</Text>}
+      {results.length ? <SeedRows key={query} seeds={results} onPick={pickSeed} inside={scopedIds} search={search} details={searchDetails}
+        onRead={readSeed} /> : <Text style={plusStyles.meta}>一致する種はありません</Text>}
       <PlusButton label="検索を閉じる" onPress={() => setView((before) => ({ ...before, searchText: '' }))} />
     </SectionCard>}
     {scopeMenu && <SectionCard>
@@ -252,49 +361,74 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
         </Actions>
         <Text style={plusStyles.meta}>条件で保存すると、あとで条件に合う種も表示されます。</Text>
         <PlusInput accessibilityLabel="見方の名前" placeholder="見方の名前（任意）" value={name} onChangeText={setName} />
-        <PlusButton label={saving ? '保存中' : 'この見方を保存'} disabled={saving} primary onPress={() => void persistView()} />
+        <PlusButton label={saving ? '保存中' : 'この見方を保存'} disabled={saving || Boolean(preview)} primary onPress={() => void persistView()} />
       </>}
       {store.mapViews.map((saved) => <PlusButton key={saved.id} label={`${saved.name || '名前のない見方'}を開く`} onPress={() => {
         setView(saved); setName(saved.name ?? ''); setTemporary(undefined); setPreview(undefined); setUndo(undefined); setNotice('');
+        const activeGroup = saved.expandedGroupIds?.[0];
+        const groupIndex = activeGroup ? mapGroups(mapInScope(index, saved.scope), saved.displayGroups).findIndex((group) => group.id === activeGroup) : 0;
+        setGroupPage(Math.floor(Math.max(0, groupIndex) / groupPageSize));
       }} />)}
     </SectionCard>}
     {notice !== '' && <Text accessibilityLiveRegion="polite" style={plusStyles.meta}>{notice}</Text>}
 
-    {overview && view.presentation !== 'list' && groups.length > 0 && <SectionCard muted>
+    {overview && groups.length > 0 && <View style={plusStyles.row}>
       <Heading>まとまり</Heading>
-      {groups.slice(currentGroupPage * 8, (currentGroupPage + 1) * 8).map((group) => <PlusButton key={group.id}
-        label={`${group.label} · ${group.seedIds.length}件${group.kind === 'manual' ? ' · 自分のまとまり' : ''}`}
-        selected={expandedId === group.id} onPress={() => toggleGroup(group.id, group.seedIds[0])} />)}
-      {groups.length > 8 && <Actions>
+      <PlusMapOverview groups={pageGroups} edges={graph.edges} diagram={!listMode && !showPlot} expandedId={expanded?.id} onGroup={toggleGroup} />
+      {!expanded && groups.reduce((sum, group) => sum + group.seedIds.length, 0) > graph.seeds.length &&
+        <Text style={plusStyles.meta}>複数のまとまりにある種を含みます。</Text>}
+      {lastGroupPage > 0 && <Actions>
         <PlusButton label="前のまとまり" disabled={currentGroupPage === 0} onPress={() => setGroupPage(currentGroupPage - 1)} />
-        <PlusButton label="次のまとまり" disabled={(currentGroupPage + 1) * 8 >= groups.length} onPress={() => setGroupPage(currentGroupPage + 1)} />
+        <Text style={plusStyles.meta}>{currentGroupPage * groupPageSize + 1}〜{Math.min((currentGroupPage + 1) * groupPageSize, groups.length)}組目 / {groups.length}組</Text>
+        <PlusButton label="次のまとまり" disabled={currentGroupPage === lastGroupPage} onPress={() => setGroupPage(currentGroupPage + 1)} />
       </Actions>}
-    </SectionCard>}
+    </View>}
     {plotSeeds.length === 0 && <Text style={plusStyles.text}>{graph.seeds.length ? '周辺に表示する種を選んでください' : 'この範囲に表示する種はありません'}</Text>}
+    {preview && <SectionCard muted><Heading>配置のプレビュー</Heading><Actions>
+      <PlusButton label="この配置にする" primary disabled={!canArrange} onPress={acceptLayout} />
+      <PlusButton label="配置の変更をやめる" onPress={cancelLayout} />
+    </Actions></SectionCard>}
     {showPlot && <>
-      <PlusMapPlot seeds={plotSeeds} connections={plotLines} candidates={candidates} positions={preview?.layout ?? positions} viewport={view.viewport} selectedId={selected?.id} onSelect={select} />
+      <PlusMapPlot seeds={plotSeeds} connections={plotLines} candidates={candidates} positions={plotPositions} viewport={view.viewport} selectedId={selected?.id}
+        onSelect={(id) => setView((before) => ({ ...before, selectedSeedId: id }))} />
       <Actions>
-        <PlusButton label="左へ" onPress={() => pan(-mapCell.x, 0)} /><PlusButton label="右へ" onPress={() => pan(mapCell.x, 0)} />
-        <PlusButton label="上へ" onPress={() => pan(0, -mapCell.y)} /><PlusButton label="下へ" onPress={() => pan(0, mapCell.y)} />
+        <PlusButton label="左へ" disabled={!bounds || view.viewport.x <= bounds.left} onPress={() => pan(-mapCell.x, 0)} />
+        <PlusButton label="右へ" disabled={!bounds || view.viewport.x >= bounds.right} onPress={() => pan(mapCell.x, 0)} />
+        <PlusButton label="上へ" disabled={!bounds || view.viewport.y <= bounds.top} onPress={() => pan(0, -mapCell.y)} />
+        <PlusButton label="下へ" disabled={!bounds || view.viewport.y >= bounds.bottom} onPress={() => pan(0, mapCell.y)} />
+        {anchorPosition && <PlusButton label={selected?.id === cameraAnchor ? '選択中の種へ' : '種のある位置へ'}
+          disabled={view.viewport.x === anchorPosition.x && view.viewport.y === anchorPosition.y}
+          onPress={() => setView((before) => ({ ...before, viewport: { x: anchorPosition.x, y: anchorPosition.y, scale: before.viewport.scale } }))} />}
       </Actions>
     </>}
-    {view.presentation !== 'list' && plotSeeds.length > 0 && <Actions>
-      <PlusButton label="広く見る" onPress={toggleOverview} />
-      <PlusButton label="近く見る" disabled={fontScale > 1.3} onPress={() => setView((before) => ({ ...before, viewport: { ...before.viewport, scale: before.viewport.scale > 1 ? 1 : 1.18 } }))} />
+    {!listMode && plotSeeds.length > 0 && <Actions>
+      {showPlot && <PlusButton label="広く見る" onPress={toggleOverview} />}
+      <PlusButton label="近く見る" onPress={() => setView((before) => ({ ...before, viewport: {
+        x: !showPlot && anchorPosition ? anchorPosition.x : before.viewport.x,
+        y: !showPlot && anchorPosition ? anchorPosition.y : before.viewport.y,
+        scale: before.viewport.scale > 1 ? 1 : showPlot ? 1.18 : 1,
+      } }))} />
     </Actions>}
     {view.viewMode === 'neighborhood' && <Actions><PlusButton label="もう一段見る" disabled={focus.size >= graph.seeds.length ||
       !plotSeeds.some(({ id }) => [...graph.adjacent.get(id) ?? []].some((other) => !focus.has(other)))}
       onPress={() => setView((before) => before.viewMode === 'neighborhood' ? { ...before, expandedHop: before.expandedHop + 1 } : before)} /></Actions>}
+    {(groupConnections.edges.length > 0 || groupConnections.otherCount > 0) && <GroupConnections key={expandedId} {...groupConnections} seeds={graph.byId} onRead={readSeed} />}
     {selected && <SectionCard>
       <Heading>{toSeedSnippet(selected, 60)}</Heading>
       <Text numberOfLines={3} style={plusStyles.original}>{selected.body}</Text>
       <Text style={plusStyles.meta}>選択中 · 範囲内の確定接続 {related.length}件{positions[selected.id]?.pinned ? ' · 位置固定' : ''}</Text>
       <Actions>
-        <PlusButton label="全文を読む" primary focusRef={readControl} onPress={() => onOpenSeed(selected.id, () => focusControl(readControl.current))} />
+        <PlusButton label="全文を読む" primary focusRef={readControl} onPress={() => readSeed(selected.id, () => focusControl(readControl.current))} />
         {onOpenCandidates && <PlusButton label="候補を見る" onPress={() => {
           setShowCandidates(true);
           onOpenCandidates(selected.id, [...scopedIds], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current));
         }} />}
+        {onOpenAtelier && <>
+          <PlusButton label={materials.includes(selected.id) ? '参考から外す' : '参考にする'} onPress={() => setMaterials((before) =>
+            before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />
+          <PlusButton label={materials.length ? `アトリエで開く · 材料${materials.length}件` : 'アトリエで開く'} onPress={() =>
+            onOpenAtelier(selected.id, materials.length ? materials : [selected.id], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current))} />
+        </>}
         {showCandidates && Boolean(candidates?.length) && <PlusButton label="点線を隠す" onPress={() => setShowCandidates(false)} />}
         {canArrange && <PlusButton label={marked.includes(selected.id) ? '範囲の選択から外す' : '範囲の選択に加える'} onPress={() => setMarked((before) =>
           before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />}
@@ -310,30 +444,18 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
           </>}
         </Actions>
       </View>}
-      {selectedEdges.length > 0 && <><Heading>つないだ関係</Heading>
-        <SeedRows key={selected.id} seeds={related} details={connectionNotes} onPick={(id) => select(id)} /></>}
+      {selectedEdges.length > 0 && <RelatedNotes key={selected.id} seeds={related} notes={connectionNotes} onPick={(id) => select(id)} onRead={readSeed} />}
       {outside.length > 0 && <><Heading>この範囲の外につながる種 {outside.length}件</Heading><SeedRows key={`outside-${selected.id}`} seeds={outside} onPick={openTemporary} action="周辺を開く" /></>}
     </SectionCard>}
-    {crosses.length > 0 && <SectionCard><Heading>まとまりをまたぐ確定接続 {crossGroup.length}件</Heading>
-      {crossGroup.slice(0, 8).map((edge) => <View key={edge.id} style={plusStyles.rule}>
-        <Text style={plusStyles.text}>{toSeedSnippet(graph.byId.get(edge.aSeedId)!, 38)} ↔ {toSeedSnippet(graph.byId.get(edge.bSeedId)!, 38)}</Text>
-        {edge.note && <Text style={plusStyles.meta}>{edge.note}</Text>}
-      </View>)}{crossGroup.length > 8 && <Text style={plusStyles.meta}>ほか{crossGroup.length - 8}件は各メモの関係から読めます。</Text>}
-      {crosses.length > crossGroup.length && <Text style={plusStyles.meta}>まとまりに入っていない種への接続 {crosses.length - crossGroup.length}件</Text>}
-    </SectionCard>}
-    {(view.presentation === 'list' || expanded || !overview || fontScale > 1.3) && plotSeeds.length > 0 && <SectionCard>
+    {(listMode || expanded || !overview || showPlot) && plotSeeds.length > 0 && <SectionCard>
       <Heading>{expanded?.label ?? (overview ? '範囲内の種' : '周辺の種')} · {plotSeeds.length}件</Heading>
       <SeedRows key={`${expandedId}-${view.viewMode}-${view.viewMode === 'neighborhood' ? view.centerSeedId : ''}`} seeds={plotSeeds} onPick={(id) => select(id)} />
     </SectionCard>}
     {canArrange && graph.seeds.length > 0 && <SectionCard>
       <Actions>
-        <PlusButton label="地図を整える" onPress={() => setPreview({ layout: placeMap(graph, positions, groups, true), scope: view.scope, original: view.positions, revision: store.revision })} />
-        {undo && <PlusButton label="前の配置に戻す" onPress={() => { setView((before) => ({ ...before, positions: undo })); setUndo(undefined); }} />}
+        <PlusButton label="地図を整える" onPress={() => stageLayout(placeMap(graph, positions, groups, true))} />
+        {undo && !preview && <PlusButton label="前の配置に戻す" onPress={() => { setView((before) => ({ ...before, ...undo })); setUndo(undefined); }} />}
       </Actions>
-      {preview && <><Text style={plusStyles.meta}>配置のプレビュー</Text><Actions>
-        <PlusButton label="この配置にする" primary onPress={acceptLayout} />
-        <PlusButton label="配置の変更をやめる" onPress={() => setPreview(undefined)} />
-      </Actions></>}
       {marked.length > 0 && <><PlusInput accessibilityLabel="まとまりの名前" placeholder="まとまりの名前" value={groupName} onChangeText={setGroupName} />
         <PlusButton label={`選んだ${marked.length}件でまとまりを作る`} disabled={!groupName.trim()} onPress={addGroup} /></>}
       {saving && <ActivityIndicator accessibilityLabel="見方を保存中" />}
