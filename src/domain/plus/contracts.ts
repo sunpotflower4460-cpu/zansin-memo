@@ -156,7 +156,7 @@ const collectionExportReceipt = object({
 const quotaReceipt = object({
   reservationId: id, quotaPeriodId: id, state: z.enum(['reserved', 'committed', 'released']), reservationExpiresAt: time,
 });
-const aiRequestReceipt = object({
+export const aiRequestReceipt = object({
   id, consent: consentReceipt, contextId: id, contextGeneration: count, processingRootSeedIds: ids,
   permissionEpochs: z.record(id, count), inputFingerprint: id, resultId: id.optional(), quota: quotaReceipt.optional(),
   status: z.enum(['waiting', 'received', 'cancelled', 'failed']),

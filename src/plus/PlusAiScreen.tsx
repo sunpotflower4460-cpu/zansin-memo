@@ -3,9 +3,9 @@ import { ScrollView, Text } from 'react-native';
 import { SectionCard } from '../components/SectionCard';
 import { buildPlusExample } from '../data/plusExample';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
-import { acceptProposal, cancelProposalRequest, chooseExplorationSeeds, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
+import { acceptProposal, cancelProposalRequest, chooseExplorationSeeds, confirmedProposalInput, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
   recordProposalConsent, restoreProposalPair, updateSeedPermission, type ProposalPlan } from '../domain/plus/proposals';
-import { permissionFor, receiptIssue } from '../domain/plus/proposalPrivacy';
+import { permissionFor } from '../domain/plus/proposalPrivacy';
 import { FixtureProposalTransport } from '../domain/plus/proposalTransport';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
@@ -96,15 +96,15 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
     try {
       const consent = await writer.run(recordProposalConsent(request, now()));
       if (!consent.ok) { if (mounted.current) setNotice(consent.detail ?? '依頼を記録できませんでした'); return; }
-      const state = writer.getSnapshot();
-      const active = state.aiRequestReceipts.find(({ id }) => id === request.receipt.id);
-      if (request.receipt.contextGeneration !== generation.current || !active || active.status !== 'waiting' || receiptIssue(state, active)) {
+      const input = confirmedProposalInput(writer.getSnapshot(), request.receipt.id, generation.current, now());
+      if (!input) {
         await writer.run(cancelProposalRequest(request.receipt.id, now()));
+        if (mounted.current && generation.current === request.receipt.contextGeneration) setNotice('材料が変わりました。もう一度確認してください。');
         return;
       }
-      const raw = await fixture.start(request.input).catch(() => undefined);
+      const raw = await fixture.start(input).catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 330));
-      const result = await writer.run(receiveProposals(request, raw, generation.current, now()));
+      const result = await writer.run(receiveProposals(input.requestId, raw, generation.current, now()));
       if (!mounted.current || generation.current !== request.receipt.contextGeneration) return;
       if (!result.ok) { setNotice(result.detail ?? '候補を保存できませんでした。同じ依頼を再確認できます。'); return; }
       chosen.current = undefined;
