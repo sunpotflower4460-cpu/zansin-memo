@@ -49,7 +49,7 @@ const NOTES = [
 ];
 
 /** 通常のテキスト書出し。非削除のメモと、つながり・芽・材料の意味を読める形で出す。削除済み材料の本文は出さない。 */
-export const buildTextExport = (store: GardenStoreV2): string => {
+export const buildTextExport = (store: Pick<GardenStoreV2, 'seeds' | 'connections'> & { storeVersion: 2 | 3 }): string => {
   const live = store.seeds.filter((seed) => !seed.deletedAt);
   const byId = new Map<string, Seed>(store.seeds.map((seed) => [seed.id, seed]));
   const header = [
@@ -57,7 +57,7 @@ export const buildTextExport = (store: GardenStoreV2): string => {
     `書き出し日時: ${new Date().toLocaleString('ja-JP')}`,
     `メモの数: ${live.length}`,
     `つながり: ${store.connections.filter((c) => !byId.get(c.aSeedId)?.deletedAt && !byId.get(c.bSeedId)?.deletedAt).length}件`,
-    `storeVersion: ${STORE_VERSION}`,
+    `storeVersion: ${store.storeVersion}`,
     ...NOTES,
     '='.repeat(40),
   ].join('\n');
@@ -84,7 +84,9 @@ export const buildTextExport = (store: GardenStoreV2): string => {
       for (const source of seed.synthesis.sources) {
         const origin = byId.get(source.seedId);
         const part = source.sourcePart === 'synthesis' ? '芽の文' : '元のメモ';
-        lines.push(origin?.deletedAt ? `  - （削除済みのメモ）` : `  - [${part}] ${source.textSnapshot}`);
+        if (origin?.deletedAt) lines.push('  - （削除済みのメモ）');
+        else if (!origin && store.storeVersion === 3) lines.push('  - （原文を確認できないメモ）');
+        else lines.push(`  - [${part}] ${source.textSnapshot}`);
       }
     } else if (seed.growthState === 'sprout' || seed.growthState === 'tree') {
       lines.push('', '  （以前からの育ち状態。芽の文章は書かれていません）');
