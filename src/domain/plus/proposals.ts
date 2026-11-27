@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { connectionId, normalizePair } from '../../data/gardenModel';
 import { withCoreCommand, type PlusCommand } from '../../data/gardenV3Writer';
 import { connectSeeds } from '../gardenCommands';
-import { relationKind, type AiOutboxEntry, type AiRequestReceipt, type ConnectionProposal, type GardenStoreV3,
+import { buildAdjacency, extractKeywords } from '../../utils/links';
+import { aiRequestReceipt, relationKind, type AiOutboxEntry, type AiRequestReceipt, type ConnectionProposal, type GardenStoreV3,
   type QuotaReceipt, type SeedPermission, type SourceRef } from './contracts';
-import { invalidateAi, permissionFor, queueAiControl, receiptIssue } from './proposalPrivacy';
-import { mergeLineage, readSource, sourceLineage, textDigest } from './sources';
+import { checkReceiptMaterials, invalidateAi, permissionFor, queueAiControl } from './proposalPrivacy';
+import { mergeLineage, readSource, sameSourceRef, sourceLineage, textDigest, validTextRange } from './sources';
 
 type Selection = {
   ref: SourceRef; selection: 'explicit' | 'automatic_in_confirmed_scope';
@@ -16,6 +17,44 @@ export type ProposalInput = {
   purpose: 'connection_proposals'; sources: Array<{ alias: string; text: string; versionToken: string }>;
 };
 export type ProposalPlan = { input: ProposalInput; receipt: AiRequestReceipt };
+
+/** Prepares a small, varied list for inspection on the device. Only the confirmed subset becomes input. */
+export function chooseExplorationSeeds(store: GardenStoreV3, centerId: string, scope: readonly string[], selected: readonly string[] = []): string[] {
+  const scopeIds = new Set(scope);
+  const center = scopeIds.has(centerId) ? store.seeds.find((seed) => seed.id === centerId && !seed.deletedAt) : undefined;
+  if (!center || permissionFor(store, centerId)?.externalAi === 'deny') return [];
+  const eligible = store.seeds.filter((seed) => {
+    const permission = permissionFor(store, seed.id);
+    return seed.id !== centerId && scopeIds.has(seed.id) && !seed.deletedAt && permission?.externalAi !== 'deny' && permission?.discovery !== 'exclude' &&
+      !pairIsBlocked(store, centerId, seed.id);
+  });
+  const words = new Set(extractKeywords(center.body));
+  const related = eligible.map((seed) => ({ seed, score: seed.tags.filter((tag) => center.tags.includes(tag)).length * 3 +
+    extractKeywords(seed.body).filter((word) => words.has(word)).length }));
+  const near = related.filter(({ score }) => score > 0).sort((a, b) => b.score - a.score || a.seed.id.localeCompare(b.seed.id)).map(({ seed }) => seed);
+  const categories = new Set(center.tags);
+  const different = eligible.filter((seed) => {
+    const category = seed.tags.find((tag) => !categories.has(tag));
+    if (!category) return false;
+    categories.add(category);
+    return true;
+  });
+  const live = store.seeds.filter((seed) => !seed.deletedAt);
+  const adjacency = buildAdjacency(live, store.connections);
+  const older = [...eligible].sort((a, b) => Number(Boolean(adjacency.get(a.id)?.size)) - Number(Boolean(adjacency.get(b.id)?.size)) ||
+    a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const found = new Set([centerId, ...selected]);
+  const append = (list: typeof eligible, limit: number) => {
+    let added = 0;
+    for (const seed of list) {
+      if (found.size >= 16 || added >= limit) break;
+      if (found.has(seed.id)) continue;
+      found.add(seed.id); added++;
+    }
+  };
+  append(near, 5); append(different, 5); append(older, 5); append(eligible, 15);
+  return [...found].slice(0, 16);
+}
 
 export function prepareProposals(store: GardenStoreV3, args: {
   requestId: string; consentReceiptId: string; contextId: string; contextGeneration: number; scope: readonly string[];
@@ -30,14 +69,14 @@ export function prepareProposals(store: GardenStoreV3, args: {
     const rule = permissionFor(store, ref.seedId);
     if (!scope.has(ref.seedId) || (selection.selection === 'automatic_in_confirmed_scope' && rule?.discovery === 'exclude')) return undefined;
     const history = snapshotId && store.sourceSnapshots.find((snapshot) => snapshot.id === snapshotId);
-    if (snapshotId && (!history || JSON.stringify(history.source.ref) !== JSON.stringify(ref))) return undefined;
+    if (snapshotId && (!history || !sameSourceRef(history.source.ref, ref))) return undefined;
     const live = readSource(store.seeds, ref, Boolean(history));
     if (!live) return undefined;
     const whole = history ? history.text : live.text;
     const range = selection.range ?? { start: 0, end: whole.length };
-    if (!validRange(whole, range.start, range.end)) return undefined;
+    if (!validTextRange(whole, range.start, range.end)) return undefined;
     const source = history ? history.source : { ref, textDigest: textDigest(whole), updatedAt: live.updatedAt };
-    ready.push({ lineage: history ? history.lineage : sourceLineage(store.seeds, ref), text: whole.slice(range.start, range.end),
+    ready.push({ lineage: history ? history.lineage : sourceLineage(store.seeds, ref),
       item: { source, snapshotId, versionMode: history ? 'historical' as const : 'current' as const, range,
         liveTextDigestAtConfirmation: textDigest(live.text), permissionEpoch: rule?.epoch ?? 0, selection: selection.selection } });
   }
@@ -52,16 +91,27 @@ export function prepareProposals(store: GardenStoreV3, args: {
   const inputFingerprint = textDigest(JSON.stringify([args.requestId, args.contextId, args.contextGeneration, consent, permissionEpochs]));
   const receipt: AiRequestReceipt = { id: args.requestId, contextId: args.contextId, contextGeneration: args.contextGeneration, consent,
     processingRootSeedIds: lineage.rootSeedIds, permissionEpochs, inputFingerprint, status: 'waiting' };
-  if (receiptIssue(store, receipt)) return undefined;
-  return { receipt, input: { requestId: args.requestId, contextId: args.contextId, contextGeneration: args.contextGeneration, inputFingerprint,
-    consentReceiptId: consent.id, purpose, sources: ready.map((entry, i) => ({ alias: `material-${i + 1}`, text: entry.text,
-      versionToken: `${args.consentReceiptId}:${i + 1}` })) } };
+  return proposalPlan(store, receipt);
 }
 
-function validRange(text: string, start: number, end: number): boolean {
-  const splitsEmoji = (index: number) => /[\uD800-\uDBFF]/.test(text[index - 1] ?? '') && /[\uDC00-\uDFFF]/.test(text[index] ?? '');
-  return Number.isInteger(start) && Number.isInteger(end) && start >= 0 && start < end && end <= text.length &&
-    !splitsEmoji(start) && !splitsEmoji(end);
+function proposalPlan(store: GardenStoreV3, receipt: AiRequestReceipt): ProposalPlan | undefined {
+  const { id, contextId, contextGeneration, inputFingerprint, consent } = receipt;
+  if (consent.purpose !== 'connection_proposals' || consent.sources.length < 2 || consent.sources.length > 16 ||
+      new Set(consent.sources.map(({ source }) => source.ref.seedId)).size !== consent.sources.length) return undefined;
+  const checked = checkReceiptMaterials(store, receipt);
+  if ('issue' in checked) return undefined;
+  return { receipt, input: { requestId: id, contextId, contextGeneration, inputFingerprint, consentReceiptId: consent.id, purpose: consent.purpose,
+    sources: checked.materials.map(({ text }, i) => ({ alias: `material-${i + 1}`, text, versionToken: `${consent.id}:${i + 1}` })) } };
+}
+
+function waitingPlan(store: GardenStoreV3, requestId: string, generation: number, at: string): ProposalPlan | undefined {
+  const request = store.aiRequestReceipts.find(({ id }) => id === requestId);
+  return request?.status === 'waiting' && request.contextGeneration === generation && request.consent.expiresAt > at
+    ? proposalPlan(store, request) : undefined;
+}
+
+export function confirmedProposalInput(store: GardenStoreV3, requestId: string, generation: number, at: string): ProposalInput | undefined {
+  return waitingPlan(store, requestId, generation, at)?.input;
 }
 
 const quotaShape = z.strictObject({ reservationId: z.string().min(1), quotaPeriodId: z.string().min(1),
@@ -95,7 +145,7 @@ export function verifyProposals(plan: ProposalPlan, raw: unknown, at: string): {
     const cited = new Set<string>();
     for (const { alias, quote, start, end } of proposal.evidence) {
       const input = byAlias.get(alias);
-      if (!input || !proposal.pair.includes(alias) || !validRange(input.text, start, end) || quote !== input.text.slice(start, end)) return undefined;
+      if (!input || !proposal.pair.includes(alias) || !validTextRange(input.text, start, end) || quote !== input.text.slice(start, end)) return undefined;
       evidence.push({ source: input.item.source, quote, start, end });
       cited.add(alias);
     }
@@ -108,25 +158,28 @@ export function verifyProposals(plan: ProposalPlan, raw: unknown, at: string): {
 }
 
 export function recordProposalConsent(plan: ProposalPlan, confirmedAt: string): PlusCommand {
+  const parsed = aiRequestReceipt.safeParse({ ...plan.receipt, consent: { ...plan.receipt.consent, confirmedAt } });
   return { id: `consent:${plan.receipt.id}`, apply: (store) => {
+    const receipt = parsed.data;
+    const canonical = receipt && proposalPlan(store, receipt);
+    if (!receipt || !canonical || receipt.status !== 'waiting' || receipt.consent.expiresAt <= confirmedAt ||
+        JSON.stringify(canonical.input) !== JSON.stringify(plan.input)) return { rejected: '材料が変わりました。もう一度確認してください' };
     const existing = store.aiRequestReceipts.find((entry) => entry.id === plan.receipt.id);
     if (existing) return existing.inputFingerprint === plan.receipt.inputFingerprint && existing.status === 'waiting'
       ? store : { rejected: 'この依頼は確認済みです' };
     if (store.aiRequestReceipts.some((entry) => entry.status === 'waiting') || store.outbox.length) return { rejected: '前の依頼を確認しています' };
-    if (receiptIssue(store, plan.receipt) || plan.receipt.consent.expiresAt <= confirmedAt) return { rejected: '材料が変わりました。もう一度確認してください' };
-    return { ...store, aiRequestReceipts: [...store.aiRequestReceipts, { ...plan.receipt, consent: { ...plan.receipt.consent, confirmedAt } }] };
+    return { ...store, aiRequestReceipts: [...store.aiRequestReceipts, receipt] };
   } };
 }
 
-export function receiveProposals(plan: ProposalPlan, raw: unknown, generation: number, at: string): PlusCommand {
-  const verified = verifyProposals(plan, raw, at);
+export function receiveProposals(requestId: string, raw: unknown, generation: number, at: string): PlusCommand {
   // A rejected delivery still needs to resolve any reserved usage, without sending source text again.
-  return { id: `receive:${plan.receipt.id}:${verified?.resultId ?? 'invalid'}`, apply: (store) => {
-    const request = store.aiRequestReceipts.find((entry) => entry.id === plan.receipt.id);
+  return { id: `receive:${requestId}`, apply: (store) => {
+    const request = store.aiRequestReceipts.find((entry) => entry.id === requestId);
     if (!request || request.status !== 'waiting') return { rejected: 'この依頼は終了しています' };
-    const current = request.contextGeneration === generation && request.inputFingerprint === plan.input.inputFingerprint &&
-      request.consent.expiresAt > at && !receiptIssue(store, request);
-    const proposals = current && verified ? verified.proposals.filter(({ pair: [a, b] }) => !pairIsBlocked(store, a, b)) : [];
+    const plan = waitingPlan(store, requestId, generation, at);
+    const verified = plan && verifyProposals(plan, raw, at);
+    const proposals = verified ? verified.proposals.filter(({ pair: [a, b] }) => !pairIsBlocked(store, a, b)) : [];
     const updated: AiRequestReceipt = { ...request, status: proposals.length ? 'received' : 'failed', resultId: verified?.resultId, quota: verified?.quota };
     return { ...store, aiRequestReceipts: store.aiRequestReceipts.map((entry) => entry.id === request.id ? updated : entry),
       connectionProposals: [...store.connectionProposals, ...proposals], outbox: queueAiControl(store, updated, proposals.length ? 'ack' : 'cancel', at) };
@@ -141,17 +194,13 @@ export function pairIsBlocked(store: GardenStoreV3, a: string, b: string): boole
 function isAvailable(store: GardenStoreV3, proposal: ConnectionProposal) {
   const request = store.aiRequestReceipts.find((entry) => entry.id === proposal.requestId);
   if (proposal.decision !== 'pending' || proposal.availability !== 'ready' || request?.status !== 'received' ||
-      request.resultId !== proposal.resultId || request.inputFingerprint !== proposal.inputFingerprint || receiptIssue(store, request)) return false;
+      request.resultId !== proposal.resultId || request.inputFingerprint !== proposal.inputFingerprint) return false;
+  const checked = checkReceiptMaterials(store, request);
+  if ('issue' in checked) return false;
   return proposal.evidence.every((evidence) => {
-    const source = request.consent.sources.find((entry) => JSON.stringify(entry.source.ref) === JSON.stringify(evidence.source.ref) &&
+    const material = checked.materials.find((entry) => sameSourceRef(entry.source.ref, evidence.source.ref) &&
       entry.source.textDigest === evidence.source.textDigest);
-    if (!source) return false;
-    const whole = source.versionMode === 'historical'
-      ? store.sourceSnapshots.find((entry) => entry.id === source.snapshotId)?.text
-      : readSource(store.seeds, source.source.ref)?.text;
-    if (whole === undefined) return false;
-    const sent = source.range ? whole.slice(source.range.start, source.range.end) : whole;
-    return validRange(sent, evidence.start, evidence.end) && sent.slice(evidence.start, evidence.end) === evidence.quote;
+    return material && validTextRange(material.text, evidence.start, evidence.end) && material.text.slice(evidence.start, evidence.end) === evidence.quote;
   });
 }
 

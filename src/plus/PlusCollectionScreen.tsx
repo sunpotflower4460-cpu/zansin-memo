@@ -4,35 +4,43 @@ import { SectionCard } from '../components/SectionCard';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import { materialState } from '../domain/plus/atelier';
 import { createCollectionWork, defaultWorkLayout, getWorkOnReturn, moveWork, recordWorkOutput, removeWork, saveWorkDraft, saveWorkEdit,
-  workContent, workFormat, workText, type WorkContent } from '../domain/plus/collection';
+  workContent, workFormat, workOutputKey, workText, type WorkContent } from '../domain/plus/collection';
 import type { AtelierRevision, CollectionReturnContext, CollectionRevision, GardenStoreV3, SourceSnapshot } from '../domain/plus/contracts';
+import { requirePlusAccess } from '../domain/plus/entitlements';
 import { readSource } from '../domain/plus/sources';
 import { showConfirm } from '../utils/confirm';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
-import { Actions, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
+import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { PlusWorkPaper, paperMap } from './PlusWorkPaper';
 import { useBufferedText } from './useBufferedText';
 import { makeWorkFile, makeWorkText } from './workFiles';
 import type { GeneratedWorkFile } from './workFileTypes';
 
 const now = () => new Date().toISOString();
+const missingWork = '開いていた作品の版を確認できません';
 
-export function PlusCollectionScreen({ writer, source, onBack, canCompose = true }: {
-  writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose?: boolean;
+export function PlusCollectionScreen({ writer, source, onBack, canCompose, canComposeNow }: {
+  writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose: boolean; canComposeNow: () => boolean;
 }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const [composing, setComposing] = React.useState(Boolean(source));
   const [selected, setSelected] = React.useState<CollectionReturnContext>();
   const [notice, setNotice] = React.useState('');
-  const open = (work: CollectionRevision) => setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
-  if (composing && source && canCompose) return <Composer writer={writer} source={source} store={store} onCancel={onBack}
+  const context = selected && getWorkOnReturn(store, selected);
+  const lostVersion = Boolean(selected && !context);
+  const showMissing = React.useCallback(() => { setSelected(undefined); setNotice(missingWork); }, []);
+  React.useEffect(() => { if (lostVersion) showMissing(); }, [lostVersion, showMissing]);
+  const open = (work: CollectionRevision) => {
+    setNotice('');
+    setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
+  };
+  if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose} canComposeNow={canComposeNow}
     onSave={(work) => { setComposing(false); open(work); }} />;
 
-  const context = selected && getWorkOnReturn(store, selected);
   if (context && selected) return <WorkView key={context.revision.id} content={workContent(store, context.revision)}
-    context={selected} newer={context.newer} store={store} writer={writer} onList={() => setSelected(undefined)}
-    onRevision={open} onMissing={() => { setSelected(undefined); setNotice('開いていた作品の版を確認できません'); }} />;
+    context={selected} newer={context.newer} store={store} writer={writer} onList={() => { setSelected(undefined); setNotice(''); }}
+    onRevision={open} onMissing={showMissing} />;
 
   return <ScrollView contentContainerStyle={plusStyles.page}>
     <PlusButton label={source ? 'アトリエに戻る' : '地図に戻る'} onPress={onBack} />
@@ -54,8 +62,9 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
   </ScrollView>;
 }
 
-function Composer({ writer, store, source, onCancel, onSave }: {
+function Composer({ writer, store, source, onCancel, onSave, canCompose, canComposeNow }: {
   writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void;
+  canCompose: boolean; canComposeNow: () => boolean;
 }) {
   const [title, setTitle] = React.useState(source.title ?? '');
   const [text, setText] = React.useState(source.text);
@@ -89,10 +98,10 @@ function Composer({ writer, store, source, onCancel, onSave }: {
   }
 
   async function save() {
-    if (!preview || saving.current) return;
+    if (!preview || saving.current || !canCompose) return;
     saving.current = true; setBusy(true);
     try {
-      const result = await writer.run(preview.command);
+      const result = await writer.run(requirePlusAccess(preview.command, canComposeNow));
       const work = writer.getSnapshot().collectionRevisions.find(({ id }) => id === preview.content.work.id);
       if (result.ok && work) onSave(work);
       else setNotice(!result.ok && result.detail || '作品を保存できませんでした。内容は残っています。');
@@ -107,7 +116,8 @@ function Composer({ writer, store, source, onCancel, onSave }: {
       {used > height && <Text style={plusStyles.alert}>この内容は一枚に収まりません。文章や出典を調整できます。</Text>}
       {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
       <Actions><PlusButton label="内容を選び直す" disabled={busy} onPress={() => setPreview(undefined)} />
-        <PlusButton label="作品集に残す" primary disabled={busy} onPress={() => void save()} /></Actions>
+        <PlusButton label="作品集に残す" primary disabled={busy || !canCompose} onPress={() => void save()} /></Actions>
+      {!canCompose && <Text style={plusStyles.meta}>新しい作品を保存できる利用権の確認が必要です。編集中の文章は残っています。</Text>}
     </ScrollView>;
   }
 
@@ -118,6 +128,7 @@ function Composer({ writer, store, source, onCancel, onSave }: {
       <PlusButton label="地図と文章の1ページ" selected={page} onPress={() => setPage(true)} /></Actions>
     <PlusInput accessibilityLabel="作品の題名" placeholder="題名（任意）" value={title} onChangeText={setTitle} />
     <PlusInput accessibilityLabel="作品に残す文章" value={text} multiline onChangeText={setText} />
+    {!canCompose && <Text style={plusStyles.meta}>新しい作品の保存には利用権が必要です。入力中の文章はここで読めます。</Text>}
     <SectionCard>
       <Heading>紙面と出典</Heading>
       <Actions><PlusButton label="和紙色" selected={layout.paper === 'washi'} onPress={() => setLayout({ ...layout, paper: 'washi' })} />
@@ -160,6 +171,10 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   const paperRef = React.useRef<View>(null);
   const scroller = React.useRef<ScrollView>(null);
   const scroll = React.useRef(0);
+  const readerBack = React.useRef<View>(null);
+  const listBack = React.useRef<View>(null);
+  const materialButtons = React.useRef(new Map<string, View>());
+  const returning = React.useRef<typeof read>(undefined);
   const dimension = useWindowDimensions();
   const width = Math.max(210, Math.min(560, dimension.width - 70));
   const height = Math.round(width * (work.kind === 'word_card' ? 1.25 : Math.SQRT2));
@@ -167,12 +182,26 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   const overflow = used > height || crowded;
   const isCurrent = !newer;
   const last = store.collectionExportReceipts.filter((receipt) => receipt.itemId === work.itemId).at(-1);
-  const fileKey = (value: WorkContent) => JSON.stringify([work.id, value.hidden, value.materials.map((snapshot) => snapshot.id)]);
-  const key = fileKey(content);
+  const key = workOutputKey(content);
   const file = prepared?.key === key ? prepared.file : undefined;
   React.useEffect(() => { setFile(undefined); }, [key]);
   React.useEffect(() => () => prepared?.file.discard(), [prepared]);
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  React.useEffect(() => {
+    if (read) {
+      const frame = requestAnimationFrame(() => focusControl(readerBack.current));
+      return () => cancelAnimationFrame(frame);
+    }
+    const prior = returning.current;
+    if (prior) {
+      const frame = requestAnimationFrame(() => {
+        scroller.current?.scrollTo({ y: prior.context.scrollOffset, animated: false });
+        focusControl(materialButtons.current.get(`${prior.snapshotId}:${prior.mode}`) ?? listBack.current);
+        returning.current = undefined;
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [read]);
 
   async function output(format: 'paper' | 'text') {
     if (outputBusy.current || (format === 'paper' && (overflow || !paperRef.current || !used))) return;
@@ -180,8 +209,8 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
     let built: GeneratedWorkFile | undefined;
     try {
       built = format === 'paper' ? await makeWorkFile(paperRef.current!, workFormat(work)) : await makeWorkText(workText(content));
-      if (!mounted.current || JSON.stringify(workContent(writer.getSnapshot(), work).hidden) !== JSON.stringify(content.hidden)) throw new Error('material_changed');
-      if (format === 'paper' && !(await writer.run(recordWorkOutput(createId(), work, now(), content.hidden))).ok) throw new Error('output_receipt_failed');
+      if (!mounted.current || workOutputKey(workContent(writer.getSnapshot(), work)) !== key) throw new Error('material_changed');
+      if (format === 'paper' && !(await writer.run(recordWorkOutput(createId(), work, now(), key))).ok) throw new Error('output_receipt_failed');
       if (!mounted.current) throw new Error('view_closed');
       setFile({ file: built, key }); setNotice('ファイルを用意しました'); built = undefined;
     } catch { if (mounted.current) setNotice('書き出せませんでした。作品の内容を確認し、もう一度試せます。'); }
@@ -190,7 +219,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
 
   function deliverFile() {
     const current = writer.getSnapshot();
-    if (!file || !getWorkOnReturn(current, context) || prepared?.key !== fileKey(workContent(current, work))) {
+    if (!file || !getWorkOnReturn(current, context) || prepared?.key !== workOutputKey(workContent(current, work))) {
       setFile(undefined); setNotice('材料に変更があります。確認してからファイルを作り直してください。');
       return;
     }
@@ -203,9 +232,15 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   function closeMaterial() {
     if (!read) return;
     if (!getWorkOnReturn(writer.getSnapshot(), read.context)) { onMissing(); return; }
-    const position = read.context.scrollOffset;
+    returning.current = read;
     setRead(undefined);
-    requestAnimationFrame(() => scroller.current?.scrollTo({ y: position, animated: false }));
+  }
+  function materialControl(snapshotId: string, mode: 'current' | 'historical') {
+    const key = `${snapshotId}:${mode}`;
+    return (control: View | null) => {
+      if (control) materialButtons.current.set(key, control);
+      else materialButtons.current.delete(key);
+    };
   }
   const snapshot = read && store.sourceSnapshots.find((entry) => entry.id === read.snapshotId);
   const live = snapshot && readSource(store.seeds, snapshot.source.ref, true);
@@ -216,7 +251,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   return <View style={plusStyles.full}>
     <View style={[plusStyles.full, read && { display: 'none' }]}><ScrollView ref={scroller} contentContainerStyle={plusStyles.page}
       onScroll={(event) => { scroll.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={48}>
-      <PlusButton label="作品集に戻る" onPress={onList} />
+      <PlusButton label="作品集に戻る" focusRef={listBack} onPress={onList} />
       <Heading title>{work.title || '題名のない作品'}</Heading>
       {newer && <PlusButton label="新しい作品版を開く" onPress={() => {
         const item = store.collectionItems.find(({ id }) => id === work.itemId);
@@ -225,7 +260,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       }} />}
       <PlusWorkPaper content={content} width={width} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {overflow && <Text style={plusStyles.alert}>一枚には収まりません。文章を調整するか、テキストで取り出せます。</Text>}
-      {content.hidden.length > 0 && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
+      {(content.hidden.length > 0 || content.missingMaterials > 0) && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
       {last && <Text style={plusStyles.meta}>{file && last.collectionRevisionId === work.id && file.format === last.format ? '現在の版のファイルを用意しました' : '最後の出力版は作品集に記録されています'}</Text>}
       <Actions>
         {isCurrent && <PlusButton label="本文・題名を編集" onPress={() => setEditing(true)} />}
@@ -237,8 +272,8 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       {linkedMaterials.length > 0 && <SectionCard><Heading>作品の材料</Heading>
         {linkedMaterials.map((entry) => <View key={entry.id} style={plusStyles.rule}>
           <Text style={plusStyles.text}>{entry.title || '題名のない材料'}</Text>
-          <Actions><PlusButton label="作ったときの材料を見る" onPress={() => openMaterial(entry, 'historical')} />
-            <PlusButton label="現在の原文を開く" onPress={() => openMaterial(entry, 'current')} /></Actions>
+          <Actions><PlusButton label="作ったときの材料を見る" focusRef={materialControl(entry.id, 'historical')} onPress={() => openMaterial(entry, 'historical')} />
+            <PlusButton label="現在の原文を開く" focusRef={materialControl(entry.id, 'current')} onPress={() => openMaterial(entry, 'current')} /></Actions>
         </View>)}
       </SectionCard>}
       {isCurrent && <PlusButton label="作品を削除する" onPress={() => showConfirm('作品を削除しますか？', '選んだ作品とその版を作品集から削除します。', [
@@ -246,7 +281,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
           if (result.ok) onList(); else setNotice('作品を削除できませんでした');
         }) }])} />}
     </ScrollView></View>
-    {read && <ScrollView contentContainerStyle={plusStyles.page}><PlusButton label="開いていた作品版に戻る" onPress={closeMaterial} />
+    {read && <ScrollView contentContainerStyle={plusStyles.page}><PlusButton label="開いていた作品版に戻る" focusRef={readerBack} onPress={closeMaterial} />
       <Heading title>{read.mode === 'current' ? '現在の原文' : '作ったときの材料'}</Heading>
       {snapshot && live ? <SectionCard><Heading>{(read.mode === 'current' ? live.title : snapshot.title) ?? '題名のない材料'}</Heading>
         {materialState(store.seeds, snapshot) === 'changed' && <Text style={plusStyles.meta}>作品を作ったときから原文に更新があります</Text>}

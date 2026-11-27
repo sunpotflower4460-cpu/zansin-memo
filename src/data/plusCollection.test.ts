@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createCollectionWork, defaultWorkLayout, getWorkOnReturn, recordWorkOutput, saveWorkDraft, saveWorkEdit, workContent, workText } from '../domain/plus/collection';
-import { disconnectSeeds, softDeleteSeed } from '../domain/gardenCommands';
+import { createCollectionWork, defaultWorkLayout, getWorkOnReturn, recordWorkOutput, saveWorkDraft, saveWorkEdit, workContent, workOutputKey, workText } from '../domain/plus/collection';
+import { disconnectSeeds, promoteToSprout, softDeleteSeed, undoPromotion } from '../domain/gardenCommands';
 import { createAtelier, saveAtelierRevision, saveAtelierText } from '../domain/plus/atelier';
 import { makeConnection } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
@@ -57,6 +57,7 @@ test('PC14/15: returns to the older fixed work after edits, and masks deleted so
   assert.deepEqual(newWork.layout, old.layout);
   await writer.run(withCoreCommand(disconnectSeeds({ commandId: 'disconnect', a: 'A', b: 'B' })));
   assert.equal(workContent(writer.getSnapshot(), newWork).diagram?.lines.length, 2);
+  const earlierOutput = workOutputKey(workContent(writer.getSnapshot(), newWork));
   await writer.run(withCoreCommand(softDeleteSeed({ commandId: 'delete', seedId: 'B', now: at })));
   const masked = workContent(writer.getSnapshot(), newWork);
   assert.equal(masked.diagram?.lines.length, 0);
@@ -64,7 +65,34 @@ test('PC14/15: returns to the older fixed work after edits, and masks deleted so
   assert.equal(masked.materials.length, 0);
   assert.match(workText(masked), /本人が編集した新しい文章/);
   assert.doesNotMatch(workText(masked), /本文B/);
-  assert.equal((await writer.run(recordWorkOutput('stale-output', newWork, at, []))).ok, false);
-  assert.equal((await writer.run(recordWorkOutput('masked-output', newWork, at, masked.hidden))).ok, true);
+  assert.equal((await writer.run(recordWorkOutput('stale-output', newWork, at, earlierOutput))).ok, false);
+  assert.equal((await writer.run(recordWorkOutput('masked-output', newWork, at, workOutputKey(masked)))).ok, true);
   assert.equal(writer.getSnapshot().collectionExportReceipts[0].collectionRevisionId, 'r2');
+});
+
+test('an undone sprout is masked in a work and invalidates its prepared output', async () => {
+  const writer = new GardenV3Writer(new FakeStorage(), { ...emptyStoreV3(), seeds });
+  const statement = '取り消した芽の文章';
+  const text = '作品に自分で書いた一文';
+  assert.equal((await writer.run(withCoreCommand(promoteToSprout({ commandId: 'sprout', centerId: 'A', synthesisId: 's', statement,
+    centerBodyText: seeds[0].body, materials: [], now: at })))).ok, true);
+  const sprouted = writer.getSnapshot().seeds[0];
+  const target = { projectId: 'a', branchId: 'b', expected: 0 };
+  await writer.run(createAtelier({ id: 'a', branchId: 'b', at, materials: [{ ref: { seedId: 'A', part: 'synthesis', synthesisId: 's' }, id: 'source' }] }));
+  await writer.run(saveAtelierText(target, text, 'text', at));
+  await writer.run(saveAtelierRevision({ ...target, expected: 1 }, 'version', at));
+  await writer.run(createCollectionWork({ itemId: 'work', revisionId: 'r1', atelierRevisionId: 'version',
+    text, at, layout: { ...defaultWorkLayout, includeSources: true }, materialSnapshotIds: ['source'] }));
+  const work = writer.getSnapshot().collectionRevisions[0];
+  const before = workContent(writer.getSnapshot(), work);
+  assert.ok(workText(before).includes(statement));
+
+  assert.equal((await writer.run(withCoreCommand(undoPromotion({ commandId: 'undo', seedId: 'A', savedSynthesisId: 's',
+    savedSynthesisUpdatedAt: at, savedGrowthState: sprouted.growthState, previous: { growthState: seeds[0].growthState } })))).ok, true);
+  const after = workContent(writer.getSnapshot(), work);
+  assert.equal(after.missingMaterials, 1);
+  assert.equal(workText(after), text);
+  assert.equal(writer.getSnapshot().sourceSnapshots[0].text, statement);
+  assert.equal((await writer.run(recordWorkOutput('pre-undo-output', work, at, workOutputKey(before)))).ok, false);
+  assert.equal((await writer.run(recordWorkOutput('masked-output', work, at, workOutputKey(after)))).ok, true);
 });

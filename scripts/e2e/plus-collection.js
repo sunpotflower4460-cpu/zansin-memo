@@ -26,12 +26,20 @@ const { chromium } = require('playwright');
     await button('紙面を確認').click();
     assert.equal((await read()).collectionItems.length, 0);
     await button('作品集に残す').click();
-    await button('作ったときの材料を見る').click();
-    await page.getByRole('heading', { name: '作ったときの材料' }).waitFor();
-    await button('開いていた作品版に戻る').click();
-    await button('現在の原文を開く').click();
-    await page.getByRole('heading', { name: '現在の原文' }).waitFor();
-    await button('開いていた作品版に戻る').click();
+    async function expectFocus(control) {
+      const target = await control.elementHandle();
+      try { await page.waitForFunction((element) => document.activeElement === element, target); }
+      finally { await target.dispose(); }
+    }
+    const returnToWork = button('開いていた作品版に戻る');
+    for (const [open, heading] of [['作ったときの材料を見る', '作ったときの材料'], ['現在の原文を開く', '現在の原文']]) {
+      await button(open).press('Enter');
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+      await expectFocus(returnToWork);
+      await page.keyboard.press('Enter');
+      await expectFocus(button(open));
+    }
+    console.log('PASS keyboard focus returns to the same material control for historical and current text');
     async function exportFile(format, name) {
       await button(`${format}ファイルを作る`).click();
       await page.getByText('ファイルを用意しました', { exact: true }).waitFor();
@@ -62,5 +70,38 @@ const { chromium } = require('playwright');
     assert.equal(state.seeds.some((seed) => seed.synthesis), false);
     assert.equal(state.connections.length, 60);
     console.log('PASS private works from a fixed revision, exact return, PNG and PDF downloads', out);
+    if (process.env.PLUS_TEST_EXPIRY === '1') {
+      await button('本文・題名を編集').click();
+      const edit = page.getByLabel('保存済み作品の本文');
+      const changed = '満了の前後も、自分の文章を残せる。🌱';
+      await edit.fill(changed);
+      await button('利用権の動作を試す').click();
+      await button('満了を表示').click();
+      await page.getByRole('heading', { name: '現在の試験状態 · 満了' }).waitFor();
+      await button('確認画面を閉じる').click();
+      assert.equal(await edit.inputValue(), changed);
+      await button('変更を保存').click();
+      const after = await exportFile('PDF', 'page-after-expiry.pdf');
+      assert.notDeepEqual(after, pdf);
+      const afterSave = await read();
+      const fixed = afterSave.collectionRevisions[1];
+      const revised = afterSave.collectionRevisions[2];
+      assert.equal(revised.textSnapshot, changed);
+      assert.equal(revised.previousRevisionId, fixed.id);
+      assert.deepEqual(revised.mapSnapshot, fixed.mapSnapshot);
+      assert.deepEqual(revised.layout, fixed.layout);
+      assert.equal(afterSave.collectionExportReceipts.at(-1).collectionRevisionId, revised.id);
+      assert.equal(afterSave.aiRequestReceipts.length, 0);
+      console.log('PASS simulated expiry preserves input, saves a basic edit and regenerates the same PDF layout');
+      await button('本文・題名を編集').click();
+      const long = `${'長い日本語の作業メモです。🌱\n'.repeat(100)}ここが本文の最後の行です。`;
+      await edit.fill(long);
+      await button('変更を保存').click();
+      await page.getByText('一枚には収まりません。文章を調整するか、テキストで取り出せます。', { exact: true }).waitFor();
+      assert.equal(await button('PDFファイルを作る').isDisabled(), true);
+      const savedText = await exportFile('テキスト', 'long-work.txt');
+      assert.equal(savedText.toString('utf8').includes(long), true);
+      console.log('PASS overflow blocks cropped paper output and keeps the entire text export');
+    }
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

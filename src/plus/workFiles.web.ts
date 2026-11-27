@@ -31,4 +31,9 @@ export async function makeWorkText(text: string): Promise<GeneratedWorkFile> {
   return download(new Blob([text], { type: 'text/plain;charset=utf-8' }), 'kizashi-work.txt', 'text');
 }
 
+export async function makeGardenFile(data: string, format: 'json' | 'text'): Promise<GeneratedWorkFile> {
+  return format === 'json' ? download(new Blob([data], { type: 'application/json' }), 'kizashi-data.json', format)
+    : download(new Blob([data], { type: 'text/plain;charset=utf-8' }), 'kizashi-data.txt', format);
+}
+
 export function clearWorkFileCache(): void { /* Files live in each preview until it closes. */ }

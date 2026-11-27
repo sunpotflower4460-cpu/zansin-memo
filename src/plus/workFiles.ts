@@ -18,7 +18,8 @@ function outputFile(content: string | Uint8Array, format: GeneratedWorkFile['for
     format,
     deliver: async () => {
       if (!file.exists || !(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available');
-      await Sharing.shareAsync(file.uri, { mimeType: format === 'png' ? 'image/png' : format === 'pdf' ? 'application/pdf' : 'text/plain' });
+      const mimeType = { png: 'image/png', pdf: 'application/pdf', text: 'text/plain', json: 'application/json' }[format];
+      await Sharing.shareAsync(file.uri, { mimeType });
     },
     discard: () => { try { if (file.exists) file.delete(); } catch { /* The preview purges this cache on restart. */ } },
   };
@@ -34,6 +35,7 @@ export async function makeWorkFile(view: View, format: 'png' | 'pdf'): Promise<G
 }
 
 export async function makeWorkText(text: string): Promise<GeneratedWorkFile> { return outputFile(text, 'text'); }
+export async function makeGardenFile(data: string, format: 'json' | 'text'): Promise<GeneratedWorkFile> { return outputFile(data, format); }
 
 export function clearWorkFileCache(): void {
   try { const cache = directory(); if (cache.exists) cache.delete(); }
