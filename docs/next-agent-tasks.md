@@ -2,7 +2,9 @@
 
 ## 現在の次タスク（2026-11-27）
 
-今回の依頼では [Plus設計](plus-experience-design.md)をrepoへ追加した。実装はまだ依頼されていない。次に実装を担当する際は、[実装計画](plus-implementation-plan.md)のPhase 11.0から小さく進める。地図の品質を先に作り、AI候補・アトリエ・作品集・課金を順に接続する。
+2026-11-27の依頼では [Plus設計](plus-experience-design.md)の追加・ブラッシュアップと [実装キックオフ文](plus-start-prompt.md)を用意した。この文書更新の時点ではPhase 11は未実装。次にユーザーから実装を依頼された担当は、その時点の最新コード・進捗を確認し、[実装計画](plus-implementation-plan.md)の未完了箇所から小さく進める。初回は11.0の一つのまとまりを対象とし、その後は地図の品質を先に作り、AI候補・アトリエ・作品集・課金を順に接続する。
+
+上の「未実装」は記録時点の状態であり、将来の実装依頼を止める規則ではない。コピーして渡す本文は [plus-start-prompt.md](plus-start-prompt.md)に置く。
 
 無料中核のPhase 10.1〜10.5を最初から作り直さない。[実装記録](core-growth-progress.md)と [公開判定の残課題](core-growth-verification.md)を確認し、実機・VoiceOver・初見ユーザーの未確認を引き継ぐ。詳細な対象ファイル・保存契約・受入条件・外部設定待ちでも進められる範囲はPlus実装計画に記載する。
 

@@ -2,7 +2,7 @@
 
 ## 現在の設計と次の実行計画 — 2026-11-27
 
-有料拡張の [Plus総合設計](plus-experience-design.md)と [Phase 11.0〜11.6](plus-implementation-plan.md)を追加した。今回の変更は設計のみ。次に実装を依頼されたときは、保存基盤→上質な地図→AIの提案→アトリエ→作品集→課金→統合検証の順に、小さなPRへ分ける。
+有料拡張の [Plus総合設計](plus-experience-design.md)、[Phase 11.0〜11.6](plus-implementation-plan.md)、[実装キックオフ文](plus-start-prompt.md)を追加した。2026-11-27の文書更新時点では設計のみ。次に実装を依頼されたときは、保存基盤→上質な地図→AIの提案→アトリエ→作品集→課金→統合検証の順に、小さなPRへ分ける。
 
 無料中核のPhase 10.1〜10.5は [実装記録](core-growth-progress.md) がある。以下の過去の実行計画から同じ機能を作り直さず、[公開判定](core-growth-verification.md)の実機・初見ユーザーの未確認を引き継ぐ。Plusを任意機能として加え、無料で書く・読む・つなぐ・芽にする一周を維持する。
 

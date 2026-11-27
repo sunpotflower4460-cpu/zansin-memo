@@ -28,6 +28,7 @@
 - [AIとデータ: 候補・本人の採用・送信許可・保存・移行](docs/plus-ai-data-contracts.md)
 - [課金と品質: 利用権・失効後のアクセス・購入状態・受入条件](docs/plus-commerce-validation.md)
 - [実装担当向け: Phase 11.0〜11.6の順序と完了条件](docs/plus-implementation-plan.md)
+- [そのままコピーして渡す: Plus実装キックオフプロンプト](docs/plus-start-prompt.md)
 
 有料設計の最新の優先順位はこの文書群を使います。旧blueprintの同期中心の計画と販売条件は更新し、無料の手動接続・基本地図・本人が書く芽・全件検索・データ権利を維持します。価格、試用、AI利用枠は未確定です。
 

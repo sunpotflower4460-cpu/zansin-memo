@@ -4,7 +4,7 @@
 
 無料中核のPhase 10.1〜10.5は [実装記録](core-growth-progress.md) があり、10.6の [公開判定](core-growth-verification.md)は保留。実装済みの部分を最初から作り直さず、実機・VoiceOver・初見ユーザーの未確認を引き継ぐ。
 
-後続の有料体験として [Plusの詳細設計](plus-experience-design.md)を追加した。今回の変更は設計のみ。実装を依頼された際は [Phase 11.0〜11.6](plus-implementation-plan.md)に従い、保存基盤→上質な地図→AIの提案→アトリエ→作品集→課金→統合検証の順に進める。旧blueprintのPhase 11〜13はこの計画に置き換える。同期と複数ページ冊子は別の後続計画とする。
+後続の有料体験として [Plusの詳細設計](plus-experience-design.md)と [実装キックオフ文](plus-start-prompt.md)を追加した。2026-11-27の文書更新時点では設計のみ。実装を依頼された際は [Phase 11.0〜11.6](plus-implementation-plan.md)に従い、保存基盤→上質な地図→AIの提案→アトリエ→作品集→課金→統合検証の順に進める。旧blueprintのPhase 11〜13はこの計画に置き換える。同期と複数ページ冊子は別の後続計画とする。
 
 地図などの隔離した開発は進められるが、無料中核の公開判定を未確認のままPlusの販売を開始しない。
 
