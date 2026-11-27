@@ -54,7 +54,7 @@ const consentReceipt = object({
   id, requestId: id, policyVersion: id, providerDisclosureVersion: id, purpose, confirmedAt: time, expiresAt: time,
   sources: z.array(object({
     source: sourceVersion, snapshotId: id.optional(), versionMode, liveTextDigestAtConfirmation: id, permissionEpoch: count,
-    selection: z.enum(['automatic_in_confirmed_scope', 'explicit']),
+    selection: z.enum(['automatic_in_confirmed_scope', 'explicit']), range: object({ start: count, end: count }).optional(),
   }).refine((entry) => entry.versionMode === 'current' || entry.snapshotId !== undefined)).min(1),
 });
 const evidence = object({ source: sourceVersion, quote: text.min(1), start: count, end: count })
@@ -156,7 +156,7 @@ const collectionExportReceipt = object({
 const quotaReceipt = object({
   reservationId: id, quotaPeriodId: id, state: z.enum(['reserved', 'committed', 'released']), reservationExpiresAt: time,
 });
-const aiRequestReceipt = object({
+export const aiRequestReceipt = object({
   id, consent: consentReceipt, contextId: id, contextGeneration: count, processingRootSeedIds: ids,
   permissionEpochs: z.record(id, count), inputFingerprint: id, resultId: id.optional(), quota: quotaReceipt.optional(),
   status: z.enum(['waiting', 'received', 'cancelled', 'failed']),
@@ -184,6 +184,9 @@ export type SeedPermission = z.infer<typeof permission>;
 export type ConsentReceipt = z.infer<typeof consentReceipt>;
 export type Evidence = z.infer<typeof evidence>;
 export type ConnectionProposal = z.infer<typeof connectionProposal>;
+export type AiRequestReceipt = z.infer<typeof aiRequestReceipt>;
+export type QuotaReceipt = z.infer<typeof quotaReceipt>;
+export type AiOutboxEntry = z.infer<typeof outbox>;
 export type MapScope = z.infer<typeof scope>;
 export type MapFocus = z.infer<typeof focus>;
 export type MapView = z.infer<typeof mapView>;
@@ -191,6 +194,7 @@ export type MapReturnContext = z.infer<typeof mapReturnContext>;
 export type AtelierProject = z.infer<typeof atelierProject>;
 export type AtelierDraft = z.infer<typeof atelierDraft>;
 export type AtelierRevision = z.infer<typeof atelierRevision>;
+export type AtelierSuggestion = z.infer<typeof atelierSuggestion>;
 export type CollectionRevision = z.infer<typeof collectionRevision>;
 export type CollectionReturnContext = {
   collectionItemId: string;
