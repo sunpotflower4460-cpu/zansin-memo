@@ -4,7 +4,7 @@ import { SectionCard } from '../components/SectionCard';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import { materialState } from '../domain/plus/atelier';
 import { createCollectionWork, defaultWorkLayout, getWorkOnReturn, moveWork, recordWorkOutput, removeWork, saveWorkDraft, saveWorkEdit,
-  workContent, workFormat, workText, type WorkContent } from '../domain/plus/collection';
+  workContent, workFormat, workOutputKey, workText, type WorkContent } from '../domain/plus/collection';
 import type { AtelierRevision, CollectionReturnContext, CollectionRevision, GardenStoreV3, SourceSnapshot } from '../domain/plus/contracts';
 import { readSource } from '../domain/plus/sources';
 import { showConfirm } from '../utils/confirm';
@@ -180,8 +180,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   const overflow = used > height || crowded;
   const isCurrent = !newer;
   const last = store.collectionExportReceipts.filter((receipt) => receipt.itemId === work.itemId).at(-1);
-  const fileKey = (value: WorkContent) => JSON.stringify([work.id, value.hidden, value.materials.map((snapshot) => snapshot.id)]);
-  const key = fileKey(content);
+  const key = workOutputKey(content);
   const file = prepared?.key === key ? prepared.file : undefined;
   React.useEffect(() => { setFile(undefined); }, [key]);
   React.useEffect(() => () => prepared?.file.discard(), [prepared]);
@@ -208,8 +207,8 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
     let built: GeneratedWorkFile | undefined;
     try {
       built = format === 'paper' ? await makeWorkFile(paperRef.current!, workFormat(work)) : await makeWorkText(workText(content));
-      if (!mounted.current || JSON.stringify(workContent(writer.getSnapshot(), work).hidden) !== JSON.stringify(content.hidden)) throw new Error('material_changed');
-      if (format === 'paper' && !(await writer.run(recordWorkOutput(createId(), work, now(), content.hidden))).ok) throw new Error('output_receipt_failed');
+      if (!mounted.current || workOutputKey(workContent(writer.getSnapshot(), work)) !== key) throw new Error('material_changed');
+      if (format === 'paper' && !(await writer.run(recordWorkOutput(createId(), work, now(), key))).ok) throw new Error('output_receipt_failed');
       if (!mounted.current) throw new Error('view_closed');
       setFile({ file: built, key }); setNotice('ファイルを用意しました'); built = undefined;
     } catch { if (mounted.current) setNotice('書き出せませんでした。作品の内容を確認し、もう一度試せます。'); }
@@ -218,7 +217,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
 
   function deliverFile() {
     const current = writer.getSnapshot();
-    if (!file || !getWorkOnReturn(current, context) || prepared?.key !== fileKey(workContent(current, work))) {
+    if (!file || !getWorkOnReturn(current, context) || prepared?.key !== workOutputKey(workContent(current, work))) {
       setFile(undefined); setNotice('材料に変更があります。確認してからファイルを作り直してください。');
       return;
     }
@@ -259,7 +258,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       }} />}
       <PlusWorkPaper content={content} width={width} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {overflow && <Text style={plusStyles.alert}>一枚には収まりません。文章を調整するか、テキストで取り出せます。</Text>}
-      {content.hidden.length > 0 && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
+      {(content.hidden.length > 0 || content.missingMaterials > 0) && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
       {last && <Text style={plusStyles.meta}>{file && last.collectionRevisionId === work.id && file.format === last.format ? '現在の版のファイルを用意しました' : '最後の出力版は作品集に記録されています'}</Text>}
       <Actions>
         {isCurrent && <PlusButton label="本文・題名を編集" onPress={() => setEditing(true)} />}
