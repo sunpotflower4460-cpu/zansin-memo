@@ -1,4 +1,4 @@
-export type GeneratedWorkFile = { format: 'png' | 'pdf' | 'text'; deliver: () => Promise<void>; discard: () => void };
+export type GeneratedWorkFile = { format: 'png' | 'pdf' | 'text' | 'json'; deliver: () => Promise<void>; discard: () => void };
 
 export async function rasterPagePdf(png: Uint8Array): Promise<Uint8Array> {
   // The published CommonJS entry keeps tslib's named helpers intact under Metro.

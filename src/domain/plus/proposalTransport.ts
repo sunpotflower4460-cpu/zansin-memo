@@ -19,6 +19,7 @@ export class FixtureProposalTransport implements ProposalTransport {
   }) {}
 
   executions(): number { return this.calls; }
+  clear(): void { this.records.clear(); this.calls = 0; }
 
   private expire(record: Reservation, now: string): void {
     if (record.quota.state === 'reserved' && record.quota.reservationExpiresAt <= now) record.quota.state = 'released';

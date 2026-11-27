@@ -62,5 +62,29 @@ const { chromium } = require('playwright');
     assert.equal(state.seeds.some((seed) => seed.synthesis), false);
     assert.equal(state.connections.length, 60);
     console.log('PASS private works from a fixed revision, exact return, PNG and PDF downloads', out);
+    if (process.env.PLUS_TEST_EXPIRY === '1') {
+      await button('本文・題名を編集').click();
+      const edit = page.getByLabel('保存済み作品の本文');
+      const changed = '満了の前後も、自分の文章を残せる。🌱';
+      await edit.fill(changed);
+      await button('利用権の動作を試す').click();
+      await button('満了を表示').click();
+      await page.getByRole('heading', { name: '現在の試験状態 · 満了' }).waitFor();
+      await button('確認画面を閉じる').click();
+      assert.equal(await edit.inputValue(), changed);
+      await button('変更を保存').click();
+      const after = await exportFile('PDF', 'page-after-expiry.pdf');
+      assert.notDeepEqual(after, pdf);
+      const afterSave = await read();
+      const fixed = afterSave.collectionRevisions[1];
+      const revised = afterSave.collectionRevisions[2];
+      assert.equal(revised.textSnapshot, changed);
+      assert.equal(revised.previousRevisionId, fixed.id);
+      assert.deepEqual(revised.mapSnapshot, fixed.mapSnapshot);
+      assert.deepEqual(revised.layout, fixed.layout);
+      assert.equal(afterSave.collectionExportReceipts.at(-1).collectionRevisionId, revised.id);
+      assert.equal(afterSave.aiRequestReceipts.length, 0);
+      console.log('PASS simulated expiry preserves input, saves a basic edit and regenerates the same PDF layout');
+    }
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

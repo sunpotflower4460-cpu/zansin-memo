@@ -24,6 +24,8 @@ const fixture = new FixtureProposalTransport({
   },
 });
 
+export function clearPreviewProposalCache(): void { fixture.clear(); }
+
 export async function reconcilePreviewProposals(writer: GardenV3Writer, cancelInterrupted = false): Promise<void> {
   if (cancelInterrupted) {
     for (const request of writer.getSnapshot().aiRequestReceipts.filter((entry) => entry.status === 'waiting')) {

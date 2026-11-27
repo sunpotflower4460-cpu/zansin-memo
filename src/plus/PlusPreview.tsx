@@ -10,10 +10,13 @@ import { isolatePlusPreview } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
 import type { AtelierRevision, MapReturnContext } from '../domain/plus/contracts';
 import { createAtelier } from '../domain/plus/atelier';
+import { currentEntitlement, plusRights } from '../domain/plus/entitlements';
 import { createId } from '../utils/ids';
 import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
 import { PlusAtelierScreen } from './PlusAtelierScreen';
 import { PlusCollectionScreen } from './PlusCollectionScreen';
+import { PlusDataScreen } from './PlusDataScreen';
+import { createPurchasePreview, PlusPurchasePreview } from './PlusPurchasePreview';
 import { PlusMapScreen } from './PlusMapScreen';
 import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
 import { clearWorkFileCache } from './workFiles';
@@ -29,6 +32,11 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const [atelier, setAtelier] = React.useState<string>();
   const [atelierList, setAtelierList] = React.useState(false);
   const [collection, setCollection] = React.useState<{ source?: AtelierRevision }>();
+  const [purchase, setPurchase] = React.useState(false);
+  const [data, setData] = React.useState(false);
+  const [purchaseModel] = React.useState(createPurchasePreview);
+  const purchaseState = React.useSyncExternalStore(purchaseModel.flow.subscribe, purchaseModel.flow.snapshot);
+  const rights = plusRights(currentEntitlement(purchaseState.evidence, Date.now(), true));
   const creating = React.useRef(false);
   const createAttempt = React.useRef<{ key: string; args: Parameters<typeof createAtelier>[0] }>(undefined);
   const returnFocus = React.useRef<() => void>(undefined);
@@ -58,7 +66,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   }
 
   async function openAtelier(centerSeedId?: string, materials: string[] = [], originNavigation?: MapReturnContext) {
-    if (creating.current) return;
+    if (creating.current || !rights.atelierAdvanced) return;
     const key = JSON.stringify([centerSeedId, materials, originNavigation?.origin]);
     if (createAttempt.current?.key !== key) createAttempt.current = { key, args: {
       id: createId(), branchId: createId(), centerSeedId, materials: materials.map((seedId) => ({ id: createId(), ref: { seedId, part: 'body' } })),
@@ -74,6 +82,11 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   }
 
   return <View style={plusStyles.full}>
+    {!purchase && !data && <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
+      <Actions><PlusButton label="利用権の動作を試す" onPress={() => setPurchase(true)} />
+        {!(reading || ai || atelier || atelierList || collection) && <PlusButton label="データを書き出す・削除する" onPress={() => setData(true)} />}</Actions>
+    </View>}
+    <View style={[plusStyles.full, (purchase || data) && { display: 'none' }]}>
     {store.seeds.length ? <View style={[plusStyles.full, (reading || ai || atelier || atelierList || collection) && { display: 'none' }]}>
       <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
         <Actions><PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} />
@@ -82,7 +95,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
       </View>
       <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
         onOpenCandidates={(seedId, scope, origin) => setAi({ seedId, scope, origin })}
-        onOpenAtelier={(seedId, materials, context) => void openAtelier(seedId, materials, context)} />
+        canArrange={rights.arrangeMap} onOpenAtelier={rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />
     </View> : <ScrollView contentContainerStyle={plusStyles.page}>
       <Heading title>考えの地図</Heading>
       <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
@@ -97,17 +110,20 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
         {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}
       </SectionCard>}
     </ScrollView>}
-    {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)}
-      onMaterial={(seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); }} />}
+    {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} allowRequest={rights.requestFixtureAi}
+      onMaterial={rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
     {atelierList && !atelier && <ScrollView contentContainerStyle={plusStyles.page}>
       <PlusButton label="地図に戻る" onPress={() => setAtelierList(false)} />
       <Heading title>アトリエ</Heading>
-      <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />
+      {rights.atelierAdvanced && <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />}
       {store.atelierProjects.map((project, i) => <PlusButton key={project.id} label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => setAtelier(project.id)} />)}
     </ScrollView>}
-    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier}
-      onBack={() => setAtelier(undefined)} onCreateWork={(source) => setCollection({ source })} /></View>}
-    {collection && <PlusCollectionScreen writer={writer} source={collection.source} onBack={() => setCollection(undefined)} />}
+    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={rights.atelierAdvanced}
+      onBack={() => setAtelier(undefined)} onCreateWork={rights.composeWork ? (source) => setCollection({ source }) : undefined} /></View>}
+    {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={rights.composeWork} onBack={() => setCollection(undefined)} />}
+    </View>
+    {purchase && <PlusPurchasePreview model={purchaseModel} onBack={() => setPurchase(false)} />}
+    {data && <PlusDataScreen writer={writer} onBack={() => setData(false)} onReset={() => { setData(false); setNotice(''); }} />}
   </View>;
 }
 

@@ -201,7 +201,7 @@ AIがなくてもこのPhaseの価値を確かめる。地図だけを先に「�
 | Phase 11.2 AI提案 | 無通信プレビュー、用途・材料確認、送信禁止・自動候補の設定、引用照合、個別採用・見送り、取消・利用枠の契約 | Linux・Node 24で原文変更、削除、撤回、重複、期限後のACKと期間更新を検証。Chromiumで候補から個別採用まで確認 | 未実施 | 実モデル・サーバー未接続 | 未実施 |
 | Phase 11.3 アトリエ | 開発プレビューの材料棚・下書き・案と版・一節固定・既存コマンドによる芽の採用 | Linux・Node 24で材料の変更、書込み失敗、二重採用を確認。Chromiumでは地図から再開・採用まで確認 | 未実施 | 短いAI提案は未実施 | 未実施 |
 | Phase 11.4 作品集 | 版から直接残すカードと1ページ、編集・版の復帰・PNG/PDF/テキスト書出し | Linux・Node 24とChromiumで、保存・由来の往復、PNG/PDF実ファイルを確認 | 未実施。iOS向け開発bundleの生成のみ | AI不要 | 未実施 |
-| Phase 11.5 購入 | 未実装 | 未実施 | 未実施 | Sandbox未実施 | 未実施 |
+| Phase 11.5 購入 | SDK境界、購入状態と利用権の開発fixture、終了後の既存データ・出力・削除の導線 | Node 24で期限・復元・並行操作。Chromiumで満了をまたぐ編集・PDF再出力 | 未実施 | StoreKit/Sandbox未実施 | 未実施 |
 | Phase 11.6 統合 | 未実装 | 未実施 | 未実施 | 未実施 | 未実施 |
 
 Phase 11.0 のv3実装は、正本と控えを単一writerで扱う開発用の全体書込み方式。現行 `useGarden` はv2を使う。`gardenV3.test.ts` の障害注入は架空データとメモリ上の保存先で実施。v1で日時が欠落した記録には既存必須フィールドの互換値としてUnix epochを使い、移行日を過去の日時にしない。v2の有効な原文と日時、見送り、削除済み材料を保持する。書出しからの取込・復元は未実装。
@@ -237,6 +237,12 @@ Linuxの同じChromium 156、390×844px、架空の64種・60接続（焦点の5
 `npm run check` 168件。`node scripts/e2e/plus-collection.js` で、Chromiumから960×1,200pxのPNGとA4縦の1ページPDFを別操作で取り出した。`pdfinfo` でページ数と寸法を計測し、PNGとPDFの実際の描画で日本語、絵文字、改行、余白、実線を確認した。PDFの紙面は画像で、文字選択用のファイルはテキスト形式を選べる。作品2件、芽0件、接続60件を確認した。開いていた版に戻る経路と、現在の版が進んだ場合に古い版を保持する契約、削除済み引用・接続の出力除外も確認した。
 
 Expo SDK 54の同梱バージョン表に合わせ、ネイティブは `react-native-view-shot` 4.0.3、Webは `html-to-image` を使用し、`pdf-lib` で同じ紙面をA4に収める。`expo export --dev --no-bytecode --platform ios` のbundle生成を確認した。実iPhoneの描画、共有シート、長い文章と複雑な図の出力品質は未確認。[Expoの画面キャプチャ資料](https://docs.expo.dev/versions/v54.0.0/sdk/captureRef/)
+
+### Phase 11.5 模擬状態と本人のデータ権利
+
+Linux・Node 24で、有効期限、キャッシュ期限、試用・猶予、時計の巻き戻り、承認待ち、未検証応答、同じ取引の再配信、復元対象なしと通信エラー、返金後の古い通知を確認。Chromiumでは `PLUS_TEST_EXPIRY=1 node scripts/e2e/plus-collection.js` で、作品の編集中に満了を反映し、文を失わず変更を保存し、同じ図・紙面設定でA4 PDFを再生成した。AI依頼は0件のまま。購入fixtureの状態はメモリにあり、PlusやAIの本番権限を付与しない。
+
+Expoの公式資料で `expo-iap` と `react-native-purchases`、Development Buildの要件を確認した。SDK採用は保留。App Store Connectの購読グループ・商品ID、正式の期間と価格、試用対象、署名検証、取引更新と復元、SDKのプライバシーをiPhoneとSandboxで確認する必要がある。StoreKitでは返金・取消済み商品は `currentEntitlements` に含まれない。期限・検証済みイベントとあわせて扱う。[Expoのアプリ内課金ガイド](https://docs.expo.dev/guides/in-app-purchases/)・[AppleのcurrentEntitlements](https://developer.apple.com/documentation/storekit/transaction/currententitlements)
 
 ## 10. 変更の出し方と完了報告
 

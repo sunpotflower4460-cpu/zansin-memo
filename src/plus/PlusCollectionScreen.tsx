@@ -26,7 +26,7 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
   const [selected, setSelected] = React.useState<CollectionReturnContext>();
   const [notice, setNotice] = React.useState('');
   const open = (work: CollectionRevision) => setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
-  if (composing && source && canCompose) return <Composer writer={writer} source={source} store={store} onCancel={onBack}
+  if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose}
     onSave={(work) => { setComposing(false); open(work); }} />;
 
   const context = selected && getWorkOnReturn(store, selected);
@@ -54,8 +54,8 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
   </ScrollView>;
 }
 
-function Composer({ writer, store, source, onCancel, onSave }: {
-  writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void;
+function Composer({ writer, store, source, onCancel, onSave, canCompose }: {
+  writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void; canCompose: boolean;
 }) {
   const [title, setTitle] = React.useState(source.title ?? '');
   const [text, setText] = React.useState(source.text);
@@ -89,7 +89,7 @@ function Composer({ writer, store, source, onCancel, onSave }: {
   }
 
   async function save() {
-    if (!preview || saving.current) return;
+    if (!preview || saving.current || !canCompose) return;
     saving.current = true; setBusy(true);
     try {
       const result = await writer.run(preview.command);
@@ -107,7 +107,8 @@ function Composer({ writer, store, source, onCancel, onSave }: {
       {used > height && <Text style={plusStyles.alert}>この内容は一枚に収まりません。文章や出典を調整できます。</Text>}
       {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
       <Actions><PlusButton label="内容を選び直す" disabled={busy} onPress={() => setPreview(undefined)} />
-        <PlusButton label="作品集に残す" primary disabled={busy} onPress={() => void save()} /></Actions>
+        <PlusButton label="作品集に残す" primary disabled={busy || !canCompose} onPress={() => void save()} /></Actions>
+      {!canCompose && <Text style={plusStyles.meta}>新しい作品を保存できる利用権の確認が必要です。編集中の文章は残っています。</Text>}
     </ScrollView>;
   }
 
@@ -118,6 +119,7 @@ function Composer({ writer, store, source, onCancel, onSave }: {
       <PlusButton label="地図と文章の1ページ" selected={page} onPress={() => setPage(true)} /></Actions>
     <PlusInput accessibilityLabel="作品の題名" placeholder="題名（任意）" value={title} onChangeText={setTitle} />
     <PlusInput accessibilityLabel="作品に残す文章" value={text} multiline onChangeText={setText} />
+    {!canCompose && <Text style={plusStyles.meta}>新しい作品の保存には利用権が必要です。入力中の文章はここで読めます。</Text>}
     <SectionCard>
       <Heading>紙面と出典</Heading>
       <Actions><PlusButton label="和紙色" selected={layout.paper === 'washi'} onPress={() => setLayout({ ...layout, paper: 'washi' })} />
