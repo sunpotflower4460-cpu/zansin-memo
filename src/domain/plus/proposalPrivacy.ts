@@ -1,31 +1,56 @@
 import type { AiOutboxEntry, AiRequestReceipt, ConnectionProposal, GardenStoreV3 } from './contracts';
-import { readSource, textDigest } from './sources';
+import { readSource, sameSourceRef, sourceLineage, textDigest, validTextRange } from './sources';
 
 export const permissionFor = (store: GardenStoreV3, seedId: string) => store.permissions.find((entry) => entry.seedId === seedId);
 
-type Unavailable = NonNullable<ConnectionProposal['unavailableReason']>;
-export function receiptIssue(store: GardenStoreV3, request: AiRequestReceipt): Unavailable | 'source_changed' | undefined {
+type ReceiptIssue = NonNullable<ConnectionProposal['unavailableReason']> | 'source_changed';
+type ConsentMaterial = { source: AiRequestReceipt['consent']['sources'][number]['source']; text: string };
+
+/** Reconstruct only the approved excerpts. No current or historical text bypasses these checks. */
+export function checkReceiptMaterials(store: GardenStoreV3, request: AiRequestReceipt): { issue: ReceiptIssue } | { materials: ConsentMaterial[] } {
   const seeds = new Map(store.seeds.map((seed) => [seed.id, seed]));
   const permissions = new Map(store.permissions.map((item) => [item.seedId, item]));
-  for (const id of request.processingRootSeedIds) {
+  const approvedRoots = new Set(request.processingRootSeedIds);
+  for (const id of approvedRoots) {
     const seed = seeds.get(id);
-    if (!seed) return 'source_missing';
-    if (seed.deletedAt) return 'source_deleted';
+    if (!seed) return { issue: 'source_missing' };
+    if (seed.deletedAt) return { issue: 'source_deleted' };
     const rule = permissions.get(id);
-    if (rule?.externalAi === 'deny' || (rule?.epoch ?? 0) !== request.permissionEpochs[id]) return 'consent_revoked';
+    if (rule?.externalAi === 'deny' || !Object.hasOwn(request.permissionEpochs, id) ||
+        (rule?.epoch ?? 0) !== request.permissionEpochs[id]) return { issue: 'consent_revoked' };
   }
+  const roots = new Set<string>();
+  const materials: ConsentMaterial[] = [];
   for (const item of request.consent.sources) {
-    if (!Object.hasOwn(request.permissionEpochs, item.source.ref.seedId) || !request.processingRootSeedIds.includes(item.source.ref.seedId) ||
-        (permissions.get(item.source.ref.seedId)?.epoch ?? 0) !== item.permissionEpoch) return 'consent_revoked';
-    if (item.selection === 'automatic_in_confirmed_scope' && permissions.get(item.source.ref.seedId)?.discovery === 'exclude') return 'scope_excluded';
-    const live = readSource(store.seeds, item.source.ref, item.versionMode === 'historical');
-    if (!live) return 'source_missing';
-    if (textDigest(live.text) !== item.liveTextDigestAtConfirmation) return 'source_changed';
-    if (item.versionMode === 'historical') {
-      const snapshot = store.sourceSnapshots.find(({ id }) => id === item.snapshotId);
-      if (!snapshot || textDigest(snapshot.text) !== item.source.textDigest) return 'source_missing';
+    const { ref } = item.source;
+    const rule = permissions.get(ref.seedId);
+    if (!approvedRoots.has(ref.seedId) || (rule?.epoch ?? 0) !== item.permissionEpoch) return { issue: 'consent_revoked' };
+    if (item.selection === 'automatic_in_confirmed_scope' && rule?.discovery === 'exclude') return { issue: 'scope_excluded' };
+    const historical = item.versionMode === 'historical';
+    const live = readSource(store.seeds, ref, historical);
+    if (!live) return { issue: 'source_missing' };
+    const liveDigest = textDigest(live.text);
+    if (liveDigest !== item.liveTextDigestAtConfirmation) return { issue: 'source_changed' };
+    const snapshot = historical ? store.sourceSnapshots.find(({ id }) => id === item.snapshotId) : undefined;
+    if (historical && (!snapshot || !sameSourceRef(snapshot.source.ref, ref) || snapshot.source.updatedAt !== item.source.updatedAt)) {
+      return { issue: 'source_missing' };
     }
+    const whole = snapshot?.text ?? live.text;
+    if ((snapshot ? textDigest(whole) : liveDigest) !== item.source.textDigest) return { issue: 'source_changed' };
+    const lineage = snapshot?.lineage ?? (ref.part === 'body' ? { status: 'known', rootSeedIds: [ref.seedId] } : sourceLineage(store.seeds, ref));
+    if (lineage.status !== 'known' || !lineage.rootSeedIds.includes(ref.seedId) ||
+        lineage.rootSeedIds.some((id) => !approvedRoots.has(id))) return { issue: 'consent_revoked' };
+    lineage.rootSeedIds.forEach((id) => roots.add(id));
+    const { start, end } = item.range ?? { start: 0, end: whole.length };
+    if (!validTextRange(whole, start, end)) return { issue: 'result_invalid' };
+    materials.push({ source: item.source, text: whole.slice(start, end) });
   }
+  return roots.size === approvedRoots.size ? { materials } : { issue: 'consent_revoked' };
+}
+
+export function receiptIssue(store: GardenStoreV3, request: AiRequestReceipt): ReceiptIssue | undefined {
+  const checked = checkReceiptMaterials(store, request);
+  return 'issue' in checked ? checked.issue : undefined;
 }
 
 export function queueAiControl(store: GardenStoreV3, request: AiRequestReceipt, kind: AiOutboxEntry['kind'], at: string) {

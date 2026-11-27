@@ -23,7 +23,7 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
       // 「続けて書く」でカードが閉じる前に確かめる。
       ok('saved-card shown after save (stayed on write screen)', await p.getByText('保存しました').first().isVisible());
     }
-    await p.getByRole('button', { name: '続けて書く' }).click().catch(() => {});
+    await p.getByRole('button', { name: '続けて書く' }).click();
   }
   let st = await store();
   ok('D: 3 memos saved, no connections, no categories', st.seeds.length === 3 && st.connections.length === 0 && st.seeds.every((s) => s.tags.length === 0), `seeds=${st.seeds.length}`);
@@ -43,7 +43,7 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
   await p.screenshot({ path: `${RAW}/p102-map.png`, fullPage: false });
 
   // 3) 詳細から保存済みのメモ(C)を検索してつなぐ
-  await p.getByLabel('保存済みのメモを探して、つなげる').click(); await p.waitForTimeout(400);
+  await p.getByLabel('選んでつなぐ。保存したメモから探します').click(); await p.waitForTimeout(400);
   await p.getByLabel('つなぐ種を探す').fill('友人');
   await p.getByText('離れた友人と', { exact: false }).first().click(); await p.waitForTimeout(500);
   await p.getByLabel('選び終わる').click(); await p.waitForTimeout(400);
@@ -56,7 +56,7 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
   await p.screenshot({ path: `${RAW}/p102-list-view.png` });
 
   // 5) B から見てもAが見える（どちら側からも）
-  await p.getByLabel(/このメモを中心に見る。写真に短い言葉/).click(); await p.waitForTimeout(600);
+  await p.getByLabel(/このメモを開く。写真に短い言葉/).click(); await p.waitForTimeout(600);
   ok('from B the trail row appears and A is visible', (await p.getByText('ひとつ前のつながりへ').count()) > 0 && (await p.getByText('散歩で撮った写真が').count()) > 0);
   await p.getByLabel(/ひとつ前のつながりへ/).click(); await p.waitForTimeout(500);
   ok('back to previous center works', (await p.getByText('ひとつ前のつながりへ').count()) === 0);
@@ -67,7 +67,7 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
   ok('unlink keeps both memos and the other connection', st.connections.length === 1 && st.seeds.length === 3);
 
   // 7) メモを足す(中心に新規): 一回の保存で メモ+接続
-  await p.getByLabel('このメモにつなげて、新しいメモを足す').click(); await p.waitForTimeout(400);
+  await p.getByLabel('書いてつなぐ。新しいメモを足します').click(); await p.waitForTimeout(400);
   await p.getByLabel('メモの本文').fill('小さな近況便りを作れそう');
   await p.getByRole('button', { name: '保存してつなぐ' }).click(); await p.waitForTimeout(900);
   st = await store();
@@ -92,5 +92,6 @@ const ok = (name, cond, extra='') => { results.push([cond ? 'PASS' : 'FAIL', nam
 
   for (const [r, n, e] of results) console.log(r, n, e);
   console.log('console errors:', errs.length ? errs : 'none');
+  if (errs.length || results.some(([result]) => result === 'FAIL')) process.exitCode = 1;
   await b.close();
 })();

@@ -1,7 +1,8 @@
 const { chromium } = require('playwright');
 const BASE = process.env.E2E_URL || 'http://localhost:8099/';
 const RAW = process.env.E2E_OUT || require('os').tmpdir();
-const ok = (name, cond, extra = '') => console.log(cond ? 'PASS' : 'FAIL', name, extra);
+const ok = (name, cond, extra = '') => { console.log(cond ? 'PASS' : 'FAIL', name, extra); if (!cond) process.exitCode = 1; };
+const promise = /思いつきを残し、つなげて、\s*できそうなことへ。/;
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 900 }, deviceScaleFactor: 2, locale: 'ja-JP' });
@@ -14,7 +15,11 @@ const ok = (name, cond, extra = '') => console.log(cond ? 'PASS' : 'FAIL', name,
   await p.goto(BASE);
   await p.getByRole('button', { name: /メモを書く/ }).first().waitFor({ timeout: 8000 });
   ok('first screen reachable quickly without any forced tutorial', Date.now() - t0 < 6000, `${Date.now() - t0}ms`);
-  ok('empty home shows the one-sentence promise + 3 lines', (await p.getByText('思いつきを残し、つなげて、できそうなことへ。').count()) === 1 && (await p.getByText('まとまっていない一言も、種になります。').count()) === 1);
+  await p.getByRole('heading', { name: promise }).waitFor();
+  ok('empty home explains what writing, linking and sprouts mean',
+    (await p.getByText(/まとまっていない一言も、\s*種になります。/).count()) === 1 &&
+    (await p.getByText(/「関係がありそう」と思った\s*メモを、あとからつなげます。/).count()) === 1 &&
+    (await p.getByText(/できそうなことが見えたら、\s*芽として残します。/).count()) === 1);
   ok('empty home does NOT show empty cards (今日の種/最近の種/あなたの畑)', (await p.getByText('今日の種').count()) === 0 && (await p.getByText('最近の種').count()) === 0 && (await p.getByText('あなたの畑').count()) === 0);
   await p.screenshot({ path: `${RAW}/p104-empty-home.png` });
 
@@ -31,12 +36,12 @@ const ok = (name, cond, extra = '') => console.log(cond ? 'PASS' : 'FAIL', name,
   await p.getByLabel(/選んでいません。例のメモ。散歩で撮った/).click();
   await p.getByLabel(/選んでいません。例のメモ。写真に短い/).click();
   await p.getByRole('button', { name: '2つをつなげる' }).click(); await p.waitForTimeout(500);
-  ok('practice step 2: map shows the connected sample memo', (await p.getByText('つながっているメモ 1件').count()) === 1);
-  await p.getByLabel('保存済みのメモを探して、つなげる').click(); await p.waitForTimeout(300);
+  ok('practice step 2: map shows the connected sample memo', await p.getByRole('heading', { name: 'つながり 1件' }).isVisible());
+  await p.getByLabel('選んでつなぐ。保存したメモから探します').click(); await p.waitForTimeout(300);
   await p.getByText('離れた友人と', { exact: false }).first().click(); await p.getByLabel('選び終わる').click(); await p.waitForTimeout(300);
   await p.screenshot({ path: `${RAW}/p104-practice-2.png` });
-  ok('practice step 2: second sample connected', (await p.getByText('つながっているメモ 2件').count()) === 1);
-  await p.getByRole('button', { name: 'ここから芽をつくる' }).click(); await p.waitForTimeout(500);
+  ok('practice step 2: second sample connected', await p.getByRole('heading', { name: 'つながり 2件' }).isVisible());
+  await p.getByRole('button', { name: 'ここに書いて芽にする' }).click(); await p.waitForTimeout(500);
   await p.getByLabel('完成例を入力欄に入れて見る').click();
   await p.getByRole('button', { name: '芽として保存' }).click(); await p.waitForTimeout(600);
   ok('practice done: sprout + materials are shown, closing reminder present', (await p.getByText('数は決まっていません').count()) >= 1 && (await p.getByText('友人に送る近況便りが作れそう').count()) >= 1);
@@ -51,7 +56,7 @@ const ok = (name, cond, extra = '') => console.log(cond ? 'PASS' : 'FAIL', name,
   // 再体験: 実データがあっても設定から開ける。実データを増減させない
   await p.getByLabel('メモの本文').fill('実際の最初のメモ'); await p.getByRole('button', { name: '保存する' }).click(); await p.waitForTimeout(800);
   await p.getByLabel('ホームタブ').click(); await p.waitForTimeout(500);
-  ok('with real data the normal home shows (no forced tutorial / empty cards)', (await p.getByText('今日の種').count()) >= 1 && (await p.getByText('思いつきを残し、つなげて、できそうなことへ。').count()) === 0);
+  ok('with real data the normal home shows (no forced tutorial / empty cards)', (await p.getByText('今日の種').count()) >= 1 && (await p.getByText(promise).count()) === 0);
   await p.getByLabel('設定・バックアップ・サポート').click(); await p.waitForTimeout(300);
   await p.getByRole('button', { name: /例で使い方を見る/ }).first().click(); await p.waitForTimeout(500);
   ok('re-experience available from settings', (await p.getByText('例（実際のメモではありません）').count()) === 1);
@@ -59,5 +64,6 @@ const ok = (name, cond, extra = '') => console.log(cond ? 'PASS' : 'FAIL', name,
   const st2 = await store();
   ok('real data unchanged by re-experience (1 memo)', st2.seeds.length === 1 && st2.seeds[0].body === '実際の最初のメモ');
   console.log('console errors:', errs.length ? errs : 'none');
+  if (errs.length) process.exitCode = 1;
   await b.close();
 })();
