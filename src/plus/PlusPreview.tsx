@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as React from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { SectionCard } from '../components/SectionCard';
 import { loadGardenV3 } from '../data/gardenV3Storage';
 import { GardenV3Writer, type PlusCommand } from '../data/gardenV3Writer';
 import { buildPlusExample } from '../data/plusExample';
-import { isolatePlusPreview } from '../data/plusPreviewStorage';
+import { isolatePlusPreview, plusPreviewWriterLock, previewTabStorage } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
 import type { AtelierRevision, MapReturnContext } from '../domain/plus/contracts';
 import { createAtelier } from '../domain/plus/atelier';
@@ -21,7 +21,6 @@ import { PlusMapScreen } from './PlusMapScreen';
 import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
 import { clearWorkFileCache } from './workFiles';
 
-const storage = isolatePlusPreview(AsyncStorage);
 const exampleGroups = buildPlusExample(8).displayGroups;
 const enabled = {
   map: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_MAP !== '0',
@@ -139,25 +138,42 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
 
 export function PlusPreview() {
   const [writer, setWriter] = React.useState<GardenV3Writer>();
-  const [failed, setFailed] = React.useState(false);
+  const [failure, setFailure] = React.useState<'busy' | 'storage'>();
   const [attempt, setAttempt] = React.useState(0);
+  const locks = Platform.OS === 'web' ? globalThis.navigator?.locks : undefined;
+  const tabOnly = Platform.OS === 'web' && !locks;
   React.useEffect(() => {
     let active = true;
-    clearWorkFileCache();
-    void loadGardenV3(storage).then((result) => {
+    let release!: () => void;
+    const untilClosed = new Promise<void>((resolve) => { release = resolve; });
+    async function boot() {
+      const storage = isolatePlusPreview(tabOnly ? previewTabStorage() : AsyncStorage, () => active);
+      clearWorkFileCache();
+      const result = await loadGardenV3(storage);
+      if (!active) return false;
+      if (result.status !== 'ready') { setFailure('storage'); return false; }
+      setWriter(new GardenV3Writer(storage, result.store, result));
+      return true;
+    }
+    // Hold the lock from the first read until this writer is closed.
+    const opening = locks ? locks.request(plusPreviewWriterLock, { ifAvailable: true }, async (lock) => {
       if (!active) return;
-      if (result.status === 'ready') setWriter(new GardenV3Writer(storage, result.store, result));
-      else setFailed(true);
-    });
-    return () => { active = false; };
-  }, [attempt]);
+      if (!lock) { setFailure('busy'); return; }
+      if (await boot()) await untilClosed;
+    }) : boot();
+    void opening.catch(() => { if (active) setFailure('storage'); });
+    return () => { active = false; release(); };
+  }, [attempt, locks, tabOnly]);
   return <SafeAreaProvider><SafeAreaView style={plusStyles.paper}>
     <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
       <Text style={plusStyles.meta}>Kizashi Plus 開発プレビュー · 例のデータ</Text>
+      {tabOnly && writer && <Text style={plusStyles.meta}>例の庭はこのタブを開いている間だけ使えます。</Text>}
     </View>
     {writer ? <PreviewGarden writer={writer} /> : <View style={plusStyles.page}>
-      {failed ? <><Text accessibilityRole="alert" style={plusStyles.alert}>例の庭の保存データを読み込めませんでした。</Text>
-        <PlusButton label="読み込みをやり直す" onPress={() => { setFailed(false); setAttempt((value) => value + 1); }} /></>
+      {failure ? <><Text accessibilityRole="alert" style={plusStyles.alert}>{failure === 'busy'
+        ? '別のタブで例の庭が開いています。そのタブを閉じてから、ここで読み込めます。'
+        : '例の庭の保存データを読み込めませんでした。'}</Text>
+        <PlusButton label="読み込みをやり直す" onPress={() => { setFailure(undefined); setAttempt((value) => value + 1); }} /></>
         : <ActivityIndicator accessibilityLabel="例の庭を読み込み中" />}
     </View>}
   </SafeAreaView></SafeAreaProvider>;
