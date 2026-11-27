@@ -3,16 +3,13 @@ import { withCoreCommand } from '../../data/gardenV3Writer';
 import { promoteToSprout } from '../gardenCommands';
 import type { Seed } from '../types';
 import type { AtelierDraft, AtelierProject, AtelierRevision, AtelierSuggestion, GardenStoreV3, MapReturnContext, SourceRef, SourceSnapshot } from './contracts';
-import { mergeLineage, readSource, snapshotSource, textDigest } from './sources';
+import { isTextBoundary, mergeLineage, readSource, sameSourceRef, snapshotSource, textDigest, validTextRange } from './sources';
 
 type DraftTarget = { projectId: string; branchId: string; expected: number };
 type Pin = AtelierDraft['pinnedExcerpts'][number];
 
 export const activeDraft = (store: GardenStoreV3, project: AtelierProject) =>
   store.atelierDrafts.find((item) => item.projectId === project.id && item.branchId === project.activeBranchId);
-
-const sameRef = (a: SourceRef, b: SourceRef) => a.seedId === b.seedId && a.part === b.part &&
-  (a.part !== 'synthesis' || (b.part === 'synthesis' && a.synthesisId === b.synthesisId));
 
 export function materialState(seeds: readonly Seed[], snapshot: SourceSnapshot | undefined) {
   if (!snapshot) return 'missing';
@@ -25,7 +22,7 @@ export function materialState(seeds: readonly Seed[], snapshot: SourceSnapshot |
 export function captureMaterial(store: GardenStoreV3, ref: SourceRef, id: string, at: string) {
   const snapshot = snapshotSource(store.seeds, ref, id, at);
   if (!snapshot) return undefined;
-  const existing = store.sourceSnapshots.find((item) => sameRef(item.source.ref, ref) && item.text === snapshot.text && item.title === snapshot.title &&
+  const existing = store.sourceSnapshots.find((item) => sameSourceRef(item.source.ref, ref) && item.text === snapshot.text && item.title === snapshot.title &&
     item.lineage.status === snapshot.lineage.status && JSON.stringify(item.lineage.rootSeedIds) === JSON.stringify(snapshot.lineage.rootSeedIds));
   if (existing) return { snapshot: existing, snapshots: store.sourceSnapshots };
   if (store.sourceSnapshots.some((item) => item.id === id)) return undefined;
@@ -50,7 +47,7 @@ export function createAtelier(args: { id: string; branchId: string; centerSeedId
     let working = store;
     const selected: SourceSnapshot[] = [];
     for (const material of args.materials) {
-      if (selected.some((snapshot) => sameRef(snapshot.source.ref, material.ref))) continue;
+      if (selected.some((snapshot) => sameSourceRef(snapshot.source.ref, material.ref))) continue;
       const result = captureMaterial(working, material.ref, material.id, args.at);
       if (!result) return { rejected: '材料の原文を確認できません' };
       working = { ...working, sourceSnapshots: result.snapshots };
@@ -106,10 +103,18 @@ export function changedRange(before: string, after: string) {
 export function movePins(before: string, after: string, pins: Pin[]): Pin[] | undefined {
   if (before === after || !pins.length) return pins;
   const { start, end, afterEnd } = changedRange(before, after);
-  const delta = afterEnd - end;
+  let earliest = start;
+  // Repeated text can put the same edit on either side of the pinned occurrence.
+  const removed = end - start;
+  const added = afterEnd - start;
+  while (earliest > 0 && before[earliest + removed - 1] === after[earliest + added - 1]) earliest--;
+  return movePinsPastEdit(after, pins, earliest, end, afterEnd - end);
+}
+
+function movePinsPastEdit(text: string, pins: Pin[], start: number, end: number, delta: number): Pin[] | undefined {
   if (pins.some((pin) => start < pin.end && end > pin.start)) return undefined;
   const moved = pins.map((pin) => end <= pin.start ? { ...pin, start: pin.start + delta, end: pin.end + delta } : pin);
-  return moved.every((pin) => after.slice(pin.start, pin.end) === pin.text) ? moved : undefined;
+  return moved.every((pin) => text.slice(pin.start, pin.end) === pin.text) ? moved : undefined;
 }
 
 export function saveAtelierText(target: DraftTarget, text: string, operationId: string, at: string): PlusCommand {
@@ -126,7 +131,7 @@ export function trackPin(args: { target: DraftTarget; id: string; at: string; ra
     const pins = draft.pinnedExcerpts;
     if (!args.range) return replaceDraft(store, draft, { ...draft, pinnedExcerpts: pins.filter((pin) => pin.id !== args.id), editRevision: draft.editRevision + 1, updatedAt: args.at });
     const { start, end } = args.range;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > draft.text.length || start >= end ||
+    if (!validTextRange(draft.text, start, end) ||
         pins.some((pin) => start < pin.end && end > pin.start)) return { rejected: '固定する一節を選んでください' };
     const pin = { id: args.id, start, end, text: draft.text.slice(start, end) };
     return replaceDraft(store, draft, { ...draft, pinnedExcerpts: [...pins, pin], editRevision: draft.editRevision + 1, updatedAt: args.at });
@@ -243,11 +248,10 @@ export function insertAtelierExample(target: DraftTarget, args: { id: string; st
     if (!suggestion || !atelierExampleCurrent(store, draft, suggestion)) return { rejected: '下書きまたは材料が変わりました。案を確認し直してください' };
     const start = args.append ? draft.text.length : args.start;
     const end = args.append ? draft.text.length : args.end;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || end > draft.text.length ||
-        draft.pinnedExcerpts.some((pin) => start < pin.end && end > pin.start)) return { rejected: '固定した一節の外に入れる場所を選んでください' };
+    if (start > end || !isTextBoundary(draft.text, start) || !isTextBoundary(draft.text, end)) return { rejected: '案を入れる位置を選んでください' };
     const added = args.append && draft.text.length ? `\n${suggestion.content}` : suggestion.content;
     const text = draft.text.slice(0, start) + added + draft.text.slice(end);
-    const pinnedExcerpts = movePins(draft.text, text, draft.pinnedExcerpts);
+    const pinnedExcerpts = movePinsPastEdit(text, draft.pinnedExcerpts, start, end, added.length - (end - start));
     if (!pinnedExcerpts) return { rejected: '固定した一節の外に入れる場所を選んでください' };
     return replaceDraft({ ...store, atelierSuggestions: store.atelierSuggestions.map((item) => item === suggestion
       ? { ...item, decision: 'inserted', insertedAt: args.at } : item) }, draft, { ...draft, text, pinnedExcerpts,
