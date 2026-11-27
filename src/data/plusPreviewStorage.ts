@@ -1,9 +1,9 @@
 import type { StorageLike } from './gardenStorage';
 
-const prefix = 'kizashi-plus-preview:';
-export const plusPreviewWriterLock = `${prefix}writer`;
+export const plusPreviewPrefix = 'kizashi-plus-preview:';
+export const plusPreviewWriterLock = `${plusPreviewPrefix}writer`;
 
-export function isolatePlusPreview(storage: StorageLike, isOpen = () => true): StorageLike {
+export function scopeStorage(storage: StorageLike, prefix: string, isOpen = () => true): StorageLike {
   const requireOpen = () => { if (!isOpen()) throw new Error('Plus preview storage was closed'); };
   const key = (value: string) => prefix + value;
   return {
@@ -18,7 +18,7 @@ export function isolatePlusPreview(storage: StorageLike, isOpen = () => true): S
   };
 }
 
-export function previewTabStorage(): StorageLike {
+export function browserTabStorage(): StorageLike {
   const tab = window.sessionStorage;
   return {
     getItem: async (key) => tab.getItem(key),

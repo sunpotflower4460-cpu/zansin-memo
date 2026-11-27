@@ -71,3 +71,17 @@ PLUS_TEST_EXPIRY=1 node scripts/e2e/plus-collection.js
 プレビューの保存先は `kizashi-plus-preview:` で始まる別の領域。開発ビルドでは `EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_AI=0` などで機能への入口を個別に閉じられる。接尾辞は `MAP`、`AI`、`ATELIER`、`COLLECTION`、`COMMERCE`。保存済みの文章・作品の閲覧と持ち出しは引き続き利用できる。
 
 Webでは保存するタブが一つずつ切り替わる。`plus-storage.js` は同一ブラウザー領域の二つのタブで引き継ぎと全削除を確認する。Web Locksが使えない場合は、各タブ専用の一時領域で例を試せる。
+
+## 保存計測画面
+
+通常・Plusのプレビューとは別の開発画面を起動する。ブラウザー試験は軽い条件で約60秒かかる。
+
+```sh
+EXPO_PUBLIC_KIZASHI_PLUS_STORAGE_MEASURE=1 npx expo start --web --port 8103 --offline
+```
+
+```sh
+node scripts/e2e/plus-storage-measure.js
+```
+
+アドレスを変えた場合は `PLUS_STORAGE_MEASURE_URL` を設定する。実iPhoneでの起動と照合方法は [保存方式の判断記録](../../docs/plus-storage-adr.md#保存計測を実行できる開発画面) を参照。

@@ -6,7 +6,7 @@ import { SectionCard } from '../components/SectionCard';
 import { loadGardenV3 } from '../data/gardenV3Storage';
 import { GardenV3Writer, type PlusCommand } from '../data/gardenV3Writer';
 import { buildPlusExample } from '../data/plusExample';
-import { isolatePlusPreview, plusPreviewWriterLock, previewTabStorage } from '../data/plusPreviewStorage';
+import { browserTabStorage, plusPreviewPrefix, plusPreviewWriterLock, scopeStorage } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
 import type { AtelierRevision, MapReturnContext } from '../domain/plus/contracts';
 import { createAtelier } from '../domain/plus/atelier';
@@ -147,7 +147,7 @@ export function PlusPreview() {
     let release!: () => void;
     const untilClosed = new Promise<void>((resolve) => { release = resolve; });
     async function boot() {
-      const storage = isolatePlusPreview(tabOnly ? previewTabStorage() : AsyncStorage, () => active);
+      const storage = scopeStorage(tabOnly ? browserTabStorage() : AsyncStorage, plusPreviewPrefix, () => active);
       clearWorkFileCache();
       const result = await loadGardenV3(storage);
       if (!active) return false;

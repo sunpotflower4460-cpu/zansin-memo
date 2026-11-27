@@ -275,6 +275,10 @@ Expoの公式資料で `expo-iap` と `react-native-purchases`、Development Bui
 
 `npm audit --omit=dev` は既存の依存関係で28件を報告した。重大度の内訳にはcritical 2件、high 11件を含む。Expo SDK 54の互換性と、公開アプリ・ビルド時に使う依存を照合して、更新を別途検証する。
 
+### Phase 11.0 実機試験に向けた計測の準備
+
+Nodeの計測と同一の架空データを使い、v3 writerの下書き更新を120回通す開発用の計測画面を追加した。Chromium 156の50件では正本と控えが一致し、再読込で最後の入力を確認。5,000件・約25.7MBはブラウザーの容量不足で停止し、先に確定した50件を保持した。`npm run check` は179件合格。開発用JS bundleをiOS・Android向けに生成し、両開発フラグを付けた通常Webのexportは直前の通常Webと同じJSだった。実iPhoneでの保存・復旧・入力描画・ピークメモリは未確認。[計測値と実機での再実行手順](plus-storage-adr.md#保存計測を実行できる開発画面)
+
 ### 販売前の未完了条件
 
 | 条件 | 残る作業 |
