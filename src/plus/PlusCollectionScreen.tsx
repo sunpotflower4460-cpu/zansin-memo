@@ -10,13 +10,14 @@ import { readSource } from '../domain/plus/sources';
 import { showConfirm } from '../utils/confirm';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
-import { Actions, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
+import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { PlusWorkPaper, paperMap } from './PlusWorkPaper';
 import { useBufferedText } from './useBufferedText';
 import { makeWorkFile, makeWorkText } from './workFiles';
 import type { GeneratedWorkFile } from './workFileTypes';
 
 const now = () => new Date().toISOString();
+const missingWork = '開いていた作品の版を確認できません';
 
 export function PlusCollectionScreen({ writer, source, onBack, canCompose = true }: {
   writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose?: boolean;
@@ -25,14 +26,20 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
   const [composing, setComposing] = React.useState(Boolean(source));
   const [selected, setSelected] = React.useState<CollectionReturnContext>();
   const [notice, setNotice] = React.useState('');
-  const open = (work: CollectionRevision) => setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
+  const context = selected && getWorkOnReturn(store, selected);
+  const lostVersion = Boolean(selected && !context);
+  const showMissing = React.useCallback(() => { setSelected(undefined); setNotice(missingWork); }, []);
+  React.useEffect(() => { if (lostVersion) showMissing(); }, [lostVersion, showMissing]);
+  const open = (work: CollectionRevision) => {
+    setNotice('');
+    setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
+  };
   if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose}
     onSave={(work) => { setComposing(false); open(work); }} />;
 
-  const context = selected && getWorkOnReturn(store, selected);
   if (context && selected) return <WorkView key={context.revision.id} content={workContent(store, context.revision)}
-    context={selected} newer={context.newer} store={store} writer={writer} onList={() => setSelected(undefined)}
-    onRevision={open} onMissing={() => { setSelected(undefined); setNotice('開いていた作品の版を確認できません'); }} />;
+    context={selected} newer={context.newer} store={store} writer={writer} onList={() => { setSelected(undefined); setNotice(''); }}
+    onRevision={open} onMissing={showMissing} />;
 
   return <ScrollView contentContainerStyle={plusStyles.page}>
     <PlusButton label={source ? 'アトリエに戻る' : '地図に戻る'} onPress={onBack} />
@@ -162,6 +169,10 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   const paperRef = React.useRef<View>(null);
   const scroller = React.useRef<ScrollView>(null);
   const scroll = React.useRef(0);
+  const readerBack = React.useRef<View>(null);
+  const listBack = React.useRef<View>(null);
+  const materialButtons = React.useRef(new Map<string, View>());
+  const returning = React.useRef<typeof read>(undefined);
   const dimension = useWindowDimensions();
   const width = Math.max(210, Math.min(560, dimension.width - 70));
   const height = Math.round(width * (work.kind === 'word_card' ? 1.25 : Math.SQRT2));
@@ -175,6 +186,21 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   React.useEffect(() => { setFile(undefined); }, [key]);
   React.useEffect(() => () => prepared?.file.discard(), [prepared]);
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  React.useEffect(() => {
+    if (read) {
+      const frame = requestAnimationFrame(() => focusControl(readerBack.current));
+      return () => cancelAnimationFrame(frame);
+    }
+    const prior = returning.current;
+    if (prior) {
+      const frame = requestAnimationFrame(() => {
+        scroller.current?.scrollTo({ y: prior.context.scrollOffset, animated: false });
+        focusControl(materialButtons.current.get(`${prior.snapshotId}:${prior.mode}`) ?? listBack.current);
+        returning.current = undefined;
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [read]);
 
   async function output(format: 'paper' | 'text') {
     if (outputBusy.current || (format === 'paper' && (overflow || !paperRef.current || !used))) return;
@@ -205,9 +231,15 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   function closeMaterial() {
     if (!read) return;
     if (!getWorkOnReturn(writer.getSnapshot(), read.context)) { onMissing(); return; }
-    const position = read.context.scrollOffset;
+    returning.current = read;
     setRead(undefined);
-    requestAnimationFrame(() => scroller.current?.scrollTo({ y: position, animated: false }));
+  }
+  function materialControl(snapshotId: string, mode: 'current' | 'historical') {
+    const key = `${snapshotId}:${mode}`;
+    return (control: View | null) => {
+      if (control) materialButtons.current.set(key, control);
+      else materialButtons.current.delete(key);
+    };
   }
   const snapshot = read && store.sourceSnapshots.find((entry) => entry.id === read.snapshotId);
   const live = snapshot && readSource(store.seeds, snapshot.source.ref, true);
@@ -218,7 +250,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   return <View style={plusStyles.full}>
     <View style={[plusStyles.full, read && { display: 'none' }]}><ScrollView ref={scroller} contentContainerStyle={plusStyles.page}
       onScroll={(event) => { scroll.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={48}>
-      <PlusButton label="作品集に戻る" onPress={onList} />
+      <PlusButton label="作品集に戻る" focusRef={listBack} onPress={onList} />
       <Heading title>{work.title || '題名のない作品'}</Heading>
       {newer && <PlusButton label="新しい作品版を開く" onPress={() => {
         const item = store.collectionItems.find(({ id }) => id === work.itemId);
@@ -239,8 +271,8 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       {linkedMaterials.length > 0 && <SectionCard><Heading>作品の材料</Heading>
         {linkedMaterials.map((entry) => <View key={entry.id} style={plusStyles.rule}>
           <Text style={plusStyles.text}>{entry.title || '題名のない材料'}</Text>
-          <Actions><PlusButton label="作ったときの材料を見る" onPress={() => openMaterial(entry, 'historical')} />
-            <PlusButton label="現在の原文を開く" onPress={() => openMaterial(entry, 'current')} /></Actions>
+          <Actions><PlusButton label="作ったときの材料を見る" focusRef={materialControl(entry.id, 'historical')} onPress={() => openMaterial(entry, 'historical')} />
+            <PlusButton label="現在の原文を開く" focusRef={materialControl(entry.id, 'current')} onPress={() => openMaterial(entry, 'current')} /></Actions>
         </View>)}
       </SectionCard>}
       {isCurrent && <PlusButton label="作品を削除する" onPress={() => showConfirm('作品を削除しますか？', '選んだ作品とその版を作品集から削除します。', [
@@ -248,7 +280,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
           if (result.ok) onList(); else setNotice('作品を削除できませんでした');
         }) }])} />}
     </ScrollView></View>
-    {read && <ScrollView contentContainerStyle={plusStyles.page}><PlusButton label="開いていた作品版に戻る" onPress={closeMaterial} />
+    {read && <ScrollView contentContainerStyle={plusStyles.page}><PlusButton label="開いていた作品版に戻る" focusRef={readerBack} onPress={closeMaterial} />
       <Heading title>{read.mode === 'current' ? '現在の原文' : '作ったときの材料'}</Heading>
       {snapshot && live ? <SectionCard><Heading>{(read.mode === 'current' ? live.title : snapshot.title) ?? '題名のない材料'}</Heading>
         {materialState(store.seeds, snapshot) === 'changed' && <Text style={plusStyles.meta}>作品を作ったときから原文に更新があります</Text>}

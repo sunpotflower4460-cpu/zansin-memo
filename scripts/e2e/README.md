@@ -58,6 +58,7 @@ EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW=1 npx expo start --web --port 8101 --offline
 
 ```sh
 node scripts/e2e/plus-integration.js
+node scripts/e2e/plus-storage.js
 node --import tsx scripts/e2e/plus-map.js
 PLUS_FIRST=1 node --import tsx scripts/e2e/plus-map.js
 node scripts/e2e/plus-proposals.js
@@ -68,3 +69,5 @@ PLUS_TEST_EXPIRY=1 node scripts/e2e/plus-collection.js
 `FREE_E2E_URL` と `PLUS_E2E_URL` で配信先を変更できる。作品の検証ファイルは `PLUS_EXPORT_DIR` に出力される。指定がなければ一時ディレクトリ下の `kizashi-plus-files` に出力する。失敗は非ゼロの終了コードになる。
 
 プレビューの保存先は `kizashi-plus-preview:` で始まる別の領域。開発ビルドでは `EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_AI=0` などで機能への入口を個別に閉じられる。接尾辞は `MAP`、`AI`、`ATELIER`、`COLLECTION`、`COMMERCE`。保存済みの文章・作品の閲覧と持ち出しは引き続き利用できる。
+
+Webでは保存するタブが一つずつ切り替わる。`plus-storage.js` は同一ブラウザー領域の二つのタブで引き継ぎと全削除を確認する。Web Locksが使えない場合は、各タブ専用の一時領域で例を試せる。
