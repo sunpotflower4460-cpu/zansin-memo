@@ -47,15 +47,17 @@ type MapProps = {
   store: GardenStoreV3; commit: (command: PlusCommand) => Promise<CommitResult>; initialGroups: MapView['displayGroups'];
   onOpenSeed: (seedId: string, onReturn: () => void) => void; canArrange?: boolean;
   onOpenCandidates?: (seedId: string, scope: string[], context: MapReturnContext) => void;
+  onOpenAtelier?: (seedId: string, materials: string[], context: MapReturnContext) => void;
 };
 
-export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates }: MapProps) {
+export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier }: MapProps) {
   const [view, setView] = React.useState<MapView>(() => ({ ...newMapView(createId(), now()), displayGroups: initialGroups }));
   const [scopeMenu, setScopeMenu] = React.useState(false);
   const [layoutMenu, setLayoutMenu] = React.useState(false);
   const [name, setName] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
   const [marked, setMarked] = React.useState<string[]>([]);
+  const [materials, setMaterials] = React.useState<string[]>([]);
   const [temporary, setTemporary] = React.useState<MapReturnContext>();
   const [notice, setNotice] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -295,6 +297,12 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
           setShowCandidates(true);
           onOpenCandidates(selected.id, [...scopedIds], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current));
         }} />}
+        {onOpenAtelier && <>
+          <PlusButton label={materials.includes(selected.id) ? '参考から外す' : '参考にする'} onPress={() => setMaterials((before) =>
+            before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />
+          <PlusButton label={materials.length ? `アトリエで開く · 材料${materials.length}件` : 'アトリエで開く'} onPress={() =>
+            onOpenAtelier(selected.id, materials.length ? materials : [selected.id], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current))} />
+        </>}
         {showCandidates && Boolean(candidates?.length) && <PlusButton label="点線を隠す" onPress={() => setShowCandidates(false)} />}
         {canArrange && <PlusButton label={marked.includes(selected.id) ? '範囲の選択から外す' : '範囲の選択に加える'} onPress={() => setMarked((before) =>
           before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />}

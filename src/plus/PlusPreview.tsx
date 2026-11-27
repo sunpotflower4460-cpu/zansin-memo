@@ -9,9 +9,12 @@ import { buildPlusExample } from '../data/plusExample';
 import { isolatePlusPreview } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
 import type { MapReturnContext } from '../domain/plus/contracts';
+import { createAtelier } from '../domain/plus/atelier';
+import { createId } from '../utils/ids';
 import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
+import { PlusAtelierScreen } from './PlusAtelierScreen';
 import { PlusMapScreen } from './PlusMapScreen';
-import { focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
+import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
 
 const storage = isolatePlusPreview(AsyncStorage);
 const exampleGroups = buildPlusExample(8).displayGroups;
@@ -21,6 +24,10 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const status = React.useSyncExternalStore(writer.subscribe, writer.getStatus);
   const [reading, setReading] = React.useState<string>();
   const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
+  const [atelier, setAtelier] = React.useState<string>();
+  const [atelierList, setAtelierList] = React.useState(false);
+  const creating = React.useRef(false);
+  const createAttempt = React.useRef<{ key: string; args: Parameters<typeof createAtelier>[0] }>(undefined);
   const returnFocus = React.useRef<() => void>(undefined);
   const backControl = React.useRef<View>(null);
   const [notice, setNotice] = React.useState('');
@@ -47,10 +54,31 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
     if (!result.ok) setNotice('例の庭を保存できませんでした。もう一度試せます。');
   }
 
+  async function openAtelier(centerSeedId?: string, materials: string[] = [], originNavigation?: MapReturnContext) {
+    if (creating.current) return;
+    const key = JSON.stringify([centerSeedId, materials, originNavigation?.origin]);
+    if (createAttempt.current?.key !== key) createAttempt.current = { key, args: {
+      id: createId(), branchId: createId(), centerSeedId, materials: materials.map((seedId) => ({ id: createId(), ref: { seedId, part: 'body' } })),
+      originNavigation, at: new Date().toISOString(),
+    } };
+    const args = createAttempt.current.args;
+    creating.current = true;
+    try {
+      const result = await writer.run(createAtelier(args));
+      if (result.ok) { setAtelier(args.id); createAttempt.current = undefined; setNotice(''); }
+      else setNotice(result.detail ?? 'アトリエを保存できませんでした。もう一度試せます。');
+    } finally { creating.current = false; }
+  }
+
   return <View style={plusStyles.full}>
-    {store.seeds.length ? <View style={[plusStyles.full, (reading || ai) && { display: 'none' }]}>
+    {store.seeds.length ? <View style={[plusStyles.full, (reading || ai || atelier || atelierList) && { display: 'none' }]}>
+      <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
+        <Actions><PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} /></Actions>
+        {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
+      </View>
       <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
-        onOpenCandidates={(seedId, scope, origin) => setAi({ seedId, scope, origin })} />
+        onOpenCandidates={(seedId, scope, origin) => setAi({ seedId, scope, origin })}
+        onOpenAtelier={(seedId, materials, context) => void openAtelier(seedId, materials, context)} />
     </View> : <ScrollView contentContainerStyle={plusStyles.page}>
       <Heading title>考えの地図</Heading>
       <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
@@ -65,7 +93,15 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
         {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}
       </SectionCard>}
     </ScrollView>}
-    {ai && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} />}
+    {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)}
+      onMaterial={(seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); }} />}
+    {atelierList && !atelier && <ScrollView contentContainerStyle={plusStyles.page}>
+      <PlusButton label="地図に戻る" onPress={() => setAtelierList(false)} />
+      <Heading title>アトリエ</Heading>
+      <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />
+      {store.atelierProjects.map((project, i) => <PlusButton key={project.id} label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => setAtelier(project.id)} />)}
+    </ScrollView>}
+    {atelier && <PlusAtelierScreen writer={writer} projectId={atelier} onBack={() => setAtelier(undefined)} />}
   </View>;
 }
 
