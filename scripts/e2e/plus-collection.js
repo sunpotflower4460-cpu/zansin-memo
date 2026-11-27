@@ -1,0 +1,66 @@
+const assert = require('node:assert/strict');
+const { mkdirSync, readFileSync } = require('node:fs');
+const { join } = require('node:path');
+const { tmpdir } = require('node:os');
+const { chromium } = require('playwright');
+
+(async () => {
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXEC });
+  const out = process.env.PLUS_EXPORT_DIR || join(tmpdir(), 'kizashi-plus-files');
+  mkdirSync(out, { recursive: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+    const button = (name) => page.getByRole('button', { name, exact: true });
+    const read = () => page.evaluate(() => JSON.parse(localStorage.getItem('kizashi-plus-preview:kizashi-notes:garden:v3')));
+    await page.goto(process.env.PLUS_E2E_URL || 'http://localhost:8101/');
+    await button('例の庭を開く').click();
+    await page.getByLabel('地図と全件を探す').fill('散歩の記録');
+    await button('散歩の記録 · 選ぶ').first().click();
+    await button('アトリエで開く').click();
+    const text = '朝の気づきを一枚に。🌱\n見つけた光を、明日の言葉にする。';
+    await page.getByLabel('アトリエの下書き').fill(text);
+    await button('この版を残す').click();
+    await button('この版を作品にする').click();
+    await page.getByLabel('作品の題名').fill('散歩からの便り');
+    await button('散歩の記録の当時の材料を作品に残す').click();
+    await button('紙面を確認').click();
+    assert.equal((await read()).collectionItems.length, 0);
+    await button('作品集に残す').click();
+    await button('作ったときの材料を見る').click();
+    await page.getByRole('heading', { name: '作ったときの材料' }).waitFor();
+    await button('開いていた作品版に戻る').click();
+    await button('現在の原文を開く').click();
+    await page.getByRole('heading', { name: '現在の原文' }).waitFor();
+    await button('開いていた作品版に戻る').click();
+    async function exportFile(format, name) {
+      await button(`${format}ファイルを作る`).click();
+      await page.getByText('ファイルを用意しました', { exact: true }).waitFor();
+      const [download] = await Promise.all([page.waitForEvent('download'), button('ファイルを取り出す・共有').click()]);
+      const path = join(out, name);
+      await download.saveAs(path);
+      return readFileSync(path);
+    }
+    const png = await exportFile('PNG', 'card.png');
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(png.readUInt32BE(16), 960);
+    assert.equal(png.readUInt32BE(20), 1200);
+    await button('作品集に戻る').click();
+    await button('アトリエに戻る').click();
+    await button('この版を作品にする').click();
+    await page.getByLabel('作品の題名').fill('散歩と写真の地図');
+    await button('地図と文章の1ページ').click();
+    await button('散歩の記録を図に含める').click();
+    await button('雨の日の音を図に含める').click();
+    await button('紙面を確認').click();
+    await button('作品集に残す').click();
+    const pdf = await exportFile('PDF', 'page.pdf');
+    assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+    const state = await read();
+    assert.equal(state.collectionItems.length, 2);
+    assert.equal(state.collectionExportReceipts.length, 2);
+    assert.equal(state.collectionRevisions[1].mapSnapshot.confirmedConnections.length, 1);
+    assert.equal(state.seeds.some((seed) => seed.synthesis), false);
+    assert.equal(state.connections.length, 60);
+    console.log('PASS private works from a fixed revision, exact return, PNG and PDF downloads', out);
+  } finally { await browser.close(); }
+})().catch((error) => { console.error(error); process.exitCode = 1; });

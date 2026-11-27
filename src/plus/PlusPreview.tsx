@@ -8,13 +8,15 @@ import { GardenV3Writer, type PlusCommand } from '../data/gardenV3Writer';
 import { buildPlusExample } from '../data/plusExample';
 import { isolatePlusPreview } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
-import type { MapReturnContext } from '../domain/plus/contracts';
+import type { AtelierRevision, MapReturnContext } from '../domain/plus/contracts';
 import { createAtelier } from '../domain/plus/atelier';
 import { createId } from '../utils/ids';
 import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
 import { PlusAtelierScreen } from './PlusAtelierScreen';
+import { PlusCollectionScreen } from './PlusCollectionScreen';
 import { PlusMapScreen } from './PlusMapScreen';
 import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
+import { clearWorkFileCache } from './workFiles';
 
 const storage = isolatePlusPreview(AsyncStorage);
 const exampleGroups = buildPlusExample(8).displayGroups;
@@ -26,6 +28,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
   const [atelier, setAtelier] = React.useState<string>();
   const [atelierList, setAtelierList] = React.useState(false);
+  const [collection, setCollection] = React.useState<{ source?: AtelierRevision }>();
   const creating = React.useRef(false);
   const createAttempt = React.useRef<{ key: string; args: Parameters<typeof createAtelier>[0] }>(undefined);
   const returnFocus = React.useRef<() => void>(undefined);
@@ -71,9 +74,10 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   }
 
   return <View style={plusStyles.full}>
-    {store.seeds.length ? <View style={[plusStyles.full, (reading || ai || atelier || atelierList) && { display: 'none' }]}>
+    {store.seeds.length ? <View style={[plusStyles.full, (reading || ai || atelier || atelierList || collection) && { display: 'none' }]}>
       <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-        <Actions><PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} /></Actions>
+        <Actions><PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} />
+          <PlusButton label="作品集を開く" onPress={() => setCollection({})} /></Actions>
         {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
       </View>
       <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
@@ -101,7 +105,9 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
       <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />
       {store.atelierProjects.map((project, i) => <PlusButton key={project.id} label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => setAtelier(project.id)} />)}
     </ScrollView>}
-    {atelier && <PlusAtelierScreen writer={writer} projectId={atelier} onBack={() => setAtelier(undefined)} />}
+    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier}
+      onBack={() => setAtelier(undefined)} onCreateWork={(source) => setCollection({ source })} /></View>}
+    {collection && <PlusCollectionScreen writer={writer} source={collection.source} onBack={() => setCollection(undefined)} />}
   </View>;
 }
 
@@ -111,6 +117,7 @@ export function PlusPreview() {
   const [attempt, setAttempt] = React.useState(0);
   React.useEffect(() => {
     let active = true;
+    clearWorkFileCache();
     void loadGardenV3(storage).then((result) => {
       if (!active) return;
       if (result.status === 'ready') setWriter(new GardenV3Writer(storage, result.store, result));
