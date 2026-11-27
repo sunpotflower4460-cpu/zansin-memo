@@ -3,9 +3,10 @@ import { ScrollView, Text } from 'react-native';
 import { SectionCard } from '../components/SectionCard';
 import { buildPlusExample } from '../data/plusExample';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
-import { acceptProposal, cancelProposalRequest, chooseExplorationSeeds, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
+import { requirePlusAccess } from '../domain/plus/entitlements';
+import { acceptProposal, cancelProposalRequest, chooseExplorationSeeds, confirmedProposalInput, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
   recordProposalConsent, restoreProposalPair, updateSeedPermission, type ProposalPlan } from '../domain/plus/proposals';
-import { permissionFor, receiptIssue } from '../domain/plus/proposalPrivacy';
+import { permissionFor } from '../domain/plus/proposalPrivacy';
 import { FixtureProposalTransport } from '../domain/plus/proposalTransport';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
@@ -44,9 +45,9 @@ const relationLabel = {
   complementary_views: '違う見方', different_context: '別の場面',
 };
 
-export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allowRequest = true }: {
+export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allowRequest, canRequest }: {
   writer: GardenV3Writer; centerId: string; scope: readonly string[]; onBack: () => void;
-  onMaterial?: (seedIds: string[]) => void; allowRequest?: boolean;
+  onMaterial?: (seedIds: string[]) => void; allowRequest: boolean; canRequest: () => boolean;
 }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const generation = React.useRef(0);
@@ -77,6 +78,7 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
   const suppressions = store.proposalSuppressions.filter(({ pair }) => pair.includes(centerId) && pair.every((id) => inScope.has(id)));
 
   function preview() {
+    if (!canRequest()) { setNotice('新しい候補の依頼には利用権の確認が必要です。'); return; }
     const at = now();
     const next = prepareProposals(writer.getSnapshot(), { requestId: createId(), consentReceiptId: createId(), contextId: `preview:${centerId}`,
       contextGeneration: generation.current, scope, policyVersion: 'preview-v1', providerDisclosureVersion: 'offline-fixture-v1',
@@ -94,17 +96,22 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
     running.current = true;
     setBusy(true); setNotice('');
     try {
-      const consent = await writer.run(recordProposalConsent(request, now()));
+      const consent = await writer.run(requirePlusAccess(recordProposalConsent(request, now()), canRequest));
       if (!consent.ok) { if (mounted.current) setNotice(consent.detail ?? '依頼を記録できませんでした'); return; }
-      const state = writer.getSnapshot();
-      const active = state.aiRequestReceipts.find(({ id }) => id === request.receipt.id);
-      if (request.receipt.contextGeneration !== generation.current || !active || active.status !== 'waiting' || receiptIssue(state, active)) {
+      const input = confirmedProposalInput(writer.getSnapshot(), request.receipt.id, generation.current, now());
+      if (!input) {
         await writer.run(cancelProposalRequest(request.receipt.id, now()));
+        if (mounted.current && generation.current === request.receipt.contextGeneration) setNotice('材料が変わりました。もう一度確認してください。');
         return;
       }
-      const raw = await fixture.start(request.input).catch(() => undefined);
+      if (!canRequest()) {
+        await writer.run(cancelProposalRequest(request.receipt.id, now()));
+        if (mounted.current) setNotice('新しい候補の依頼には利用権の確認が必要です。');
+        return;
+      }
+      const raw = await fixture.start(input).catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 330));
-      const result = await writer.run(receiveProposals(request, raw, generation.current, now()));
+      const result = await writer.run(receiveProposals(input.requestId, raw, generation.current, now()));
       if (!mounted.current || generation.current !== request.receipt.contextGeneration) return;
       if (!result.ok) { setNotice(result.detail ?? '候補を保存できませんでした。同じ依頼を再確認できます。'); return; }
       chosen.current = undefined;

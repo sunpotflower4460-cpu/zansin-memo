@@ -3,6 +3,20 @@ import { bytesToHex } from '@noble/hashes/utils';
 import type { Seed } from '../types';
 import type { Lineage, SourceRef, SourceSnapshot } from './contracts';
 
+export function sameSourceRef(a: SourceRef, b: SourceRef): boolean {
+  return a.seedId === b.seedId && a.part === b.part &&
+    (a.part === 'body' || (b.part === 'synthesis' && a.synthesisId === b.synthesisId));
+}
+
+export function isTextBoundary(text: string, index: number): boolean {
+  if (!Number.isInteger(index) || index < 0 || index > text.length) return false;
+  return !(/[\uD800-\uDBFF]/.test(text[index - 1] ?? '') && /[\uDC00-\uDFFF]/.test(text[index] ?? ''));
+}
+
+export function validTextRange(text: string, start: number, end: number): boolean {
+  return start < end && isTextBoundary(text, start) && isTextBoundary(text, end);
+}
+
 /** Exact UTF-16, including line breaks, combining marks and unpaired code units. */
 export function textDigest(text: string): string {
   const bytes = new Uint8Array(text.length * 2);

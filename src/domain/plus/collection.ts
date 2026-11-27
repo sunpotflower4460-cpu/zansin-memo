@@ -2,7 +2,7 @@ import type { PlusCommand } from '../../data/gardenV3Writer';
 import { captureMaterial, materialState } from './atelier';
 import type { CollectionReturnContext, CollectionRevision, GardenStoreV3, MapView, SourceSnapshot } from './contracts';
 import { indexMap, mapGroups, mapInScope, placeMap } from './map';
-import { mergeLineage } from './sources';
+import { mergeLineage, readSource } from './sources';
 
 export const defaultWorkLayout = { paper: 'washi', textAlign: 'start', mapPosition: 'above', includeSources: false } as const;
 type Layout = NonNullable<CollectionRevision['layout']>;
@@ -114,7 +114,7 @@ export function workContent(store: GardenStoreV3, work: CollectionRevision) {
   const live = new Set(store.seeds.filter((seed) => !seed.deletedAt).map((seed) => seed.id));
   const byId = new Map(store.sourceSnapshots.map((snapshot) => [snapshot.id, snapshot]));
   const all = work.materialSnapshotIds.map((id) => byId.get(id));
-  const materials = all.filter((snapshot): snapshot is SourceSnapshot => Boolean(snapshot && live.has(snapshot.source.ref.seedId)));
+  const materials = all.filter((snapshot): snapshot is SourceSnapshot => Boolean(snapshot && readSource(store.seeds, snapshot.source.ref, true)));
   const map = work.kind === 'map_and_text_page' ? work.mapSnapshot : undefined;
   const nodes = map?.nodes.filter((node) => live.has(node.seedId) && byId.has(node.sourceSnapshotId)) ?? [];
   const present = new Set(nodes.map(({ seedId }) => seedId));
@@ -125,11 +125,15 @@ export function workContent(store: GardenStoreV3, work: CollectionRevision) {
 }
 export type WorkContent = ReturnType<typeof workContent>;
 
-export function recordWorkOutput(id: string, work: CollectionRevision, at: string, hidden: string[]): PlusCommand {
+export function workOutputKey(content: WorkContent): string {
+  return JSON.stringify([content.work.id, content.hidden, content.materials.map(({ id }) => id), content.diagram?.nodes.map(({ seedId }) => seedId)]);
+}
+
+export function recordWorkOutput(id: string, work: CollectionRevision, at: string, outputKey: string): PlusCommand {
   return { id: `collection-output:${id}`, apply: (store) => {
     if (store.collectionExportReceipts.some((receipt) => receipt.id === id)) return store;
     if (!store.collectionRevisions.some(({ id, itemId }) => id === work.id && itemId === work.itemId) ||
-        JSON.stringify(workContent(store, work).hidden) !== JSON.stringify(hidden)) return { rejected: '作品の材料に変更があります。確認してから書き出してください' };
+        workOutputKey(workContent(store, work)) !== outputKey) return { rejected: '作品の材料に変更があります。確認してから書き出してください' };
     return { ...store, collectionExportReceipts: [...store.collectionExportReceipts, { id, itemId: work.itemId, collectionRevisionId: work.id,
       format: workFormat(work), outputSpecVersion: work.outputSpecVersion, createdAt: at }] };
   } };

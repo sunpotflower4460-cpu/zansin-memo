@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acceptProposal, chooseExplorationSeeds, dismissProposal, prepareProposals, receiveProposals, reconcileQuota, recordProposalConsent,
+import { acceptProposal, chooseExplorationSeeds, confirmedProposalInput, dismissProposal, prepareProposals, receiveProposals, reconcileQuota, recordProposalConsent,
   restoreProposalPair, updateSeedPermission, verifyProposals, type ProposalPlan, type ProposalResult } from '../domain/plus/proposals';
 import { FixtureProposalTransport } from '../domain/plus/proposalTransport';
 import { snapshotSource } from '../domain/plus/sources';
-import { disconnectSeeds, softDeleteSeed, updateSeedFields } from '../domain/gardenCommands';
+import { disconnectSeeds, promoteToSprout, softDeleteSeed, updateSeedFields } from '../domain/gardenCommands';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
 import { PLUS_KEYS } from './gardenV3Storage';
 import { GardenV3Writer, withCoreCommand } from './gardenV3Writer';
@@ -37,11 +37,52 @@ function transport(clock = () => at, period = () => 'period-1') {
 
 async function deliver(writer: GardenV3Writer, request = plan(), service = transport()) {
   assert.equal((await writer.run(recordProposalConsent(request, at))).ok, true);
-  const raw = await service.start(request.input);
+  const approved = confirmedProposalInput(writer.getSnapshot(), request.receipt.id, 1, at);
+  assert.ok(approved);
+  const raw = await service.start(approved);
   assert.ok(raw);
-  assert.equal((await writer.run(receiveProposals(request, raw, 1, at))).ok, true);
+  assert.equal((await writer.run(receiveProposals(approved.requestId, raw, 1, at))).ok, true);
   return { raw, service };
 }
+
+test('only the exact confirmed excerpts become input, even after restoring the receipt', async () => {
+  const request = plan();
+  const altered = structuredClone(request);
+  altered.input.sources[0].text = '確認していない文章';
+  const writer = new GardenV3Writer(new FakeStorage(), store());
+  assert.equal((await writer.run(recordProposalConsent(altered, later))).ok, false);
+  assert.equal(confirmedProposalInput(writer.getSnapshot(), request.receipt.id, 1, later), undefined);
+  assert.equal((await writer.run(recordProposalConsent(request, later))).ok, true);
+  const parsed = parseStoreV3(serializeStoreV3(writer.getSnapshot()));
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(confirmedProposalInput(parsed.store, request.receipt.id, 1, later), request.input);
+  assert.equal(confirmedProposalInput(parsed.store, request.receipt.id, 2, later), undefined);
+  assert.equal(confirmedProposalInput(parsed.store, request.receipt.id, 1, end), undefined);
+
+  const raw = await transport().start(altered.input);
+  await writer.run(receiveProposals(request.receipt.id, raw, 1, at));
+  assert.equal(writer.getSnapshot().connectionProposals.length, 0);
+  assert.equal(writer.getSnapshot().outbox[0].kind, 'cancel');
+});
+
+test('a confirmed historical excerpt stays tied to its snapshot, range and current original', async () => {
+  const ref = args().selections[0].ref;
+  const snapshot = snapshotSource(seeds, ref, 'historical', at);
+  assert.ok(snapshot);
+  const initial = { ...store(), seeds: [{ ...seeds[0], body: '今の文章' }, ...seeds.slice(1)], sourceSnapshots: [snapshot] };
+  const selection = { ...args().selections[0], snapshotId: snapshot.id, range: { start: 2, end: 5 } };
+  const request = prepareProposals(initial, { ...args(), selections: [selection, args().selections[1]] });
+  assert.ok(request);
+  const writer = new GardenV3Writer(new FakeStorage(), initial);
+  await writer.run(recordProposalConsent(request, at));
+  const id = request.receipt.id;
+  assert.equal(confirmedProposalInput(writer.getSnapshot(), id, 1, at)?.sources[0].text, 'かえり');
+  assert.equal(confirmedProposalInput({ ...writer.getSnapshot(), sourceSnapshots: [
+    { ...snapshot, source: { ...snapshot.source, ref: args().selections[1].ref } },
+  ] }, id, 1, at), undefined);
+  await writer.run(withCoreCommand(updateSeedFields({ commandId: 'edit-after-confirm', seedId: 'A', patch: { body: 'もう一度直した文章' }, now: later })));
+  assert.equal(confirmedProposalInput(writer.getSnapshot(), id, 1, later), undefined);
+});
 
 test('DATA-07: evidence always matches the exact sent UTF-16 range for both ends', async () => {
   const request = plan();
@@ -66,7 +107,7 @@ test('DATA-04/05: receiving, dismissing and relaunching never connects notes, an
   const writer = new GardenV3Writer(new FakeStorage(), store());
   const request = plan();
   const { raw, service } = await deliver(writer, request);
-  await writer.run(receiveProposals(request, raw, 1, at));
+  await writer.run(receiveProposals(request.receipt.id, raw, 1, at));
   assert.equal(writer.getSnapshot().connectionProposals.length, 1);
   assert.equal(writer.getSnapshot().connections.length, 0);
   const outbox = writer.getSnapshot().outbox[0];
@@ -105,7 +146,7 @@ test('DATA-06: editing, deletion, consent withdrawal and navigating away invalid
       if (kind === 'edit') await writer.run(withCoreCommand(updateSeedFields({ commandId: 'edit', seedId: 'C', patch: { body: '変更後' }, now: at })));
       if (kind === 'delete') await writer.run(withCoreCommand(softDeleteSeed({ commandId: 'delete', seedId: 'A', now: at })));
       if (kind === 'deny') await writer.run(updateSeedPermission('deny', 'C', 0, { externalAi: 'deny' }, at));
-      await writer.run(receiveProposals(request, raw, kind === 'navigation' ? 2 : 1, at));
+      await writer.run(receiveProposals(request.receipt.id, raw, kind === 'navigation' ? 2 : 1, at));
       assert.equal(writer.getSnapshot().connectionProposals.length, 0);
       const entry = writer.getSnapshot().outbox[0];
       assert.equal(entry.kind, 'cancel');
@@ -139,6 +180,30 @@ test('DATA-08/09: deny follows derived sources and discovery exclusion is indepe
   assert.deepEqual(normal.receipt.processingRootSeedIds, ['A', 'B', 'C']);
   assert.equal(JSON.stringify(normal.input).includes('seedId'), false);
   assert.equal(writer.getSnapshot().aiRequestReceipts.length, 0);
+});
+
+test('a sprout keeping the same text cannot add a denied material to an active consent', async () => {
+  const writer = new GardenV3Writer(new FakeStorage(), store());
+  const create = { commandId: 'sprout', centerId: 'A', synthesisId: 'sprout', statement: '同じ文章', centerBodyText: seeds[0].body,
+    materials: [], now: at };
+  await writer.run(withCoreCommand(promoteToSprout(create)));
+  await writer.run(updateSeedPermission('deny', 'C', 0, { externalAi: 'deny' }, at));
+  const request = prepareProposals(writer.getSnapshot(), { ...args(), scope: ['A', 'B'], selections: [
+    { ref: { seedId: 'A', part: 'synthesis', synthesisId: 'sprout' }, selection: 'explicit' }, args().selections[1],
+  ] });
+  assert.ok(request);
+  await writer.run(recordProposalConsent(request, at));
+  const service = transport();
+  const raw = await service.start(request.input);
+  await writer.run(withCoreCommand(promoteToSprout({ ...create, commandId: 'review', review: true, now: later,
+    materials: [{ seedId: 'C', sourcePart: 'body', expectedText: seeds[2].body }] })));
+  const changed = writer.getSnapshot();
+  assert.equal(changed.aiRequestReceipts[0].status, 'cancelled');
+  assert.equal(confirmedProposalInput(changed, request.receipt.id, 1, later), undefined);
+  await writer.run(receiveProposals(request.receipt.id, raw, 1, later));
+  assert.equal(writer.getSnapshot().connectionProposals.length, 0);
+  const release = await service.reconcile(changed.outbox[0]);
+  assert.equal(typeof release !== 'string' && release.state, 'released');
 });
 
 test('DATA-13: failed adoption keeps the proposal pending and does not partially connect notes', async () => {

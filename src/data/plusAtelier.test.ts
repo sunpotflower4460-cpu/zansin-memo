@@ -51,6 +51,23 @@ test('fixed excerpts move with their offsets and only an explicit unlock permits
   assert.equal((await writer.run(saveAtelierText(target(4), '書き直した文', 'rewrite', at))).ok, true);
 });
 
+test('a repeated excerpt keeps its occurrence, including when inserting identical text at a known position', async () => {
+  const pin = { id: 'pin', start: 2, end: 4, text: '同じ' };
+  assert.equal(movePins('🌱同じ同じ', '🌱同じ', [pin]), undefined);
+  assert.equal(movePins('🌱同じ', '🌱同じ同じ', [pin]), undefined);
+  const writer = new GardenV3Writer(new FakeStorage(), { ...emptyStoreV3(), seeds: [center, source] });
+  await writer.run(create);
+  await writer.run(saveAtelierText(target(0), '🌱同じ', 'edit', at));
+  assert.equal((await writer.run(trackPin({ target: target(1), id: 'split', range: { start: 1, end: 2 }, at }))).ok, false);
+  await writer.run(trackPin({ target: target(1), id: pin.id, range: pin, at }));
+  await writer.run(saveAtelierExample(target(2), { id: 'hint', snapshotId: 'snapshot', kind: 'title', content: '同じ', at }));
+  assert.equal((await writer.run(insertAtelierExample(target(2), { id: 'hint', start: 1, end: 1, at }))).ok, false);
+  assert.equal((await writer.run(insertAtelierExample(target(2), { id: 'hint', start: 2, end: 2, at }))).ok, true);
+  const draft = writer.getSnapshot().atelierDrafts[0];
+  assert.equal(draft.text, '🌱同じ同じ');
+  assert.deepEqual(draft.pinnedExcerpts, [{ ...pin, start: 4, end: 6 }]);
+});
+
 test('checkpoint, fork and sprout adoption are separate and a failed adoption writes neither record nor sprout', async () => {
   const storage = new FakeStorage();
   const writer = new GardenV3Writer(storage, { ...emptyStoreV3(), seeds: [center, source] });

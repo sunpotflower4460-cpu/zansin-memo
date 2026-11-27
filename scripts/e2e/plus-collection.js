@@ -26,12 +26,20 @@ const { chromium } = require('playwright');
     await button('紙面を確認').click();
     assert.equal((await read()).collectionItems.length, 0);
     await button('作品集に残す').click();
-    await button('作ったときの材料を見る').click();
-    await page.getByRole('heading', { name: '作ったときの材料' }).waitFor();
-    await button('開いていた作品版に戻る').click();
-    await button('現在の原文を開く').click();
-    await page.getByRole('heading', { name: '現在の原文' }).waitFor();
-    await button('開いていた作品版に戻る').click();
+    async function expectFocus(control) {
+      const target = await control.elementHandle();
+      try { await page.waitForFunction((element) => document.activeElement === element, target); }
+      finally { await target.dispose(); }
+    }
+    const returnToWork = button('開いていた作品版に戻る');
+    for (const [open, heading] of [['作ったときの材料を見る', '作ったときの材料'], ['現在の原文を開く', '現在の原文']]) {
+      await button(open).press('Enter');
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+      await expectFocus(returnToWork);
+      await page.keyboard.press('Enter');
+      await expectFocus(button(open));
+    }
+    console.log('PASS keyboard focus returns to the same material control for historical and current text');
     async function exportFile(format, name) {
       await button(`${format}ファイルを作る`).click();
       await page.getByText('ファイルを用意しました', { exact: true }).waitFor();
