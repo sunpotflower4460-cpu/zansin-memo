@@ -20,19 +20,19 @@ const initial = { storeVersion: 2, revision: 1, seeds, connections: [conn('A', '
 
   await p.getByLabel('種一覧タブ').click(); await p.waitForTimeout(400);
   await p.getByText('散歩で撮った写真が', { exact: false }).first().click(); await p.waitForTimeout(500);
-  await p.getByLabel('このメモから芽をつくる').click(); await p.waitForTimeout(500);
+  await p.getByLabel('ここに書いて芽にする').click(); await p.waitForTimeout(500);
   await p.screenshot({ path: `${RAW}/p103-new.png` });
 
   // 保存は一言を書くまで押せない
   const saveBtn = p.getByRole('button', { name: '芽として保存' });
   ok('save disabled until a sentence is written', await saveBtn.isDisabled());
-  ok('connected memo is shown as a candidate but NOT pre-selected', (await p.getByText('写真に短い言葉を添えるのが好き').count()) > 0 && (await p.getByLabel(/材料にしている。元のメモ。写真に短い/).count()) === 0);
+  ok('connected memo is shown as a candidate but NOT pre-selected', await p.getByLabel(/参考にしていない。元のメモ。写真に短い/).isVisible());
   let st = await store();
   ok('opening the screen did not change anything', st.seeds.every((s) => s.growthState === 'seed' && !s.synthesis));
 
   // 材料B(つながっている)を選び、材料C(つながっていない)を検索して追加。書きかけは下書きに残る
-  await p.getByLabel(/材料にしていない。元のメモ。写真に短い/).click();
-  await p.getByLabel('材料にするメモを探して追加する').click(); await p.waitForTimeout(400);
+  await p.getByLabel(/参考にしていない。元のメモ。写真に短い/).click();
+  await p.getByLabel('参考にするメモを探して追加する').click(); await p.waitForTimeout(400);
   await p.getByLabel('つなぐ種を探す').fill('友人');
   await p.getByText('離れた友人と', { exact: false }).first().click(); await p.waitForTimeout(300);
   await p.getByLabel('選び終わる').click(); await p.waitForTimeout(300);
@@ -60,7 +60,7 @@ const initial = { storeVersion: 2, revision: 1, seeds, connections: [conn('A', '
   await p.getByRole('button', { name: '元に戻す' }).click(); await p.waitForTimeout(800);
   st = await store();
   ok('undo: back to seed, no synthesis, sentence kept as a draft', st.seeds.find((s) => s.id === 'A').growthState === 'seed' && !st.seeds.find((s) => s.id === 'A').synthesis && st.drafts.some((d) => d.kind === 'synthesis' && d.body.includes('近況便り')));
-  ok('detail offers to resume the draft', (await p.getByText('芽の下書きがあります').count()) > 0);
+  ok('detail offers to resume the draft', await p.getByRole('button', { name: '芽の下書きの続きを書く' }).isVisible());
 
   // 下書きから再開 → 保存
   await p.getByLabel('芽の下書きの続きを書く').click(); await p.waitForTimeout(600);
@@ -80,14 +80,15 @@ const initial = { storeVersion: 2, revision: 1, seeds, connections: [conn('A', '
   await p.getByText('散歩で撮った写真が', { exact: false }).first().click(); await p.waitForTimeout(600);
   st = await store();
   ok('editing a material leaves the sprout and its snapshots unchanged', st.seeds.find((s) => s.id === 'A').synthesis.sources[1].textSnapshot === '写真に短い言葉を添えるのが好き');
-  ok('detail marks the changed material', (await p.getByText('材料に更新あり').count()) > 0);
+  ok('detail marks the changed material', await p.getByText('くわしく見る（参考メモに変更あり）', { exact: true }).isVisible());
   await p.screenshot({ path: `${RAW}/p103-changed.png` });
 
   // 種として考え直す
-  await p.getByLabel('種として考え直す。考えと材料は残ります').click(); await p.waitForTimeout(700);
+  await p.getByLabel('芽のくわしい情報を見る').click();
+  await p.getByLabel('種に戻す。書いた考えは残ります').click(); await p.waitForTimeout(700);
   st = await store();
   ok('reconsider: seed again, thought + materials kept', st.seeds.find((s) => s.id === 'A').growthState === 'seed' && st.seeds.find((s) => s.id === 'A').synthesis.sources.length === 3);
-  ok('shows as 以前の考え', (await p.getByText('以前の考え（種として考え直し中）').count()) > 0);
+  ok('shows as 前に書いた考え', await p.getByRole('heading', { name: '前に書いた考え' }).isVisible());
 
   // 再読込
   await p.reload(); await p.waitForTimeout(2000);
@@ -95,5 +96,6 @@ const initial = { storeVersion: 2, revision: 1, seeds, connections: [conn('A', '
   ok('persisted after reload', st.seeds.find((s) => s.id === 'A').synthesis.sources.length === 3);
 
   console.log('console errors:', errs.length ? errs : 'none');
+  if (errs.length || results.some(([result]) => result === 'FAIL')) process.exitCode = 1;
   await b.close();
 })();

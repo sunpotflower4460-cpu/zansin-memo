@@ -175,9 +175,8 @@ const normalizeSynthesis = (value: unknown, fallbackDate: string): SeedSynthesis
 
 type CommonSeedFields = Omit<Seed, 'synthesis' | 'schemaVersion'>;
 
-const normalizeCommonFields = (data: Record<string, unknown>, id: string): CommonSeedFields => {
-  const now = new Date().toISOString();
-  const createdAt = normalizeDate(data.createdAt, now);
+const normalizeCommonFields = (data: Record<string, unknown>, id: string, fallbackAt = new Date().toISOString()): CommonSeedFields => {
+  const createdAt = normalizeDate(data.createdAt, fallbackAt);
   const updatedAt = normalizeDate(data.updatedAt, createdAt);
   const importanceValue = typeof data.importance === 'number' ? (Math.round(data.importance) as Importance) : 3;
   const growthState = asString(data.growthState);
@@ -367,7 +366,7 @@ export type MigrationResult =
  * v1（Seed の配列）から v2 へ。原文・状態・変換結果・日付・削除状態を引き継ぐ。
  * 関連は、どちら側にだけ記録されていても同じ無向ペアにまとめる。芽の文章や接続日時は作らない。
  */
-export const migrateV1 = (raw: string): MigrationResult => {
+export const migrateV1 = (raw: string, fallbackAt?: string): MigrationResult => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -398,7 +397,7 @@ export const migrateV1 = (raw: string): MigrationResult => {
       return { ok: false, reason: 'duplicate_ids' };
     }
     ids.add(id);
-    seeds.push({ ...normalizeCommonFields(data, id), schemaVersion: SEED_SCHEMA_VERSION });
+    seeds.push({ ...normalizeCommonFields(data, id, fallbackAt), schemaVersion: SEED_SCHEMA_VERSION });
 
     const legacy = data as Partial<LegacySeedV1>;
     for (const target of normalizeStringArray(legacy.relatedSeedIds)) {

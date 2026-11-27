@@ -11,14 +11,16 @@ import { createId } from '../utils/ids';
 
 export type Rejection = { rejected: string };
 
-export type GardenCommand = {
+type WritableGarden = Pick<GardenStoreV2, 'revision' | 'lastMutationId' | 'drafts'>;
+
+export type GardenCommand<TStore extends WritableGarden = GardenStoreV2> = {
   /** 操作の開始時に一度だけ作る。再試行は同じIDで行い、二重に作らない。 */
   id: string;
   /** この操作が確定と同時に消す下書き。 */
   clearsDraftIds?: string[];
   /** 下書きだけの更新など、復元用コピー(lastGood)を更新しなくてよい操作。入力中の書込み量を半分にする。 */
   skipBackup?: boolean;
-  apply: (store: GardenStoreV2) => GardenStoreV2 | Rejection;
+  apply: (store: TStore) => TStore | Rejection;
 };
 
 export type CommitResult =
@@ -51,12 +53,22 @@ type UnsavedDraft = { value: Draft | null; seq: number; inFlight: boolean };
 /** 書込みの応答が失敗だったとき、実際に反映されたか。unknown は読み直しもできなかった状態。 */
 type Confirmation = 'committed' | 'not_committed' | 'unknown';
 
-const isRejection = (value: GardenStoreV2 | Rejection): value is Rejection => 'rejected' in value;
+type GardenPersistence<TStore> = {
+  main: string;
+  lastGood: string;
+  empty: () => TStore;
+  serialize: (store: TStore) => string;
+  confirm: (raw: string | null, expected: TStore, current: TStore, recovering: boolean) => Confirmation;
+  beginDeletion?: typeof beginDeletion;
+  finishDeletion: (storage: StorageLike) => Promise<{ ok: true } | { ok: false; detail?: string }>;
+};
+
+const isRejection = (value: WritableGarden | Rejection): value is Rejection => 'rejected' in value;
 
 const sameDraft = (a: Draft, b: Draft): boolean => JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' });
 
-export class GardenWriter {
-  private committed: GardenStoreV2;
+export class GardenCommitWriter<TStore extends WritableGarden> {
+  private committed: TStore;
   private tail: Promise<unknown> = Promise.resolve();
   private generation = 0;
   private deleting = false;
@@ -68,7 +80,7 @@ export class GardenWriter {
   private heldDraftIds = new Map<string, number>();
   private clearedDraftIds = new Set<string>();
   /** 反映されたか分からない書込み。解消するまで次の操作を確定しない。 */
-  private uncertain?: GardenStoreV2;
+  private uncertain?: TStore;
   private draftTimer: unknown;
   private pending = 0;
   private lastFailure: WriterStatus['lastFailure'];
@@ -81,7 +93,8 @@ export class GardenWriter {
 
   constructor(
     private readonly storage: StorageLike,
-    initial: GardenStoreV2,
+    initial: TStore,
+    private readonly persistence: GardenPersistence<TStore>,
     options: WriterOptions & { needsInitialPersist?: boolean } = {},
   ) {
     this.committed = initial;
@@ -98,7 +111,7 @@ export class GardenWriter {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
-  getSnapshot = (): GardenStoreV2 => this.committed;
+  getSnapshot = (): TStore => this.committed;
   getStatus = (): WriterStatus => this.statusSnapshot;
 
   /** 確定済みの下書きに、まだ書き込み中・書込み待ちの入力を重ねた「いまの下書き」。画面を開くときに使う。 */
@@ -123,7 +136,7 @@ export class GardenWriter {
 
   // ---- コマンド ----
 
-  run(command: GardenCommand): Promise<CommitResult> {
+  run(command: GardenCommand<TStore>): Promise<CommitResult> {
     if (this.deleting) {
       return Promise.resolve({ ok: false, reason: 'locked' });
     }
@@ -168,7 +181,7 @@ export class GardenWriter {
     }
   }
 
-  private async execute(command: GardenCommand, generation: number): Promise<CommitResult> {
+  private async execute(command: GardenCommand<TStore>, generation: number): Promise<CommitResult> {
     if (generation !== this.generation) {
       return { ok: false, reason: 'cancelled' };
     }
@@ -183,7 +196,7 @@ export class GardenWriter {
         this.committed = this.uncertain;
         this.needsInitialPersist = false;
         // 失敗扱いで飛ばした控えの更新を、ここで行う。できなければ「控えが古い」と伝える。
-        await this.writeBackup(serializeStore(this.committed));
+        await this.writeBackup(this.persistence.serialize(this.committed));
       }
       this.uncertain = undefined;
       this.emit();
@@ -204,10 +217,10 @@ export class GardenWriter {
       return { ok: true, revision: base.revision, backupOk: !this.backupStale, noop: true };
     }
 
-    const next: GardenStoreV2 = { ...result, revision: base.revision + 1, lastMutationId: command.id };
-    const json = serializeStore(next);
+    const next: TStore = { ...result, revision: base.revision + 1, lastMutationId: command.id };
+    const json = this.persistence.serialize(next);
     try {
-      await this.storage.setItem(KEYS.main, json);
+      await this.storage.setItem(this.persistence.main, json);
     } catch (error) {
       // 応答不明の可能性がある。読み直して、この操作が確定していたかを確かめる。
       const state = await this.confirmCommitted(next);
@@ -235,7 +248,7 @@ export class GardenWriter {
 
   private async writeBackup(json: string): Promise<boolean> {
     try {
-      await this.storage.setItem(KEYS.lastGood, json);
+      await this.storage.setItem(this.persistence.lastGood, json);
       this.backupStale = false;
     } catch {
       this.backupStale = true;
@@ -243,13 +256,10 @@ export class GardenWriter {
     return !this.backupStale;
   }
 
-  private async confirmCommitted(expected: GardenStoreV2): Promise<Confirmation> {
+  private async confirmCommitted(expected: TStore): Promise<Confirmation> {
     try {
-      const raw = await this.storage.getItem(KEYS.main);
-      const parsed = raw === null ? undefined : parseStoreV2(raw);
-      return parsed?.ok && parsed.store.revision === expected.revision && parsed.store.lastMutationId === expected.lastMutationId
-        ? 'committed'
-        : 'not_committed';
+      const raw = await this.storage.getItem(this.persistence.main);
+      return this.persistence.confirm(raw, expected, this.committed, this.needsInitialPersist);
     } catch {
       return 'unknown';
     }
@@ -350,20 +360,21 @@ export class GardenWriter {
     }
     this.emit();
 
-    const marker = await beginDeletion(this.storage, createId());
+    const marker = await (this.persistence.beginDeletion ?? beginDeletion)(this.storage, createId());
     if (!marker.ok) {
-      this.deleting = false;
+      // With verified markers, an unreadable acknowledgement leaves deletion unresolved.
+      this.deleting = this.persistence.beginDeletion !== undefined;
       this.emit();
       return marker;
     }
     await this.tail; // 進行中の書込みが終わるのを待つ
-    const finished = await finishDeletion(this.storage);
+    const finished = await this.persistence.finishDeletion(this.storage);
     if (!finished.ok) {
       // marker は残す。deleting も維持し、再試行か再起動での再開を待つ。
       this.emit();
       return finished;
     }
-    this.committed = emptyStore();
+    this.committed = this.persistence.empty();
     this.clearedDraftIds.clear();
     this.uncertain = undefined;
     this.lastFailure = undefined;
@@ -378,5 +389,23 @@ export class GardenWriter {
   async retryDeleteAll(): Promise<{ ok: true } | { ok: false; detail?: string }> {
     this.deleting = false;
     return this.deleteAll();
+  }
+}
+
+export class GardenWriter extends GardenCommitWriter<GardenStoreV2> {
+  constructor(storage: StorageLike, initial: GardenStoreV2, options?: WriterOptions & { needsInitialPersist?: boolean }) {
+    super(storage, initial, {
+      main: KEYS.main,
+      lastGood: KEYS.lastGood,
+      empty: emptyStore,
+      serialize: serializeStore,
+      confirm: (raw, expected) => {
+        const parsed = raw === null ? undefined : parseStoreV2(raw);
+        return parsed?.ok && parsed.store.revision === expected.revision && parsed.store.lastMutationId === expected.lastMutationId
+          ? 'committed'
+          : 'not_committed';
+      },
+      finishDeletion,
+    }, options);
   }
 }

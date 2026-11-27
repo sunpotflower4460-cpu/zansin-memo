@@ -163,7 +163,7 @@ export function PracticeScreen({ onClose, onStartWriting }: PracticeScreenProps)
           <SectionCard>
             <Text style={styles.sectionTitle}>2. つながりを見る</Text>
             <Text style={styles.note}>
-              選んだ2つが、線で結ばれました。メモの内容は変わりません。「保存済みのメモをつなげる」から、残りのメモも結んでみましょう（結ばなくても次へ進めます）。
+              選んだ2つが、線で結ばれました。メモの内容は変わりません。「選んでつなぐ」から、残りのメモも結べます。
             </Text>
           </SectionCard>
           <ConnectionsPanel
