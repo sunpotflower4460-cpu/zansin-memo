@@ -23,12 +23,20 @@ import { clearWorkFileCache } from './workFiles';
 
 const storage = isolatePlusPreview(AsyncStorage);
 const exampleGroups = buildPlusExample(8).displayGroups;
+const enabled = {
+  map: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_MAP !== '0',
+  proposals: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_AI !== '0',
+  atelier: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_ATELIER !== '0',
+  collection: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_COLLECTION !== '0',
+  commerce: process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_COMMERCE !== '0',
+};
 
 function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const status = React.useSyncExternalStore(writer.subscribe, writer.getStatus);
   const [reading, setReading] = React.useState<string>();
   const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
+  const [origin, setOrigin] = React.useState<MapReturnContext>();
   const [atelier, setAtelier] = React.useState<string>();
   const [atelierList, setAtelierList] = React.useState(false);
   const [collection, setCollection] = React.useState<{ source?: AtelierRevision }>();
@@ -66,7 +74,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   }
 
   async function openAtelier(centerSeedId?: string, materials: string[] = [], originNavigation?: MapReturnContext) {
-    if (creating.current || !rights.atelierAdvanced) return;
+    if (creating.current || !rights.atelierAdvanced || !enabled.atelier) return;
     const key = JSON.stringify([centerSeedId, materials, originNavigation?.origin]);
     if (createAttempt.current?.key !== key) createAttempt.current = { key, args: {
       id: createId(), branchId: createId(), centerSeedId, materials: materials.map((seedId) => ({ id: createId(), ref: { seedId, part: 'body' } })),
@@ -83,7 +91,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
 
   return <View style={plusStyles.full}>
     {!purchase && !data && <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-      <Actions><PlusButton label="利用権の動作を試す" onPress={() => setPurchase(true)} />
+      <Actions>{enabled.commerce && <PlusButton label="利用権の動作を試す" onPress={() => setPurchase(true)} />}
         {!(reading || ai || atelier || atelierList || collection) && <PlusButton label="データを書き出す・削除する" onPress={() => setData(true)} />}</Actions>
     </View>}
     <View style={[plusStyles.full, (purchase || data) && { display: 'none' }]}>
@@ -94,8 +102,9 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
         {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
       </View>
       <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
-        onOpenCandidates={(seedId, scope, origin) => setAi({ seedId, scope, origin })}
-        canArrange={rights.arrangeMap} onOpenAtelier={rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />
+        onOpenCandidates={enabled.proposals ? (seedId, scope, origin) => setAi({ seedId, scope, origin }) : undefined}
+        restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
+        onOpenAtelier={enabled.atelier && rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />
     </View> : <ScrollView contentContainerStyle={plusStyles.page}>
       <Heading title>考えの地図</Heading>
       <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
@@ -111,19 +120,20 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
       </SectionCard>}
     </ScrollView>}
     {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} allowRequest={rights.requestFixtureAi}
-      onMaterial={rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
+      onMaterial={enabled.atelier && rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
     {atelierList && !atelier && <ScrollView contentContainerStyle={plusStyles.page}>
       <PlusButton label="地図に戻る" onPress={() => setAtelierList(false)} />
       <Heading title>アトリエ</Heading>
-      {rights.atelierAdvanced && <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />}
+      {enabled.atelier && rights.atelierAdvanced && <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />}
       {store.atelierProjects.map((project, i) => <PlusButton key={project.id} label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => setAtelier(project.id)} />)}
     </ScrollView>}
-    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={rights.atelierAdvanced}
-      onBack={() => setAtelier(undefined)} onCreateWork={rights.composeWork ? (source) => setCollection({ source }) : undefined} /></View>}
-    {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={rights.composeWork} onBack={() => setCollection(undefined)} />}
+    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={enabled.atelier && rights.atelierAdvanced}
+      onBack={() => setAtelier(undefined)} onCreateWork={enabled.collection && rights.composeWork ? (source) => setCollection({ source }) : undefined}
+      onOriginMap={(context) => { setOrigin({ ...context }); setAtelier(undefined); setAtelierList(false); setAi(undefined); }} /></View>}
+    {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={enabled.collection && rights.composeWork} onBack={() => setCollection(undefined)} />}
     </View>
     {purchase && <PlusPurchasePreview model={purchaseModel} onBack={() => setPurchase(false)} />}
-    {data && <PlusDataScreen writer={writer} onBack={() => setData(false)} onReset={() => { setData(false); setNotice(''); }} />}
+    {data && <PlusDataScreen writer={writer} onBack={() => setData(false)} onReset={() => { setData(false); setOrigin(undefined); setNotice(''); }} />}
   </View>;
 }
 

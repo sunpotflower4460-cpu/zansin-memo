@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { connectionId, normalizePair } from '../../data/gardenModel';
 import { withCoreCommand, type PlusCommand } from '../../data/gardenV3Writer';
 import { connectSeeds } from '../gardenCommands';
+import { buildAdjacency, extractKeywords } from '../../utils/links';
 import { relationKind, type AiOutboxEntry, type AiRequestReceipt, type ConnectionProposal, type GardenStoreV3,
   type QuotaReceipt, type SeedPermission, type SourceRef } from './contracts';
 import { invalidateAi, permissionFor, queueAiControl, receiptIssue } from './proposalPrivacy';
@@ -16,6 +17,44 @@ export type ProposalInput = {
   purpose: 'connection_proposals'; sources: Array<{ alias: string; text: string; versionToken: string }>;
 };
 export type ProposalPlan = { input: ProposalInput; receipt: AiRequestReceipt };
+
+/** Prepares a small, varied list for inspection on the device. Only the confirmed subset becomes input. */
+export function chooseExplorationSeeds(store: GardenStoreV3, centerId: string, scope: readonly string[], selected: readonly string[] = []): string[] {
+  const scopeIds = new Set(scope);
+  const center = scopeIds.has(centerId) ? store.seeds.find((seed) => seed.id === centerId && !seed.deletedAt) : undefined;
+  if (!center || permissionFor(store, centerId)?.externalAi === 'deny') return [];
+  const eligible = store.seeds.filter((seed) => {
+    const permission = permissionFor(store, seed.id);
+    return seed.id !== centerId && scopeIds.has(seed.id) && !seed.deletedAt && permission?.externalAi !== 'deny' && permission?.discovery !== 'exclude' &&
+      !pairIsBlocked(store, centerId, seed.id);
+  });
+  const words = new Set(extractKeywords(center.body));
+  const related = eligible.map((seed) => ({ seed, score: seed.tags.filter((tag) => center.tags.includes(tag)).length * 3 +
+    extractKeywords(seed.body).filter((word) => words.has(word)).length }));
+  const near = related.filter(({ score }) => score > 0).sort((a, b) => b.score - a.score || a.seed.id.localeCompare(b.seed.id)).map(({ seed }) => seed);
+  const categories = new Set(center.tags);
+  const different = eligible.filter((seed) => {
+    const category = seed.tags.find((tag) => !categories.has(tag));
+    if (!category) return false;
+    categories.add(category);
+    return true;
+  });
+  const live = store.seeds.filter((seed) => !seed.deletedAt);
+  const adjacency = buildAdjacency(live, store.connections);
+  const older = [...eligible].sort((a, b) => Number(Boolean(adjacency.get(a.id)?.size)) - Number(Boolean(adjacency.get(b.id)?.size)) ||
+    a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const found = new Set([centerId, ...selected]);
+  const append = (list: typeof eligible, limit: number) => {
+    let added = 0;
+    for (const seed of list) {
+      if (found.size >= 16 || added >= limit) break;
+      if (found.has(seed.id)) continue;
+      found.add(seed.id); added++;
+    }
+  };
+  append(near, 5); append(different, 5); append(older, 5); append(eligible, 15);
+  return [...found].slice(0, 16);
+}
 
 export function prepareProposals(store: GardenStoreV3, args: {
   requestId: string; consentReceiptId: string; contextId: string; contextGeneration: number; scope: readonly string[];

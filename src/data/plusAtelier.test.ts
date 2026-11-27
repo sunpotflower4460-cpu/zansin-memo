@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { activeDraft, adoptAtelierRevision, createAtelier, forkAtelier, movePins, reviseMaterial, saveAtelierRevision, saveAtelierText, trackPin } from '../domain/plus/atelier';
+import { activeDraft, adoptAtelierRevision, createAtelier, forkAtelier, insertAtelierExample, movePins, reviseMaterial, saveAtelierExample, saveAtelierRevision, saveAtelierText, trackPin } from '../domain/plus/atelier';
 import { updateSeedFields } from '../domain/gardenCommands';
 import { emptyStoreV3, parseStoreV3 } from './gardenV3Model';
 import { PLUS_KEYS } from './gardenV3Storage';
@@ -84,4 +84,20 @@ test('checkpoint, fork and sprout adoption are separate and a failed adoption wr
   assert.equal((await second.run(adoptAtelierRevision(review))).ok, false);
   assert.equal((await second.run(adoptAtelierRevision({ ...review, oldSynthesis: saved.seeds[0].synthesis }))).ok, true);
   assert.equal(second.getSnapshot().sourceSnapshots.find(({ id }) => id === 'prior')?.text, '自分の案');
+});
+
+test('a short offline example cannot change a pinned excerpt, and explicit insertion changes only the draft', async () => {
+  const writer = new GardenV3Writer(new FakeStorage(), { ...emptyStoreV3(), seeds: [center, source] });
+  await writer.run(create);
+  await writer.run(saveAtelierText(target(0), '固定した文', 'edit', at));
+  await writer.run(trackPin({ target: target(1), id: 'pin', range: { start: 0, end: 5 }, at }));
+  await writer.run(saveAtelierExample(target(2), { id: 'hint', snapshotId: 'snapshot', kind: 'title', content: '短い題名', at }));
+  assert.equal(writer.getSnapshot().atelierDrafts[0].text, '固定した文');
+  assert.equal((await writer.run(insertAtelierExample(target(2), { id: 'hint', start: 1, end: 1, at }))).ok, false);
+  assert.equal((await writer.run(insertAtelierExample(target(2), { id: 'hint', start: 0, end: 0, append: true, at }))).ok, true);
+  const saved = writer.getSnapshot();
+  assert.equal(saved.atelierDrafts[0].text, '固定した文\n短い題名');
+  assert.equal(saved.atelierDrafts[0].pinnedExcerpts[0].text, '固定した文');
+  assert.equal(saved.atelierSuggestions[0].decision, 'inserted');
+  assert.equal(saved.aiRequestReceipts.length + saved.atelierRevisions.length + saved.adoptionRecords.length + saved.connections.length + saved.collectionItems.length, 0);
 });

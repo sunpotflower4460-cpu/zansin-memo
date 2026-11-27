@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acceptProposal, dismissProposal, prepareProposals, receiveProposals, reconcileQuota, recordProposalConsent,
+import { acceptProposal, chooseExplorationSeeds, dismissProposal, prepareProposals, receiveProposals, reconcileQuota, recordProposalConsent,
   restoreProposalPair, updateSeedPermission, verifyProposals, type ProposalPlan, type ProposalResult } from '../domain/plus/proposals';
 import { FixtureProposalTransport } from '../domain/plus/proposalTransport';
 import { snapshotSource } from '../domain/plus/sources';
@@ -165,6 +165,7 @@ test('DATA-25/26: retries, renewal and late acknowledgements reconcile the origi
   await service.start(request.input);
   assert.equal(service.executions(), 1);
   await assert.rejects(service.start({ ...request.input, inputFingerprint: 'other' }), /request_conflict/);
+  await assert.rejects(service.start({ ...request.input, sources: request.input.sources.map((entry) => ({ ...entry, text: 'changed' })) }), /request_conflict/);
   time = later;
   period = 'new-period';
   const entry = writer.getSnapshot().outbox[0];
@@ -189,4 +190,14 @@ test('ack/cancellation order is terminal and duplicate controls never change acc
     assert.equal(service.executions(), 1);
     assert.equal(typeof initial !== 'string' && initial.state, first === 'ack' ? 'committed' : 'released');
   }
+});
+
+test('automatic exploration remains inside the chosen set, preserves explicit selection, and excludes denied and hidden notes', () => {
+  const state = { ...store(), seeds: [...seeds, makeSeed('D', { tags: ['別の分野'] }), makeSeed('E', { tags: ['離れた分野'] })], permissions: [
+    { seedId: 'B', externalAi: 'deny' as const, discovery: 'include' as const, epoch: 1, changedAt: at },
+    { seedId: 'C', externalAi: 'unasked' as const, discovery: 'exclude' as const, epoch: 0, changedAt: at },
+  ] };
+  assert.deepEqual(chooseExplorationSeeds(state, 'A', ['A', 'B', 'C', 'D']), ['A', 'D']);
+  assert.deepEqual(chooseExplorationSeeds(state, 'A', ['A', 'B', 'C', 'D'], ['C']), ['A', 'C', 'D']);
+  assert.equal(state.aiRequestReceipts.length, 0);
 });

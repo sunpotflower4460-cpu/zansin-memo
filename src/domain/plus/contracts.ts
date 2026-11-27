@@ -194,6 +194,7 @@ export type MapReturnContext = z.infer<typeof mapReturnContext>;
 export type AtelierProject = z.infer<typeof atelierProject>;
 export type AtelierDraft = z.infer<typeof atelierDraft>;
 export type AtelierRevision = z.infer<typeof atelierRevision>;
+export type AtelierSuggestion = z.infer<typeof atelierSuggestion>;
 export type CollectionRevision = z.infer<typeof collectionRevision>;
 export type CollectionReturnContext = {
   collectionItemId: string;

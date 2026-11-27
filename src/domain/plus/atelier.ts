@@ -2,7 +2,7 @@ import type { PlusCommand } from '../../data/gardenV3Writer';
 import { withCoreCommand } from '../../data/gardenV3Writer';
 import { promoteToSprout } from '../gardenCommands';
 import type { Seed } from '../types';
-import type { AtelierDraft, AtelierProject, AtelierRevision, GardenStoreV3, MapReturnContext, SourceRef, SourceSnapshot } from './contracts';
+import type { AtelierDraft, AtelierProject, AtelierRevision, AtelierSuggestion, GardenStoreV3, MapReturnContext, SourceRef, SourceSnapshot } from './contracts';
 import { mergeLineage, readSource, snapshotSource, textDigest } from './sources';
 
 type DraftTarget = { projectId: string; branchId: string; expected: number };
@@ -206,4 +206,52 @@ export function adoptAtelierRevision(args: { id: string; revisionId: string; cen
       id: args.id, atelierRevisionId: revision.id, centerSeedId: center.id, synthesisId, previousSynthesisSnapshotId: previous?.snapshot.id, adoptedAt: args.at,
     }] };
   } };
+}
+
+/** An offline example is stored apart from the editor. It issues no AI request or quota receipt. */
+export function saveAtelierExample(target: DraftTarget, args: { id: string; snapshotId: string; kind: AtelierSuggestion['kind']; content: string; at: string }): PlusCommand {
+  return withDraft(`atelier-example:${args.id}`, target, (store, draft) => {
+    if (store.atelierSuggestions.some((item) => item.id === args.id)) return store;
+    const snapshot = store.sourceSnapshots.find(({ id }) => id === args.snapshotId);
+    if (!snapshot || !draft.materials.some(({ snapshotId }) => snapshotId === args.snapshotId) ||
+        materialState(store.seeds, snapshot) !== 'current' || !args.content.trim()) return { rejected: 'この材料で表示できる例の案はありません' };
+    const lineage = mergeLineage(draft.lineage, snapshot.lineage);
+    const suggestion: AtelierSuggestion = {
+      id: args.id, requestId: `offline-example:${args.id}`, resultId: args.id, projectId: draft.projectId, branchId: draft.branchId,
+      baseEditRevision: draft.editRevision, baseTextDigest: textDigest(draft.text), kind: args.kind, content: args.content,
+      evidence: [{ source: snapshot.source, start: 0, end: snapshot.text.length, quote: snapshot.text }], processingRootSeedIds: lineage.rootSeedIds,
+      permissionEpochs: Object.fromEntries(lineage.rootSeedIds.map((id) => [id, store.permissions.find((item) => item.seedId === id)?.epoch ?? 0])),
+      decision: 'pending', availability: 'ready', createdAt: args.at,
+    };
+    return { ...store, atelierSuggestions: [...store.atelierSuggestions, suggestion] };
+  });
+}
+
+export function atelierExampleCurrent(store: GardenStoreV3, draft: AtelierDraft, suggestion: AtelierSuggestion) {
+  return suggestion.requestId.startsWith('offline-example:') && suggestion.projectId === draft.projectId && suggestion.branchId === draft.branchId &&
+    suggestion.decision === 'pending' && suggestion.availability === 'ready' && suggestion.baseEditRevision === draft.editRevision &&
+    suggestion.baseTextDigest === textDigest(draft.text) && suggestion.evidence.every((entry) => {
+      const source = readSource(store.seeds, entry.source.ref);
+      return Boolean(source && textDigest(source.text) === entry.source.textDigest && source.text.slice(entry.start, entry.end) === entry.quote);
+    });
+}
+
+export function insertAtelierExample(target: DraftTarget, args: { id: string; start: number; end: number; append?: boolean; at: string }): PlusCommand {
+  return withDraft(`atelier-insert:${args.id}`, target, (store, draft) => {
+    const suggestion = store.atelierSuggestions.find((item) => item.id === args.id);
+    if (draft.insertedSuggestionIds.includes(args.id)) return store;
+    if (!suggestion || !atelierExampleCurrent(store, draft, suggestion)) return { rejected: '下書きまたは材料が変わりました。案を確認し直してください' };
+    const start = args.append ? draft.text.length : args.start;
+    const end = args.append ? draft.text.length : args.end;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || end > draft.text.length ||
+        draft.pinnedExcerpts.some((pin) => start < pin.end && end > pin.start)) return { rejected: '固定した一節の外に入れる場所を選んでください' };
+    const added = args.append && draft.text.length ? `\n${suggestion.content}` : suggestion.content;
+    const text = draft.text.slice(0, start) + added + draft.text.slice(end);
+    const pinnedExcerpts = movePins(draft.text, text, draft.pinnedExcerpts);
+    if (!pinnedExcerpts) return { rejected: '固定した一節の外に入れる場所を選んでください' };
+    return replaceDraft({ ...store, atelierSuggestions: store.atelierSuggestions.map((item) => item === suggestion
+      ? { ...item, decision: 'inserted', insertedAt: args.at } : item) }, draft, { ...draft, text, pinnedExcerpts,
+      insertedSuggestionIds: [...draft.insertedSuggestionIds, suggestion.id], lineage: mergeLineage(draft.lineage, { status: 'known', rootSeedIds: suggestion.processingRootSeedIds }),
+      editRevision: draft.editRevision + 1, updatedAt: args.at });
+  });
 }

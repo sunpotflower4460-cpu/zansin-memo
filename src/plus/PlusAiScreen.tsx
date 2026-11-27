@@ -3,7 +3,7 @@ import { ScrollView, Text } from 'react-native';
 import { SectionCard } from '../components/SectionCard';
 import { buildPlusExample } from '../data/plusExample';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
-import { acceptProposal, cancelProposalRequest, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
+import { acceptProposal, cancelProposalRequest, chooseExplorationSeeds, dismissProposal, prepareProposals, receiveProposals, reconcileQuota,
   recordProposalConsent, restoreProposalPair, updateSeedPermission, type ProposalPlan } from '../domain/plus/proposals';
 import { permissionFor, receiptIssue } from '../domain/plus/proposalPrivacy';
 import { FixtureProposalTransport } from '../domain/plus/proposalTransport';
@@ -54,6 +54,7 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
   const chosen = React.useRef<ProposalPlan>(undefined);
   const mounted = React.useRef(true);
   const [ids, setIds] = React.useState<string[]>([centerId]);
+  const [automatic, setAutomatic] = React.useState<string[]>([]);
   const [search, setSearch] = React.useState('');
   const [cap, setCap] = React.useState(20);
   const [plan, setPlan] = React.useState<ProposalPlan>();
@@ -79,7 +80,7 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
     const at = now();
     const next = prepareProposals(writer.getSnapshot(), { requestId: createId(), consentReceiptId: createId(), contextId: `preview:${centerId}`,
       contextGeneration: generation.current, scope, policyVersion: 'preview-v1', providerDisclosureVersion: 'offline-fixture-v1',
-      selections: ids.map((seedId) => ({ ref: { seedId, part: 'body' }, selection: 'explicit' })), now: at,
+      selections: ids.map((seedId) => ({ ref: { seedId, part: 'body' }, selection: automatic.includes(seedId) ? 'automatic_in_confirmed_scope' : 'explicit' })), now: at,
       expiresAt: new Date(Date.parse(at) + 4 * 60_000).toISOString(),
     });
     setNotice(next ? '' : '材料を使用できません。AIに送らない設定や削除の有無を確認してください。');
@@ -132,9 +133,18 @@ export function PlusAiScreen({ writer, centerId, scope, onBack, onMaterial, allo
     <Text style={plusStyles.meta}>無通信の開発プレビュー。架空の候補で操作を試せます。</Text>
     {allowRequest && <SectionCard>
       <Heading>今回の材料を選ぶ · {ids.length}件</Heading>
+      <PlusButton label="この範囲から材料の候補を追加" disabled={Boolean(plan) || busy || ids.length >= 16} onPress={() => {
+        const selected = chooseExplorationSeeds(writer.getSnapshot(), centerId, scope, ids);
+        if (!selected.length) { setNotice('この範囲では材料を選べません'); return; }
+        setAutomatic((before) => [...before, ...selected.filter((id) => !ids.includes(id))]); setIds(selected);
+      }} />
+      {automatic.length > 0 && <Text style={plusStyles.meta}>追加した材料も、使う前に全文を確認できます。</Text>}
       <PlusInput accessibilityLabel="候補づくりの材料を探す" placeholder="この範囲のメモを探す" value={search} onChangeText={(value) => { setSearch(value); setCap(20); }} editable={!plan && !busy} />
       {visible.slice(0, cap).map((seed) => <PlusButton key={seed.id} label={toSeedSnippet(seed, 42)} selected={ids.includes(seed.id)} disabled={Boolean(plan) || busy || seed.id === centerId}
-        onPress={() => setIds((before) => before.includes(seed.id) ? before.filter((id) => id !== seed.id) : before.length < 16 ? [...before, seed.id] : before)} />)}
+        onPress={() => {
+          setAutomatic((before) => before.filter((id) => id !== seed.id));
+          setIds((before) => before.includes(seed.id) ? before.filter((id) => id !== seed.id) : before.length < 16 ? [...before, seed.id] : before);
+        }} />)}
       {visible.length > cap && <PlusButton label="さらに材料を表示" onPress={() => setCap((before) => before + 20)} />}
       <PlusButton label="今回使う内容を確認" primary disabled={ids.length < 2 || Boolean(plan) || busy} onPress={preview} />
     </SectionCard>}

@@ -16,10 +16,12 @@ import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } fro
 const now = () => new Date().toISOString();
 const pageSize = 20;
 
-function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }: {
+function SeedRows({ seeds, onPick, inside, search, details, onRead, action = '選ぶ' }: {
   seeds: Seed[]; onPick: (id: string) => void; inside?: Set<string>; search?: string; details?: Map<string, string>; action?: string;
+  onRead?: (id: string, onReturn: () => void) => void;
 }) {
   const [page, setPage] = React.useState(0);
+  const controls = React.useRef(new Map<string, View>());
   const last = Math.max(0, Math.ceil(seeds.length / pageSize) - 1);
   const visiblePage = Math.min(page, last);
   const start = visiblePage * pageSize;
@@ -32,7 +34,11 @@ function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }:
       return <View key={seed.id} style={plusStyles.rule}>
         {match && <Text style={plusStyles.meta}>{match.text}</Text>}
         {detail && <Text style={plusStyles.meta}>{snippet} · {detail}</Text>}
-        <PlusButton label={`${snippet} · ${out ? '地図の外で周辺を開く' : action}`} onPress={() => onPick(seed.id)} />
+        <Actions><PlusButton label={`${snippet} · ${out ? '地図の外で周辺を開く' : action}`} onPress={() => onPick(seed.id)} />
+          {onRead && !out && <PlusButton label={`${snippet}の原文を開く`} focusRef={(node) => {
+            if (node) controls.current.set(seed.id, node); else controls.current.delete(seed.id);
+          }} onPress={() => onRead(seed.id, () => focusControl(controls.current.get(seed.id) ?? null))} />}
+        </Actions>
       </View>;
     })}
     {last > 0 && <Actions>
@@ -48,9 +54,10 @@ type MapProps = {
   onOpenSeed: (seedId: string, onReturn: () => void) => void; canArrange?: boolean;
   onOpenCandidates?: (seedId: string, scope: string[], context: MapReturnContext) => void;
   onOpenAtelier?: (seedId: string, materials: string[], context: MapReturnContext) => void;
+  restoreContext?: MapReturnContext;
 };
 
-export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier }: MapProps) {
+export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier, restoreContext }: MapProps) {
   const [view, setView] = React.useState<MapView>(() => ({ ...newMapView(createId(), now()), displayGroups: initialGroups }));
   const [scopeMenu, setScopeMenu] = React.useState(false);
   const [layoutMenu, setLayoutMenu] = React.useState(false);
@@ -71,6 +78,16 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   const readControl = React.useRef<View>(null);
   const scroll = React.useRef(0);
   const { fontScale } = useWindowDimensions();
+  const restoredContext = React.useRef<MapReturnContext>(undefined);
+  React.useEffect(() => {
+    if (!restoreContext || restoredContext.current === restoreContext) return;
+    restoredContext.current = restoreContext;
+    const restored = restoreMapReturn(restoreContext, store.mapViews, createId(), now());
+    setView(restored.view); setName(restored.view.name ?? ''); setMarked(restoreContext.rangeSeedIds ?? []);
+    setTemporary(undefined); setPreview(undefined); setUndo(undefined);
+    setNotice(restored.changed ? '元の見方に更新がありました。当時の配置を一時表示しています。' : '制作を始めた地図に戻りました');
+    requestAnimationFrame(() => scroller.current?.scrollTo({ y: restored.scroll, animated: false }));
+  }, [restoreContext, store.mapViews]);
 
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.seeds, store.connections]);
   const graph = React.useMemo(() => mapInScope(index, view.scope), [index, view.scope]);
@@ -87,6 +104,8 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   const search = view.searchText ?? '';
   const query = normalizeSearchText(search.trim());
   const results = React.useMemo(() => query ? index.live.filter((seed) => searchableText(seed).includes(query)) : [], [index, query]);
+  const searchDetails = new Map(center ? [...graph.adjacent.get(center) ?? []].map((id) =>
+    [id, `${toSeedSnippet(graph.byId.get(center)!, 38)}につながる`] as const) : []);
   const scopedIds = React.useMemo(() => new Set(graph.byId.keys()), [graph]);
   const expandedId = view.expandedGroupIds?.[0];
   const expanded = view.viewMode === 'overview' ? groups.find((group) => group.id === expandedId) : undefined;
@@ -237,7 +256,8 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     <PlusInput accessibilityLabel="地図と全件を探す" placeholder="地図と全件を探す" value={search} onChangeText={(searchText) => setView((before) => ({ ...before, searchText }))} />
     {query && <SectionCard>
       <Heading>検索結果 {results.length}件</Heading>
-      {results.length ? <SeedRows key={query} seeds={results} onPick={pickSeed} inside={scopedIds} search={search} /> : <Text style={plusStyles.meta}>一致する種はありません</Text>}
+      {results.length ? <SeedRows key={query} seeds={results} onPick={pickSeed} inside={scopedIds} search={search} details={searchDetails}
+        onRead={(id, onReturn) => { select(id, !focus.has(id)); onOpenSeed(id, onReturn); }} /> : <Text style={plusStyles.meta}>一致する種はありません</Text>}
       <PlusButton label="検索を閉じる" onPress={() => setView((before) => ({ ...before, searchText: '' }))} />
     </SectionCard>}
     {scopeMenu && <SectionCard>
