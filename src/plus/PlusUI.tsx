@@ -2,10 +2,17 @@ import type { ReactNode, Ref } from 'react';
 import { AccessibilityInfo, findNodeHandle, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { theme } from '../styles/theme';
 
+export function buttonSelectionProps(selected?: boolean, disabled?: boolean) {
+  // A toggle button exposes pressed on Web. React Native uses selected in its accessibility state.
+  return Platform.OS === 'web'
+    ? { 'aria-pressed': selected, accessibilityState: { disabled } }
+    : { accessibilityState: { selected, disabled } };
+}
+
 export function PlusButton({ label, onPress, selected, primary, disabled, testID, focusRef }: {
   label: string; onPress: () => void; selected?: boolean; primary?: boolean; disabled?: boolean; testID?: string; focusRef?: Ref<View>;
 }) {
-  return <Pressable ref={focusRef} testID={testID} accessibilityRole="button" accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress}
+  return <Pressable ref={focusRef} testID={testID} accessibilityRole="button" {...buttonSelectionProps(selected, disabled)} disabled={disabled} onPress={onPress}
     style={({ pressed }) => [styles.button, selected && styles.selected, primary && styles.primary, pressed && styles.pressed, disabled && styles.disabled]}>
     <Text style={[styles.buttonText, primary && styles.primaryText]}>{label}</Text>
   </Pressable>;

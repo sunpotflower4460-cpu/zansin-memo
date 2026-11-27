@@ -6,7 +6,9 @@ import { buildPlusExample } from '../data/plusExample';
 import { makeSeed, FakeStorage } from '../data/testSupport';
 import { GardenV3Writer } from '../data/gardenV3Writer';
 import type { MapScope, MapView } from '../domain/plus/contracts';
-import { allNotes, captureMapReturn, focusMap, indexMap, mapGroups, mapInScope, newMapView, outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
+import { allNotes, captureMapReturn, focusMap, indexMap, mapGroupLinks, mapGroups, mapInScope, mapViewportBounds, newMapView,
+  outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
+import { routeMapFiber, routeMapLine, type MapSegment } from '../domain/plus/mapGeometry';
 
 const at = '2026-11-27T00:00:00.000Z';
 const chain = [makeConnection('A', 'X', 'manual', at), makeConnection('X', 'B', 'manual', at)];
@@ -41,6 +43,95 @@ test('PM02/PM05/PM17: filtered views keep manual memberships and existing positi
   for (const key of Object.keys(positions)) assert.deepEqual(placed[key], positions[key]);
   assert.deepEqual(placeMap(next, positions, mapGroups(next, manual), true).A, positions.A);
   assert.deepEqual(mapInScope(indexMap([...seeds, added], chain), { kind: 'selection', seedIds: ['A', 'B'] }).seeds.map((seed) => seed.id), ['A', 'B']);
+});
+
+test('PM01/PM02: the overview only connects different memberships with actual confirmed endpoints', () => {
+  const graph = mapInScope(indexMap(seeds, [...chain, makeConnection('B', 'C', 'manual', at), makeConnection('A', 'B', 'manual', at)]), allNotes);
+  const manual = [
+    { id: 'morning', label: '朝', seedIds: ['A', 'X'], collapsed: true },
+    { id: 'light', label: '光', seedIds: ['B', 'X'], collapsed: true },
+    { id: 'later', label: 'あとで', seedIds: ['C'], collapsed: true },
+  ];
+  const groups = mapGroups(graph, manual);
+  const links = mapGroupLinks(graph.edges, groups);
+  assert.deepEqual(links.map(({ groups, edges }) => [groups.map(({ id }) => id), edges.map(({ aSeedId, bSeedId }) => [aSeedId, bSeedId])]), [
+    [['manual:later', 'manual:light'], [['B', 'C']]],
+    [['manual:light', 'manual:morning'], [['A', 'B']]],
+  ]);
+  assert.deepEqual(mapGroupLinks(graph.edges, groups, 'manual:morning'), [links[1]]);
+  const scoped = mapInScope(indexMap(seeds, graph.edges), { kind: 'selection', seedIds: ['A', 'X', 'C'] });
+  assert.deepEqual(mapGroupLinks(scoped.edges, mapGroups(scoped, manual)), []);
+});
+
+test('drawn links stop outside cards and can go around a third card', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { x: 255, y: 65, width: 50, height: 30 };
+  const obstacle = { x: 150, y: 65, width: 50, height: 30 };
+  const frame = { width: 300, height: 130 };
+  assert.deepEqual(routeMapLine(a, b, [a, b], frame), [{ start: { x: 72, y: 65 }, end: { x: 228, y: 65 } }]);
+  const route = routeMapLine(a, b, [a, b, obstacle], frame);
+  assert.equal(route.length, 3);
+  assert.equal(route[0].end.y, route[2].start.y);
+  assert.ok(Math.abs(route[1].start.y - obstacle.y) > obstacle.height / 2);
+  assert.deepEqual(routeMapLine(a, b, [a, b, { ...obstacle, height: frame.height }], frame), []);
+});
+
+test('mycelium curves are undirected and their branches rejoin the same edge', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const fiber = routeMapFiber(a, b, [a, b], frame);
+  assert.ok(fiber);
+  assert.equal(routeMapFiber(a, a, [a], frame), undefined);
+  assert.deepEqual(fiber, routeMapFiber(b, a, [a, b], frame));
+  assert.ok(fiber.strokes.some(({ start }) => Math.abs(start.y - a.y) > 6));
+  assert.ok(fiber.strokes.every(({ end }, i) => i === fiber.strokes.length - 1 || end === fiber.strokes[i + 1].start));
+  assert.ok(fiber.strokes[0].start.x < a.x + a.width / 2);
+  assert.ok(fiber.strokes.at(-1)!.end.x > b.x - b.width / 2);
+
+  const distance = (a: MapSegment['start'], b: MapSegment['end']) => Math.hypot(a.x - b.x, a.y - b.y);
+  const onTrunk = (point: MapSegment['start']) => fiber.strokes.some(({ start, end }) =>
+    Math.abs(distance(start, point) + distance(point, end) - distance(start, end)) < 0.0001);
+  const starts = fiber.branches.filter(({ start }, i) => i === 0 || fiber.branches[i - 1].end !== start);
+  const ends = fiber.branches.filter(({ end }, i) => i === fiber.branches.length - 1 || fiber.branches[i + 1].start !== end);
+  assert.equal(starts.length, 2);
+  assert.ok(starts.every(({ start }) => onTrunk(start)));
+  assert.ok(ends.every(({ end }) => onTrunk(end)));
+  assert.ok(fiber.branches.some(({ end }) => !onTrunk(end)));
+});
+
+test('mycelium traces and their branches stay clear of the third card', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const beside = { x: 110, y: 80, width: 24, height: 12 };
+  const safe = routeMapFiber(a, b, [a, b, beside], frame);
+  assert.deepEqual(safe?.strokes.slice(1, -1), routeMapLine(a, b, [a, b, beside], frame));
+
+  const obstacle = { ...a, x: 150 };
+  const around = routeMapFiber(a, b, [a, b, obstacle], frame);
+  assert.ok(around);
+  assert.ok(around.strokes.length > 5);
+  assert.ok([...around.strokes, ...around.branches].every(({ start, end }) => [start, end].every(({ x, y }) =>
+    x < 121 || x > 179 || Math.abs(y - obstacle.y) > 19)));
+  assert.equal(routeMapFiber(a, b, [a, b, { ...obstacle, height: frame.height }], frame), undefined);
+});
+
+test('candidate curves have real gaps even in a narrow gutter', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 107 };
+  const frame = { width: 152, height: 130 };
+  const candidate = routeMapFiber(a, b, [a, b], frame, true);
+  assert.ok(candidate);
+  assert.deepEqual(candidate.branches, []);
+  assert.ok(candidate.strokes.slice(1).some(({ start }, i) =>
+    Math.hypot(start.x - candidate.strokes[i].end.x, start.y - candidate.strokes[i].end.y) > 2));
+});
+
+test('pan bounds are limited to the current drawing, including negative and saved coordinates', () => {
+  const positions = { A: { x: -188, y: 126, pinned: true }, B: { x: 10, y: 8, pinned: false }, C: { x: 1000, y: 400, pinned: false } };
+  assert.deepEqual(mapViewportBounds(new Set(['A', 'B', 'missing']), positions), { left: -188, right: 10, top: 8, bottom: 126 });
+  assert.equal(mapViewportBounds(new Set(['missing']), positions), undefined);
 });
 
 test('PM10/PM16: restore retains unsaved or saved display state and never rewinds a newer saved revision', () => {

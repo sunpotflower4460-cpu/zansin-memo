@@ -1,3 +1,5 @@
+import type { PlusCommand } from '../../data/gardenV3Writer';
+
 export type EntitlementStatus = 'unknown' | 'free' | 'trial_active' | 'active' | 'grace' | 'expired' | 'revoked';
 type PaidStatus = Extract<EntitlementStatus, 'trial_active' | 'active' | 'grace'>;
 export type VerifiedEntitlement = {
@@ -24,6 +26,10 @@ export function plusRights(status: EntitlementStatus) {
   const advanced = paid.has(status);
   return { arrangeMap: advanced, atelierAdvanced: advanced, composeWork: advanced, requestFixtureAi: advanced,
     core: true, viewSaved: true, editSavedText: true, reexportSavedWork: true, exportAndDelete: true } as const;
+}
+
+export function requirePlusAccess(command: PlusCommand, allowed: () => boolean): PlusCommand {
+  return { ...command, apply: (store) => allowed() ? command.apply(store) : { rejected: '利用権を確認してください。入力は残っています。' } };
 }
 
 export type StoreProduct = { id: string; displayPrice: string; displayPeriod: string; trialDisclosure?: string };

@@ -26,12 +26,20 @@ const { chromium } = require('playwright');
     await button('紙面を確認').click();
     assert.equal((await read()).collectionItems.length, 0);
     await button('作品集に残す').click();
-    await button('作ったときの材料を見る').click();
-    await page.getByRole('heading', { name: '作ったときの材料' }).waitFor();
-    await button('開いていた作品版に戻る').click();
-    await button('現在の原文を開く').click();
-    await page.getByRole('heading', { name: '現在の原文' }).waitFor();
-    await button('開いていた作品版に戻る').click();
+    async function expectFocus(control) {
+      const target = await control.elementHandle();
+      try { await page.waitForFunction((element) => document.activeElement === element, target); }
+      finally { await target.dispose(); }
+    }
+    const returnToWork = button('開いていた作品版に戻る');
+    for (const [open, heading] of [['作ったときの材料を見る', '作ったときの材料'], ['現在の原文を開く', '現在の原文']]) {
+      await button(open).press('Enter');
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+      await expectFocus(returnToWork);
+      await page.keyboard.press('Enter');
+      await expectFocus(button(open));
+    }
+    console.log('PASS keyboard focus returns to the same material control for historical and current text');
     async function exportFile(format, name) {
       await button(`${format}ファイルを作る`).click();
       await page.getByText('ファイルを用意しました', { exact: true }).waitFor();
@@ -85,6 +93,15 @@ const { chromium } = require('playwright');
       assert.equal(afterSave.collectionExportReceipts.at(-1).collectionRevisionId, revised.id);
       assert.equal(afterSave.aiRequestReceipts.length, 0);
       console.log('PASS simulated expiry preserves input, saves a basic edit and regenerates the same PDF layout');
+      await button('本文・題名を編集').click();
+      const long = `${'長い日本語の作業メモです。🌱\n'.repeat(100)}ここが本文の最後の行です。`;
+      await edit.fill(long);
+      await button('変更を保存').click();
+      await page.getByText('一枚には収まりません。文章を調整するか、テキストで取り出せます。', { exact: true }).waitFor();
+      assert.equal(await button('PDFファイルを作る').isDisabled(), true);
+      const savedText = await exportFile('テキスト', 'long-work.txt');
+      assert.equal(savedText.toString('utf8').includes(long), true);
+      console.log('PASS overflow blocks cropped paper output and keeps the entire text export');
     }
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

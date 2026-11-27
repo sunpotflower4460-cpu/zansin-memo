@@ -1,5 +1,6 @@
 import type { AiOutboxEntry, QuotaReceipt } from './contracts';
 import type { ProposalInput, ProposalResult } from './proposals';
+import { textDigest } from './sources';
 
 export interface ProposalTransport {
   start(input: ProposalInput): Promise<unknown>;
@@ -28,10 +29,11 @@ export class FixtureProposalTransport implements ProposalTransport {
 
   async start(input: ProposalInput): Promise<ProposalResult | undefined> {
     const now = this.options.now();
+    const fingerprint = textDigest(JSON.stringify(input));
     const previous = this.records.get(input.requestId);
     if (previous) {
       this.expire(previous, now);
-      if (previous.fingerprint !== input.inputFingerprint) throw new Error('request_conflict');
+      if (previous.fingerprint !== fingerprint) throw new Error('request_conflict');
       return previous.quota.state === 'released' || !previous.result ? undefined : { ...previous.result, quota: { ...previous.quota } };
     }
     const period = this.options.period();
@@ -41,7 +43,7 @@ export class FixtureProposalTransport implements ProposalTransport {
         current.filter((record) => record.quota.quotaPeriodId === period && record.quota.state === 'committed').length >= this.options.slots) throw new Error('quota_unavailable');
     const quota: QuotaReceipt = { reservationId: `reservation:${input.requestId}`, quotaPeriodId: period, state: 'reserved',
       reservationExpiresAt: new Date(Date.parse(now) + this.options.reserveForMs).toISOString() };
-    const record: Reservation = { fingerprint: input.inputFingerprint, quota,
+    const record: Reservation = { fingerprint, quota,
       resultExpiresAt: new Date(Date.parse(now) + this.options.resultForMs).toISOString() };
     this.records.set(input.requestId, record);
     this.calls++;

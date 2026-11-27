@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { currentEntitlement, plusRights, PurchaseFlow, type PurchaseAdapter, type PurchaseResult, type VerifiedEntitlement } from '../domain/plus/entitlements';
+import { createAtelier } from '../domain/plus/atelier';
+import { currentEntitlement, plusRights, PurchaseFlow, requirePlusAccess, type PurchaseAdapter, type PurchaseResult, type VerifiedEntitlement } from '../domain/plus/entitlements';
+import { emptyStoreV3 } from './gardenV3Model';
+import { PLUS_KEYS } from './gardenV3Storage';
+import { GardenV3Writer } from './gardenV3Writer';
+import { FakeStorage } from './testSupport';
 
 const now = 1_000;
 const product = { id: 'test-product', displayPrice: 'test', displayPeriod: 'test' };
@@ -27,6 +32,24 @@ test('expired, refunded and unknown access keep core and saved work rights', () 
     assert.equal(rights.core && rights.viewSaved && rights.editSavedText && rights.reexportSavedWork && rights.exportAndDelete, true);
     assert.equal(rights.arrangeMap || rights.atelierAdvanced || rights.composeWork || rights.requestFixtureAi, false);
   }
+});
+
+test('a Plus command queued while active checks the current entitlement before saving', async () => {
+  let clock = now;
+  const stamp = new Date(now).toISOString();
+  const proof = entitlement({ cacheUntil: now + 1000 });
+  const storage = new FakeStorage();
+  const writer = new GardenV3Writer(storage, emptyStoreV3());
+  const release = storage.hold('setItem', PLUS_KEYS.main);
+  const first = writer.run({ id: 'other-save', apply: (state) => ({ ...state }) });
+  const command = createAtelier({ id: 'project', branchId: 'branch', materials: [], at: stamp });
+  const pending = writer.run(requirePlusAccess(command, () => plusRights(currentEntitlement(proof, clock)).atelierAdvanced));
+  clock = now + 500;
+  release();
+  assert.equal((await first).ok, true);
+  assert.equal((await pending).ok, false);
+  assert.equal(writer.getSnapshot().atelierProjects.length, 0);
+  assert.equal(writer.getSnapshot().revision, 1);
 });
 
 test('pending, cancellation, an unverified response and failure preserve verified access and avoid duplicate purchases', async () => {

@@ -9,12 +9,18 @@ import { beginDeletionV3, finishDeletionV3, PLUS_KEYS } from './gardenV3Storage'
 export type PlusCommand = GardenCommand<GardenStoreV3>;
 
 export class GardenV3Writer extends GardenCommitWriter<GardenStoreV3> {
-  constructor(storage: StorageLike, initial: GardenStoreV3, options?: WriterOptions & { needsInitialPersist?: boolean }) {
+  constructor(storage: StorageLike, initial: GardenStoreV3, options?: WriterOptions & { needsInitialPersist?: boolean; observeSerialization?: (ms: number) => void }) {
+    const observe = options?.observeSerialization;
     super(storage, initial, {
       main: PLUS_KEYS.main,
       lastGood: PLUS_KEYS.lastGood,
       empty: emptyStoreV3,
-      serialize: serializeStoreV3,
+      serialize: observe ? (store) => {
+        const start = performance.now();
+        const raw = serializeStoreV3(store);
+        observe(performance.now() - start);
+        return raw;
+      } : serializeStoreV3,
       confirm: (raw, expected, current, recovering) => {
         if (raw === serializeStoreV3(expected)) return 'committed';
         const parsed = raw === null ? undefined : parseStoreV3(raw);
