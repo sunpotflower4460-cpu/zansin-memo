@@ -115,10 +115,14 @@ const latestDraft = (drafts: Draft[], kind: Draft['kind'], targetSeedId: string)
 const PlusPreview = __DEV__ && process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW === '1'
   ? React.lazy(() => import('./src/plus/PlusPreview').then((module) => ({ default: module.PlusPreview })))
   : undefined;
+const PlusStorageMeasure = __DEV__ && process.env.EXPO_PUBLIC_KIZASHI_PLUS_STORAGE_MEASURE === '1'
+  ? React.lazy(() => import('./src/plus/PlusStorageMeasureScreen').then((module) => ({ default: module.PlusStorageMeasureScreen })))
+  : undefined;
 
 export default function App() {
-  if (PlusPreview) {
-    return <React.Suspense fallback={null}><PlusPreview /></React.Suspense>;
+  const DevelopmentPage = PlusStorageMeasure ?? PlusPreview;
+  if (DevelopmentPage) {
+    return <React.Suspense fallback={null}><DevelopmentPage /></React.Suspense>;
   }
   return <CoreApp />;
 }

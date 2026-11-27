@@ -6,6 +6,7 @@ import { materialState } from '../domain/plus/atelier';
 import { createCollectionWork, defaultWorkLayout, getWorkOnReturn, moveWork, recordWorkOutput, removeWork, saveWorkDraft, saveWorkEdit,
   workContent, workFormat, workOutputKey, workText, type WorkContent } from '../domain/plus/collection';
 import type { AtelierRevision, CollectionReturnContext, CollectionRevision, GardenStoreV3, SourceSnapshot } from '../domain/plus/contracts';
+import { requirePlusAccess } from '../domain/plus/entitlements';
 import { readSource } from '../domain/plus/sources';
 import { showConfirm } from '../utils/confirm';
 import { createId } from '../utils/ids';
@@ -19,8 +20,8 @@ import type { GeneratedWorkFile } from './workFileTypes';
 const now = () => new Date().toISOString();
 const missingWork = '開いていた作品の版を確認できません';
 
-export function PlusCollectionScreen({ writer, source, onBack, canCompose = true }: {
-  writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose?: boolean;
+export function PlusCollectionScreen({ writer, source, onBack, canCompose, canComposeNow }: {
+  writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose: boolean; canComposeNow: () => boolean;
 }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const [composing, setComposing] = React.useState(Boolean(source));
@@ -34,7 +35,7 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
     setNotice('');
     setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
   };
-  if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose}
+  if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose} canComposeNow={canComposeNow}
     onSave={(work) => { setComposing(false); open(work); }} />;
 
   if (context && selected) return <WorkView key={context.revision.id} content={workContent(store, context.revision)}
@@ -61,8 +62,9 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose = true
   </ScrollView>;
 }
 
-function Composer({ writer, store, source, onCancel, onSave, canCompose }: {
-  writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void; canCompose: boolean;
+function Composer({ writer, store, source, onCancel, onSave, canCompose, canComposeNow }: {
+  writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void;
+  canCompose: boolean; canComposeNow: () => boolean;
 }) {
   const [title, setTitle] = React.useState(source.title ?? '');
   const [text, setText] = React.useState(source.text);
@@ -99,7 +101,7 @@ function Composer({ writer, store, source, onCancel, onSave, canCompose }: {
     if (!preview || saving.current || !canCompose) return;
     saving.current = true; setBusy(true);
     try {
-      const result = await writer.run(preview.command);
+      const result = await writer.run(requirePlusAccess(preview.command, canComposeNow));
       const work = writer.getSnapshot().collectionRevisions.find(({ id }) => id === preview.content.work.id);
       if (result.ok && work) onSave(work);
       else setNotice(!result.ok && result.detail || '作品を保存できませんでした。内容は残っています。');
