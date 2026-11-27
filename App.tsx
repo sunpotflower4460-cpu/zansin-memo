@@ -112,7 +112,18 @@ const latestDraft = (drafts: Draft[], kind: Draft['kind'], targetSeedId: string)
     .filter((draft) => draft.kind === kind && draft.targetSeedId === targetSeedId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 
+const PlusPreview = __DEV__ && process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW === '1'
+  ? React.lazy(() => import('./src/plus/PlusPreview').then((module) => ({ default: module.PlusPreview })))
+  : undefined;
+
 export default function App() {
+  if (PlusPreview) {
+    return <React.Suspense fallback={null}><PlusPreview /></React.Suspense>;
+  }
+  return <CoreApp />;
+}
+
+function CoreApp() {
   const garden = useGarden();
   const { store } = garden;
   const seeds = store.seeds;
