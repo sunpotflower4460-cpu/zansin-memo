@@ -7,7 +7,7 @@ export type MapFiberPaint = MapFiber & {
   ink: string;
   thickness: number;
   halo?: { thickness: number; ink: string };
-  seal: { diameter: number; border: number; fill: string };
+  branchPaint: { thickness: number; ink: string };
 };
 export type MapFiberProps = { paths: MapFiberPaint[]; width: number; height: number };
 
@@ -23,13 +23,10 @@ function strokeStyle({ start, end }: MapSegment, thickness: number, backgroundCo
 }
 
 export function PlusMapFibers({ paths }: MapFiberProps) {
-  return paths.map(({ id, strokes, boutons, ink, thickness, halo, seal }) => <View key={id} style={StyleSheet.absoluteFill}>
+  return paths.map(({ id, strokes, branches, ink, thickness, halo, branchPaint }) => <View key={id} style={StyleSheet.absoluteFill}>
+    {branches.map((part, i) => <View key={`branch-${i}`} style={[styles.stroke, strokeStyle(part, branchPaint.thickness, branchPaint.ink)]} />)}
     {halo && strokes.map((part, i) => <View key={`halo-${i}`} style={[styles.stroke, strokeStyle(part, halo.thickness, halo.ink)]} />)}
     {strokes.map((part, i) => <View key={i} style={[styles.stroke, strokeStyle(part, thickness, ink)]} />)}
-    {boutons.map(({ x, y }, i) => <View key={`bouton-${i}`} style={[styles.stroke, {
-      left: x - seal.diameter / 2, top: y - seal.diameter / 2, width: seal.diameter, height: seal.diameter,
-      borderRadius: seal.diameter / 2, borderColor: ink, borderWidth: seal.border, backgroundColor: seal.fill,
-    }]} />)}
   </View>);
 }
 

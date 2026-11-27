@@ -28,7 +28,13 @@ export function PlusMapFibers({ paths, width, height }: MapFiberProps) {
     context.lineJoin = 'round';
     context.lineCap = 'round';
 
-    for (const { strokes, boutons, ink, thickness, halo, seal } of paths) {
+    for (const { strokes, branches, ink, thickness, halo, branchPaint } of paths) {
+      if (branches.length) {
+        trace(context, branches);
+        context.strokeStyle = branchPaint.ink;
+        context.lineWidth = branchPaint.thickness;
+        context.stroke();
+      }
       trace(context, strokes);
       if (halo) {
         context.strokeStyle = halo.ink;
@@ -38,15 +44,6 @@ export function PlusMapFibers({ paths, width, height }: MapFiberProps) {
       context.strokeStyle = ink;
       context.lineWidth = thickness;
       context.stroke();
-
-      context.fillStyle = seal.fill;
-      context.lineWidth = seal.border;
-      for (const { x, y } of boutons) {
-        context.beginPath();
-        context.arc(x, y, (seal.diameter - seal.border) / 2, 0, Math.PI * 2);
-        context.fill();
-        context.stroke();
-      }
     }
   }, [paths, width, height]);
 
