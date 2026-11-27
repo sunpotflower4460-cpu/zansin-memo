@@ -7,6 +7,7 @@ import type { GardenStoreV3, MapReturnContext, MapView } from '../domain/plus/co
 import { allNotes, captureMapReturn, focusMap, indexMap, mapCell, mapGroups, mapInScope, newMapView,
   outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
 import type { Seed } from '../domain/types';
+import { pairIsBlocked } from '../domain/plus/proposals';
 import { createId } from '../utils/ids';
 import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { PlusMapPlot } from './PlusMapPlot';
@@ -45,9 +46,10 @@ function SeedRows({ seeds, onPick, inside, search, details, action = '選ぶ' }:
 type MapProps = {
   store: GardenStoreV3; commit: (command: PlusCommand) => Promise<CommitResult>; initialGroups: MapView['displayGroups'];
   onOpenSeed: (seedId: string, onReturn: () => void) => void; canArrange?: boolean;
+  onOpenCandidates?: (seedId: string, scope: string[], context: MapReturnContext) => void;
 };
 
-export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true }: MapProps) {
+export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates }: MapProps) {
   const [view, setView] = React.useState<MapView>(() => ({ ...newMapView(createId(), now()), displayGroups: initialGroups }));
   const [scopeMenu, setScopeMenu] = React.useState(false);
   const [layoutMenu, setLayoutMenu] = React.useState(false);
@@ -57,6 +59,7 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   const [temporary, setTemporary] = React.useState<MapReturnContext>();
   const [notice, setNotice] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [showCandidates, setShowCandidates] = React.useState(false);
   const [groupPage, setGroupPage] = React.useState(0);
   const [preview, setPreview] = React.useState<{ layout: MapView['positions']; scope: MapView['scope']; original: MapView['positions']; revision: number }>();
   const [undo, setUndo] = React.useState<MapView['positions']>();
@@ -88,6 +91,8 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
   const plotIds = React.useMemo(() => expanded ? new Set(expanded.seedIds) : focus, [expanded, focus]);
   const plotSeeds = React.useMemo(() => graph.seeds.filter(({ id }) => plotIds.has(id)), [graph.seeds, plotIds]);
   const plotLines = React.useMemo(() => graph.edges.filter((edge) => plotIds.has(edge.aSeedId) && plotIds.has(edge.bSeedId)), [graph.edges, plotIds]);
+  const candidates = showCandidates && selected ? store.connectionProposals.filter((proposal) => proposal.decision === 'pending' && proposal.availability === 'ready' &&
+    proposal.pair.includes(selected.id) && proposal.pair.every((id) => plotIds.has(id)) && !pairIsBlocked(store, ...proposal.pair)) : undefined;
   const related = selected ? [...graph.adjacent.get(selected.id) ?? []].flatMap((id) => graph.byId.get(id) ?? []) : [];
   const outside = selected ? outsideMap(index, graph, selected.id) : [];
   const selectedEdges = selected ? graph.edges.filter((edge) => edge.aSeedId === selected.id || edge.bSeedId === selected.id) : [];
@@ -267,7 +272,7 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     </SectionCard>}
     {plotSeeds.length === 0 && <Text style={plusStyles.text}>{graph.seeds.length ? '周辺に表示する種を選んでください' : 'この範囲に表示する種はありません'}</Text>}
     {showPlot && <>
-      <PlusMapPlot seeds={plotSeeds} connections={plotLines} positions={preview?.layout ?? positions} viewport={view.viewport} selectedId={selected?.id} onSelect={select} />
+      <PlusMapPlot seeds={plotSeeds} connections={plotLines} candidates={candidates} positions={preview?.layout ?? positions} viewport={view.viewport} selectedId={selected?.id} onSelect={select} />
       <Actions>
         <PlusButton label="左へ" onPress={() => pan(-mapCell.x, 0)} /><PlusButton label="右へ" onPress={() => pan(mapCell.x, 0)} />
         <PlusButton label="上へ" onPress={() => pan(0, -mapCell.y)} /><PlusButton label="下へ" onPress={() => pan(0, mapCell.y)} />
@@ -286,6 +291,11 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
       <Text style={plusStyles.meta}>選択中 · 範囲内の確定接続 {related.length}件{positions[selected.id]?.pinned ? ' · 位置固定' : ''}</Text>
       <Actions>
         <PlusButton label="全文を読む" primary focusRef={readControl} onPress={() => onOpenSeed(selected.id, () => focusControl(readControl.current))} />
+        {onOpenCandidates && <PlusButton label="候補を見る" onPress={() => {
+          setShowCandidates(true);
+          onOpenCandidates(selected.id, [...scopedIds], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current));
+        }} />}
+        {showCandidates && Boolean(candidates?.length) && <PlusButton label="点線を隠す" onPress={() => setShowCandidates(false)} />}
         {canArrange && <PlusButton label={marked.includes(selected.id) ? '範囲の選択から外す' : '範囲の選択に加える'} onPress={() => setMarked((before) =>
           before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />}
         {canArrange && <PlusButton label="配置を変える" onPress={() => setLayoutMenu(!layoutMenu)} />}

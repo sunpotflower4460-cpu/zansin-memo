@@ -11,9 +11,9 @@ const height = 318;
 const cardW = 144;
 const cardH = 80;
 
-export function PlusMapPlot({ seeds, connections, positions, viewport, selectedId, onSelect }: {
+export function PlusMapPlot({ seeds, connections, candidates, positions, viewport, selectedId, onSelect }: {
   seeds: Seed[]; connections: SeedConnection[]; positions: MapView['positions']; viewport: MapView['viewport'];
-  selectedId?: string; onSelect: (id: string) => void;
+  candidates?: Array<{ id: string; pair: [string, string] }>; selectedId?: string; onSelect: (id: string) => void;
 }) {
   const [width, setWidth] = React.useState(0);
   const { scale } = viewport;
@@ -26,10 +26,12 @@ export function PlusMapPlot({ seeds, connections, positions, viewport, selectedI
       ? [] : [[seed.id, { seed, x, y, pinned: position.pinned }] as const];
   }));
   const rendered = [...points.values()];
+  const lines = [...connections.map((edge) => ({ ...edge, candidate: false })),
+    ...(candidates ?? []).map(({ id, pair }) => ({ id, aSeedId: pair[0], bSeedId: pair[1], candidate: true }))];
   return <View style={plusStyles.row}>
     <View style={styles.plot} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} accessibilityLabel="確定したつながりの図">
       <Image source={paper} style={styles.paper} resizeMode="cover" accessible={false} />
-      {width > 0 && connections.map((edge) => {
+      {width > 0 && lines.map((edge) => {
         const a = points.get(edge.aSeedId);
         const b = points.get(edge.bSeedId);
         if (!a || !b) return null;
@@ -41,7 +43,7 @@ export function PlusMapPlot({ seeds, connections, positions, viewport, selectedI
         const visible = length - trim;
         if (visible <= 0) return null;
         const selected = a.seed.id === selectedId || b.seed.id === selectedId;
-        return <View key={edge.id} pointerEvents="none" importantForAccessibility="no-hide-descendants" style={[styles.line, selected && styles.lineSelected, {
+        return <View key={edge.id} pointerEvents="none" importantForAccessibility="no-hide-descendants" style={[styles.line, selected && styles.lineSelected, edge.candidate && styles.candidate, {
           width: visible, left: (a.x + b.x - visible) / 2, top: (a.y + b.y) / 2, transform: [{ rotate: `${Math.atan2(dy, dx)}rad` }],
         }]} />;
       })}
@@ -54,6 +56,7 @@ export function PlusMapPlot({ seeds, connections, positions, viewport, selectedI
       </Pressable>)}
     </View>
     <Text style={plusStyles.meta}>実線は確定したつながり。図に表示中 {rendered.length}件{rendered.length < seeds.length ? `、ほか${seeds.length - rendered.length}件はリストから読めます` : ''}。</Text>
+    {Boolean(candidates?.length) && <Text style={plusStyles.meta}>点線は未採用の例の候補です。</Text>}
   </View>;
 }
 
@@ -62,6 +65,7 @@ const styles = StyleSheet.create({
   paper: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', opacity: 0.28 },
   line: { position: 'absolute', backgroundColor: '#628370', height: 2 },
   lineSelected: { height: 3, backgroundColor: theme.colors.primary },
+  candidate: { height: 1, backgroundColor: 'transparent', borderTopColor: theme.colors.accent, borderTopWidth: 1, borderStyle: 'dashed' },
   node: { width: cardW, height: cardH, position: 'absolute', borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceElevated, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, gap: 2 },
   nodeSelected: { borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft },

@@ -8,6 +8,8 @@ import { GardenV3Writer, type PlusCommand } from '../data/gardenV3Writer';
 import { buildPlusExample } from '../data/plusExample';
 import { isolatePlusPreview } from '../data/plusPreviewStorage';
 import { toSeedSnippet } from '../utils/seedText';
+import type { MapReturnContext } from '../domain/plus/contracts';
+import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
 import { PlusMapScreen } from './PlusMapScreen';
 import { focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
 
@@ -18,11 +20,13 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const status = React.useSyncExternalStore(writer.subscribe, writer.getStatus);
   const [reading, setReading] = React.useState<string>();
+  const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
   const returnFocus = React.useRef<() => void>(undefined);
   const backControl = React.useRef<View>(null);
   const [notice, setNotice] = React.useState('');
   const commit = React.useCallback((command: PlusCommand) => writer.run(command), [writer]);
   const selected = reading ? store.seeds.find((seed) => seed.id === reading && !seed.deletedAt) : undefined;
+  React.useEffect(() => { void reconcilePreviewProposals(writer, true); }, [writer]);
 
   React.useEffect(() => {
     if (reading) {
@@ -44,8 +48,9 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   }
 
   return <View style={plusStyles.full}>
-    {store.seeds.length ? <View style={[plusStyles.full, reading && { display: 'none' }]}>
-      <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }} />
+    {store.seeds.length ? <View style={[plusStyles.full, (reading || ai) && { display: 'none' }]}>
+      <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
+        onOpenCandidates={(seedId, scope, origin) => setAi({ seedId, scope, origin })} />
     </View> : <ScrollView contentContainerStyle={plusStyles.page}>
       <Heading title>考えの地図</Heading>
       <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
@@ -60,6 +65,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
         {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}
       </SectionCard>}
     </ScrollView>}
+    {ai && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} />}
   </View>;
 }
 
