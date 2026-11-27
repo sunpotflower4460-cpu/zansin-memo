@@ -85,6 +85,15 @@ const { chromium } = require('playwright');
       assert.equal(afterSave.collectionExportReceipts.at(-1).collectionRevisionId, revised.id);
       assert.equal(afterSave.aiRequestReceipts.length, 0);
       console.log('PASS simulated expiry preserves input, saves a basic edit and regenerates the same PDF layout');
+      await button('本文・題名を編集').click();
+      const long = `${'長い日本語の作業メモです。🌱\n'.repeat(100)}ここが本文の最後の行です。`;
+      await edit.fill(long);
+      await button('変更を保存').click();
+      await page.getByText('一枚には収まりません。文章を調整するか、テキストで取り出せます。', { exact: true }).waitFor();
+      assert.equal(await button('PDFファイルを作る').isDisabled(), true);
+      const savedText = await exportFile('テキスト', 'long-work.txt');
+      assert.equal(savedText.toString('utf8').includes(long), true);
+      console.log('PASS overflow blocks cropped paper output and keeps the entire text export');
     }
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

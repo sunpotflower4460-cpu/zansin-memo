@@ -75,14 +75,13 @@ async function measurePlus(page) {
   await button(page, '検索を閉じる').click();
   const find = counter();
   await find.fill(search, '銀杏');
-  await find.click(button(page, `${material} · 選ぶ`).first());
-  await page.getByText(`${hub} · 散歩で見つけたもの`, { exact: true }).waitFor();
-  await find.click(button(page, '全文を読む'));
+  await page.getByText(`${material} · ${hub}につながる`, { exact: true }).waitFor();
+  await find.click(button(page, `${material}の原文を開く`));
   await page.getByText(`${material}。写真に残したあとの印象。`, { exact: true }).filter({ visible: true }).waitFor();
   const back = counter();
   await back.click(button(page, '地図に戻る'));
   await page.getByText('選択中 · 範囲内の確定接続 1件', { exact: true }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.textContent === '全文を読む');
+  await page.waitForFunction((label) => document.activeElement?.textContent === label, `${material}の原文を開く`);
   assert.equal(await search.inputValue(), '銀杏');
   return { group: group.report(), find: find.report(), back: back.report(), expectedEdgeFound: true, returnSucceeded: true, repeatedSearch: 0 };
 }
