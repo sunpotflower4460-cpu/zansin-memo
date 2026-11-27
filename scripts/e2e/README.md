@@ -61,12 +61,15 @@ node scripts/e2e/plus-integration.js
 node scripts/e2e/plus-storage.js
 node --import tsx scripts/e2e/plus-map.js
 PLUS_FIRST=1 node --import tsx scripts/e2e/plus-map.js
+node --import tsx scripts/e2e/plus-map-dense.js
 node scripts/e2e/plus-proposals.js
 node scripts/e2e/plus-atelier.js
 PLUS_TEST_EXPIRY=1 node scripts/e2e/plus-collection.js
 ```
 
 `FREE_E2E_URL` と `PLUS_E2E_URL` で配信先を変更できる。作品の検証ファイルは `PLUS_EXPORT_DIR` に出力される。指定がなければ一時ディレクトリ下の `kizashi-plus-files` に出力する。失敗は非ゼロの終了コードになる。
+
+`plus-map.js` は全体図と周辺図の表示、原文への往復、表示位置の復帰、配置の確認と元に戻す操作を確認する。`plus-map-dense.js` は50・500・2,000・5,000件の架空メモで、初回表示と20回の選択切替を測り、循環を含む周辺の展開と長文への到達を確認する。
 
 プレビューの保存先は `kizashi-plus-preview:` で始まる別の領域。開発ビルドでは `EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW_AI=0` などで機能への入口を個別に閉じられる。接尾辞は `MAP`、`AI`、`ATELIER`、`COLLECTION`、`COMMERCE`。保存済みの文章・作品の閲覧と持ち出しは引き続き利用できる。
 
