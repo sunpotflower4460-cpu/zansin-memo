@@ -73,6 +73,7 @@ async function measurePlus(page) {
   await button(page, `${hub} · 選ぶ`).first().click();
   await button(page, '周辺').click();
   await button(page, '検索を閉じる').click();
+  await page.getByLabel('確定したつながりの図').getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.waitForFunction(() => {

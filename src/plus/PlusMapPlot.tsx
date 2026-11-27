@@ -6,7 +6,7 @@ import { mapCell } from '../domain/plus/map';
 import type { Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { toSeedSnippet } from '../utils/seedText';
-import { plusStyles } from './PlusUI';
+import { buttonSelectionProps, plusStyles } from './PlusUI';
 
 const height = 318;
 const cardH = 80;
@@ -68,7 +68,7 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
         }]} />;
       })}
       {width > 0 && rendered.map(({ seed, x, y, pinned }) => <Pressable key={seed.id} onPress={() => onSelect(seed.id)}
-        accessibilityRole="button" accessibilityState={{ selected: selectedId === seed.id }}
+        accessibilityRole="button" {...buttonSelectionProps(selectedId === seed.id)}
         accessibilityLabel={`${toSeedSnippet(seed, 50)}${pinned ? '。位置を固定しています' : ''}`}
         style={[styles.node, { width: cardW, left: x - cardW / 2, top: y - cardH / 2 }, selectedId === seed.id && styles.nodeSelected]}>
         <Text style={styles.nodeText} numberOfLines={2}>{toSeedSnippet(seed, 60)}</Text>
