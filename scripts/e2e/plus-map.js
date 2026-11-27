@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { emptyStoreV3 } = require('../../src/data/gardenV3Model.ts');
 const { buildPlusExample } = require('../../src/data/plusExample.ts');
 
 const plusUrl = process.env.PLUS_E2E_URL || 'http://localhost:8101/';
@@ -11,8 +12,20 @@ const material = '川辺の銀杏';
 const crossing = '同じ散歩を音と写真で記録した';
 const notesLabel = '確定したつながりの図';
 const overviewLabel = 'まとまりの地図';
+const storageKey = 'kizashi-plus-preview:kizashi-notes:garden:v3';
 const notePlot = (page) => page.getByLabel(notesLabel, { exact: true });
 const cardsAt = (plot) => plot.getByRole('button').evaluateAll((cards) => cards.map((card) => [card.getAttribute('aria-label'), card.offsetLeft, card.offsetTop]));
+
+async function checkFiberPaint(plot, confirmed, candidates = 0) {
+  const canvas = plot.getByTestId('map-link-layer').locator(`canvas[data-confirmed-links="${confirmed}"][data-candidate-links="${candidates}"]`);
+  await canvas.waitFor();
+  assert.ok(await canvas.evaluate((node, candidates) => {
+    const { data } = node.getContext('2d').getImageData(0, 0, node.width, node.height);
+    const opaque = data.some((value, i) => i % 4 === 3 && value === 255);
+    const candidateInk = data.some((red, i) => i % 4 === 0 && data[i + 3] > 128 && red - data[i + 1] > 80);
+    return opaque && candidateInk === Boolean(candidates);
+  }, candidates));
+}
 
 async function checkCardBounds(page, label, minimum) {
   for (const width of [320, 390, 768]) {
@@ -80,8 +93,7 @@ async function measurePlus(page) {
   await page.goto(plusUrl);
   await button(page, '例の庭を開く').click();
   const overview = page.getByLabel(overviewLabel, { exact: true });
-  await overview.getByTestId('map-link-layer').locator(':scope > *').waitFor();
-  assert.equal(await overview.getByTestId('map-link-layer').locator(':scope > *').count(), 1);
+  await checkFiberPaint(overview, 1);
   await page.getByText('実線はまとまりをまたぐ確定接続 · 1件', { exact: true }).waitFor();
   await checkCardBounds(page, overviewLabel, 5);
   const group = counter();
@@ -106,6 +118,7 @@ async function measurePlus(page) {
   await button(page, '周辺').click();
   await button(page, '検索を閉じる').click();
   await notePlot(page).getByRole('button', { name: hub, exact: true, pressed: true }).waitFor();
+  await checkFiberPaint(notePlot(page), 3);
   await checkCardBounds(page, notesLabel, 2);
   const find = counter();
   await find.fill(search, '銀杏');
@@ -127,7 +140,7 @@ async function cameraAndLayout(page) {
   await button(page, '検索を閉じる').click();
   const plot = notePlot(page);
   const before = await cardsAt(plot);
-  await plot.getByRole('button', { name: '雨の日の音', exact: true }).click();
+  await plot.getByRole('button', { name: '雨の日の音', exact: true }).press('Enter');
   await plot.getByRole('button', { name: '雨の日の音', exact: true, pressed: true }).waitFor();
   assert.deepEqual(await cardsAt(plot), before);
   await plot.getByRole('button', { name: hub, exact: true }).click();
@@ -203,13 +216,40 @@ async function scopeAndRestore(page) {
   console.log('PASS full map cards and touch target bounds, fixed scope, outside return, pinned selection after reload at 320/390/768px');
 }
 
+async function checkPendingFiber(page) {
+  const { seeds, connections } = buildPlusExample(8);
+  await page.addInitScript(({ key, store }) => localStorage.setItem(key, JSON.stringify(store)),
+    { key: storageKey, store: { ...emptyStoreV3(), seeds, connections } });
+  await page.goto(plusUrl);
+  await page.getByLabel('地図と全件を探す').fill(hub);
+  await button(page, `${hub} · 選ぶ`).first().click();
+  await button(page, '周辺').click();
+  await button(page, 'もう一段見る').click();
+  await button(page, '右へ').click();
+
+  await button(page, '候補を見る').click();
+  await page.getByLabel('候補づくりの材料を探す').fill('写真を一枚選ぶ');
+  await button(page, '写真を一枚選ぶ').click();
+  await button(page, '今回使う内容を確認').click();
+  await button(page, 'この内容で例の候補を見る').click();
+  await page.getByRole('heading', { name: '例の候補 · 条件と手がかり' }).waitFor();
+  await button(page, '地図に戻る').click();
+  await checkFiberPaint(notePlot(page), 2, 1);
+  await page.getByText('点線は未採用の例の候補です。', { exact: true }).waitFor();
+  assert.equal(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).connections.length, storageKey), 4);
+  await button(page, '点線を隠す').click();
+  await checkFiberPaint(notePlot(page), 2);
+  console.log('PASS an offline proposal paints one dashed fiber without changing confirmed connections');
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXEC });
   try {
     const free = await browser.newPage(options);
     const plus = await browser.newPage(options);
+    const preview = await browser.newPage({ ...options, viewport: { width: 768, height: 844 }, deviceScaleFactor: 2 });
     const errors = [];
-    for (const page of [free, plus]) {
+    for (const page of [free, plus, preview]) {
       page.setDefaultTimeout(20_000);
       page.on('pageerror', (error) => errors.push(error.message));
     }
@@ -218,6 +258,7 @@ async function scopeAndRestore(page) {
     for (const type of order) results[type] = await (type === 'free' ? measureFree(free) : measurePlus(plus));
     await cameraAndLayout(plus);
     await scopeAndRestore(plus);
+    await checkPendingFiber(preview);
     assert.deepEqual(errors, []);
     console.log('PASS scripted comparison', { order, viewport: options.viewport, results });
   } finally { await browser.close(); }
