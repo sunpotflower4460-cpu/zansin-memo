@@ -97,6 +97,37 @@ export function mapGroups(graph: ScopedMap, manual: MapView['displayGroups']): M
   return groups;
 }
 
+export function mapGroupLinks(edges: readonly SeedConnection[], groups: readonly MapGroup[], fromGroupId?: string) {
+  const memberships = new Map<string, Set<MapGroup>>();
+  for (const group of groups) {
+    if (group.kind !== 'manual') continue;
+    for (const id of group.seedIds) {
+      const existing = memberships.get(id) ?? new Set<MapGroup>();
+      existing.add(group);
+      memberships.set(id, existing);
+    }
+  }
+  const links = new Map<string, { groups: [MapGroup, MapGroup]; edges: SeedConnection[] }>();
+  for (const edge of edges) {
+    const a = memberships.get(edge.aSeedId);
+    const b = memberships.get(edge.bSeedId);
+    if (!a || !b) continue;
+    for (const first of a) {
+      if (b.has(first)) continue;
+      for (const second of b) {
+        // Shared membership alone is not a connection between these two groups.
+        if (a.has(second) || (fromGroupId && first.id !== fromGroupId && second.id !== fromGroupId)) continue;
+        const pair: [MapGroup, MapGroup] = first.id < second.id ? [first, second] : [second, first];
+        const key = JSON.stringify(pair.map(({ id }) => id));
+        const link = links.get(key);
+        if (link) link.edges.push(edge);
+        else links.set(key, { groups: pair, edges: [edge] });
+      }
+    }
+  }
+  return [...links.values()];
+}
+
 export const mapCell = { x: 188, y: 126 };
 export function placeMap(graph: ScopedMap, previous: MapView['positions'], groups: MapGroup[], arrange = false): MapView['positions'] {
   const positions = new Map(Object.entries(previous).filter(([id, pos]) => !arrange || pos.pinned || !graph.byId.has(id)));
@@ -131,6 +162,20 @@ export const newMapView = (id: string, updatedAt: string): MapView => ({
 export const mapFocus = (view: MapView): MapFocus => view.viewMode === 'overview'
   ? { viewMode: 'overview' }
   : { viewMode: 'neighborhood', centerSeedId: view.centerSeedId, expandedHop: view.expandedHop };
+
+export function mapViewportBounds(ids: ReadonlySet<string>, positions: MapView['positions']) {
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const id of ids) {
+    if (!Object.hasOwn(positions, id)) continue;
+    const { x, y } = positions[id];
+    left = Math.min(left, x); right = Math.max(right, x);
+    top = Math.min(top, y); bottom = Math.max(bottom, y);
+  }
+  return Number.isFinite(left) ? { left, right, top, bottom } : undefined;
+}
 
 export function captureMapReturn(view: MapView, saved: readonly MapView[], scroll = 0): MapReturnContext {
   const isSaved = saved.some(({ id, revision }) => id === view.id && revision === view.revision);
