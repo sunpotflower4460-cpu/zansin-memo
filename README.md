@@ -6,7 +6,7 @@
 
 **なんとなく残す → あとからメモ同士をつなぐ → つながりを目で見る → 自分の可能性を芽として残す。**
 
-書く時に分類を求めず、たくさん溜まっても検索・任意カテゴリ・局所マップから迷わずたどれる設計を追加しました。関連メモは考えを育てる「栄養」として使えます。新しい接続・合成・初回体験は設計段階であり、下の現行MVPに全て実装されたという意味ではありません。
+書く時に分類を求めず、たくさん溜まっても検索・任意カテゴリ・局所マップから迷わずたどれる設計です。関連メモは考えを育てる「栄養」として使えます。2026-11-27時点でPhase 10.1〜10.5は実装記録があり、10.6の公開判定は実機・初見ユーザーの検証待ちです。実装済みと実機で検証済みを分けて、下記の記録を確認してください。
 
 - [設計の入口・現状監査](docs/core-growth-loop.md)
 - [画面・操作・文言](docs/core-growth-ux.md)
@@ -16,7 +16,20 @@
 - [実装・検証の記録（実装済み／検証済み／未検証）](docs/core-growth-progress.md)
 - [統合検証・公開判定（D01〜D15・実機/初見ユーザーの記録表）](docs/core-growth-verification.md)
 
-実装は既存Phase 0〜8を利用し、[Phase 10.1〜10.6](docs/core-growth-plan.md)へ進めます。状態バッジの変更やテンプレ変換だけで「芽に育つ体験」が完成したとは判定しません。
+実装は既存Phase 0〜8を利用し、[Phase 10.1〜10.6](docs/core-growth-plan.md)で具体化しています。状態バッジの変更やテンプレ変換だけで「芽に育つ体験」が完成したとは判定しません。
+
+## Plusの詳細設計（2026-11-27追加・未実装）
+
+**自分の考えが見渡しやすい上質な地図を中心に、AIの提案、アトリエ、作品集を任意に使える有料体験**を設計しました。今回の追加は設計文書であり、購入機能や外部AIを有効にしたものではありません。
+
+- [まず読む: Plusの体験・無料との境界・初回の提供範囲](docs/plus-experience-design.md)
+- [地図: 全体と周囲・見やすさ・位置保持・保存した見方](docs/plus-map-design.md)
+- [アトリエと作品集: 材料・案の比較・自分の芽・美しい書出し](docs/plus-atelier-collection-design.md)
+- [AIとデータ: 候補・本人の採用・送信許可・保存・移行](docs/plus-ai-data-contracts.md)
+- [課金と品質: 利用権・失効後のアクセス・購入状態・受入条件](docs/plus-commerce-validation.md)
+- [実装担当向け: Phase 11.0〜11.6の順序と完了条件](docs/plus-implementation-plan.md)
+
+有料設計の最新の優先順位はこの文書群を使います。旧blueprintの同期中心の計画と販売条件は更新し、無料の手動接続・基本地図・本人が書く芽・全件検索・データ権利を維持します。価格、試用、AI利用枠は未確定です。
 
 ## コンセプト
 - 低圧で書ける（タイトル必須なし）
@@ -128,9 +141,9 @@ npm run ios
 | `npm run ios` | iOSシミュレータ起動 |
 
 ## 未実装（将来フェーズ）
-- AI本接続（Phase 8）
+- AI本接続（Phase 8の準備を利用し、Phase 11.2で実装予定）
 - 認証（未定）
-- 課金（未定）
+- 課金（Phase 11.5で実装予定。販売条件は未確定）
 - クラウド同期（未定）
 - 通知（未定）
 - App Store提出の実作業（Apple Developer アカウントでの申請。準備は完了、手順は docs/app-store-submission.md）
@@ -158,6 +171,8 @@ npm run ios
 - [Review Policy](docs/review-policy.md)
 - [App Store Readiness](docs/app-store-readiness.md)
 - [Product Quality & Subscription Blueprint](docs/product-quality-subscription-blueprint.md)
+- [Plus Experience Design](docs/plus-experience-design.md)
+- [Plus Implementation Plan](docs/plus-implementation-plan.md)
 - [Core Growth Loop](docs/core-growth-loop.md)
 - [Core Growth UX](docs/core-growth-ux.md)
 - [Core Growth Data](docs/core-growth-data.md)

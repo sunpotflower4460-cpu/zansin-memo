@@ -1,5 +1,17 @@
 # Product Quality & Subscription Blueprint
 
+## 2026-11-27: Plusの詳細設計による更新
+
+最新の有料体験の正本は [Kizashi Plus 総合設計](plus-experience-design.md)と、その参照先の地図・アトリエ/作品集・AI/データ・課金/検証・実装計画。本書の既存内容は作成当時の監査・提案として保持し、現在の実装事実は [Core Growth Progress](core-growth-progress.md)を参照する。
+
+今回の方針は、**地図の品質・見やすさ・使いやすさを大きく上げ、AIは見えなかった関係を提案し、本人が選んだ材料をアトリエと作品集へつなぐ**こと。
+
+- §3〜4の有料機能の優先順位・提供範囲は [新しい初回提供範囲](plus-experience-design.md)に従う。無料コアとデータ権利は維持する。
+- §4の「最低二つ」の月額開始条件は [Plusの販売前検証](plus-commerce-validation.md)へ置き換える。同期は初回の必須条件ではない。
+- §5の価格と7日試用は未確定の仮説。§6の購入画面は [最新の購入導線・利用権](plus-commerce-validation.md)で具体化する。
+- §9のPhase 11〜13は [Phase 11.0〜11.6](plus-implementation-plan.md)へ置き換える。地図・創作の品質を先に作り、購入は後から接続する。
+- 同期、長期便り、複数ページ冊子、追加入力は独立した後続計画。今回の変更は設計のみで、実装・販売は開始していない。
+
 ## 2026-11-26: 公開前の優先順位の更新
 
 最新のユーザー依頼により、公開前は [中核設計](core-growth-loop.md)の「思いつきを残す→後からつなぐ→図で見る→可能性を芽にする→大量でも探せる」を最優先にする。画面は [Core Growth UX](core-growth-ux.md)、データは [Core Growth Data](core-growth-data.md)、実装契約は [Core Growth Plan](core-growth-plan.md)。追加設計であり未実装。
@@ -175,7 +187,9 @@ Plus版:
 | 入力 | アプリ内テキスト | 音声・Widget・Share Extensionの高度機能 |
 | データ権利 | エクスポート・全削除 | 同じ。課金状態に依存させない |
 
-### 課金前に満たす条件
+### 課金前に満たす条件（旧案・2026-11-27に置換）
+
+現在の判断は [Plusの販売前検証](plus-commerce-validation.md)を使う。以下は旧案の記録。
 
 次のうち最低2つが本番品質になるまで、月額課金を開始しない。
 
@@ -331,7 +345,9 @@ Expo managed workflowのまま進める場合は、Development Buildに移行し
 
 ---
 
-## 9. 実装ロードマップ
+## 9. 実装ロードマップ（履歴）
+
+Phase 10は [Core Growth Plan](core-growth-plan.md)で具体化済み。以下のPhase 11〜13は [Plus Implementation Plan](plus-implementation-plan.md)に置き換える。
 
 ### Phase 5.1: Weekly Garden Letter Foundation — このPR
 

@@ -1,8 +1,16 @@
 # Phase Roadmap
 
-## 現在の次フェーズ — 2026-11-26
+## 現在の優先順位 — 2026-11-27
 
-既存Phase 0〜8の土台を使い、公開前の [中核体験](core-growth-loop.md)を実装する。今回の設計は [品質blueprint](product-quality-subscription-blueprint.md) のPhase 10を次の契約へ細分化したもの。設計追加時点では未実装。
+無料中核のPhase 10.1〜10.5は [実装記録](core-growth-progress.md) があり、10.6の [公開判定](core-growth-verification.md)は保留。実装済みの部分を最初から作り直さず、実機・VoiceOver・初見ユーザーの未確認を引き継ぐ。
+
+後続の有料体験として [Plusの詳細設計](plus-experience-design.md)を追加した。今回の変更は設計のみ。実装を依頼された際は [Phase 11.0〜11.6](plus-implementation-plan.md)に従い、保存基盤→上質な地図→AIの提案→アトリエ→作品集→課金→統合検証の順に進める。旧blueprintのPhase 11〜13はこの計画に置き換える。同期と複数ページ冊子は別の後続計画とする。
+
+地図などの隔離した開発は進められるが、無料中核の公開判定を未確認のままPlusの販売を開始しない。
+
+## 無料中核の計画 — 2026-11-26
+
+既存Phase 0〜8の土台を使い、公開前の [中核体験](core-growth-loop.md)を具体化した計画。[品質blueprint](product-quality-subscription-blueprint.md) のPhase 10を次の契約へ細分化している。設計追加時点は未実装だったが、現在の実装・確認状況は上記の記録を参照する。
 
 | Phase | 目的 | 完了の要点 |
 |---|---|---|

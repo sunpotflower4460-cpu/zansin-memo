@@ -2,7 +2,7 @@
 
 更新日: 2026-11-26（日本時間）
 
-状態: **設計確定・実装は未着手**。この文書の追加は、以下の機能が実装済み／実機検証済みであることを意味しない。
+状態: **無料中核の設計契約**。設計追加時点は未着手だったが、2026-11-27時点ではPhase 10.1〜10.5の [実装記録](core-growth-progress.md)がある。実機・初見ユーザーの [公開判定](core-growth-verification.md)は保留。後続の [Plus設計](plus-experience-design.md)は別の未実装計画であり、この無料中核の契約を保つ。
 
 監査基準: `ff0d8906ae2a07aa17da8492e5f342a2bfee6077`（main）。
 
@@ -148,7 +148,7 @@
 | [types](../src/domain/types.ts) | `relatedSeedIds` と `growthState` がある | 双方向に読める接続と、芽の文章・材料を正本として保持 |
 | [seedUtils](../src/utils/seedUtils.ts) | 変換は一つの本文を固定テンプレに埋める | 材料を見ながら本人が書く芽を中心にする |
 | [GardenScreen](../src/screens/GardenScreen.tsx) | 状態・カテゴリごとのカード表示 | 実際の接続が見える局所図、等価リスト、芽の材料表示 |
-| [App](../App.tsx), [repository](../src/data/asyncStorageSeedRepository.ts) | state変更から保存するeffectと、先行する成功表示 | 永続化に対応した成功表示、書込み順序、再試行・下書き契約 |
+| [App](../App.tsx), [監査時点のrepository](https://github.com/sunpotflower4460-cpu/zansin-memo/blob/ff0d8906ae2a07aa17da8492e5f342a2bfee6077/src/data/asyncStorageSeedRepository.ts) | state変更から保存するeffectと、先行する成功表示 | 永続化に対応した成功表示、書込み順序、再試行・下書き契約 |
 | [exportFormat](../src/utils/exportFormat.ts) | JSONはSeed、テキストは本文・メタ・変換を出力 | 接続と芽・材料も、意味を失わず持ち出せる |
 | [gardenLetter](../src/utils/gardenLetter.ts) | 直近7日の数・カテゴリの重なりを提示 | 本人が結んだ種・生まれた芽をたどる入口を加える |
 
