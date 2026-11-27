@@ -8,7 +8,7 @@ import { GardenV3Writer } from '../data/gardenV3Writer';
 import type { MapScope, MapView } from '../domain/plus/contracts';
 import { allNotes, captureMapReturn, focusMap, indexMap, mapGroupLinks, mapGroups, mapInScope, mapViewportBounds, newMapView,
   outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
-import { routeMapLine } from '../domain/plus/mapGeometry';
+import { routeMapFiber, routeMapLine, type MapSegment } from '../domain/plus/mapGeometry';
 
 const at = '2026-11-27T00:00:00.000Z';
 const chain = [makeConnection('A', 'X', 'manual', at), makeConnection('X', 'B', 'manual', at)];
@@ -74,6 +74,58 @@ test('drawn links stop outside cards and can go around a third card', () => {
   assert.equal(route[0].end.y, route[2].start.y);
   assert.ok(Math.abs(route[1].start.y - obstacle.y) > obstacle.height / 2);
   assert.deepEqual(routeMapLine(a, b, [a, b, { ...obstacle, height: frame.height }], frame), []);
+});
+
+test('mycelium curves are undirected and their branches rejoin the same edge', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const fiber = routeMapFiber(a, b, [a, b], frame);
+  assert.ok(fiber);
+  assert.equal(routeMapFiber(a, a, [a], frame), undefined);
+  assert.deepEqual(fiber, routeMapFiber(b, a, [a, b], frame));
+  assert.ok(fiber.strokes.some(({ start }) => Math.abs(start.y - a.y) > 6));
+  assert.ok(fiber.strokes.every(({ end }, i) => i === fiber.strokes.length - 1 || end === fiber.strokes[i + 1].start));
+  assert.ok(fiber.strokes[0].start.x < a.x + a.width / 2);
+  assert.ok(fiber.strokes.at(-1)!.end.x > b.x - b.width / 2);
+
+  const distance = (a: MapSegment['start'], b: MapSegment['end']) => Math.hypot(a.x - b.x, a.y - b.y);
+  const onTrunk = (point: MapSegment['start']) => fiber.strokes.some(({ start, end }) =>
+    Math.abs(distance(start, point) + distance(point, end) - distance(start, end)) < 0.0001);
+  const starts = fiber.branches.filter(({ start }, i) => i === 0 || fiber.branches[i - 1].end !== start);
+  const ends = fiber.branches.filter(({ end }, i) => i === fiber.branches.length - 1 || fiber.branches[i + 1].start !== end);
+  assert.equal(starts.length, 2);
+  assert.ok(starts.every(({ start }) => onTrunk(start)));
+  assert.ok(ends.every(({ end }) => onTrunk(end)));
+  assert.ok(fiber.branches.some(({ end }) => !onTrunk(end)));
+});
+
+test('mycelium traces and their branches stay clear of the third card', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const beside = { x: 110, y: 80, width: 24, height: 12 };
+  const safe = routeMapFiber(a, b, [a, b, beside], frame);
+  assert.deepEqual(safe?.strokes.slice(1, -1), routeMapLine(a, b, [a, b, beside], frame));
+
+  const obstacle = { ...a, x: 150 };
+  const around = routeMapFiber(a, b, [a, b, obstacle], frame);
+  assert.ok(around);
+  assert.ok(around.strokes.length > 5);
+  assert.ok([...around.strokes, ...around.branches].every(({ start, end }) => [start, end].every(({ x, y }) =>
+    x < 121 || x > 179 || Math.abs(y - obstacle.y) > 19)));
+  assert.equal(routeMapFiber(a, b, [a, b, { ...obstacle, height: frame.height }], frame), undefined);
+});
+
+test('candidate curves have real gaps even in a narrow gutter', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 107 };
+  const frame = { width: 152, height: 130 };
+  const candidate = routeMapFiber(a, b, [a, b], frame, true);
+  assert.ok(candidate);
+  assert.deepEqual(candidate.branches, []);
+  assert.ok(candidate.strokes.slice(1).some(({ start }, i) =>
+    Math.hypot(start.x - candidate.strokes[i].end.x, start.y - candidate.strokes[i].end.y) > 2));
 });
 
 test('pan bounds are limited to the current drawing, including negative and saved coordinates', () => {
