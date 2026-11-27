@@ -22,7 +22,7 @@ export function materialState(seeds: readonly Seed[], snapshot: SourceSnapshot |
   return textDigest(current.text) === snapshot.source.textDigest ? 'current' : 'changed';
 }
 
-function capture(store: GardenStoreV3, ref: SourceRef, id: string, at: string) {
+export function captureMaterial(store: GardenStoreV3, ref: SourceRef, id: string, at: string) {
   const snapshot = snapshotSource(store.seeds, ref, id, at);
   if (!snapshot) return undefined;
   const existing = store.sourceSnapshots.find((item) => sameRef(item.source.ref, ref) && item.text === snapshot.text && item.title === snapshot.title &&
@@ -51,7 +51,7 @@ export function createAtelier(args: { id: string; branchId: string; centerSeedId
     const selected: SourceSnapshot[] = [];
     for (const material of args.materials) {
       if (selected.some((snapshot) => sameRef(snapshot.source.ref, material.ref))) continue;
-      const result = capture(working, material.ref, material.id, args.at);
+      const result = captureMaterial(working, material.ref, material.id, args.at);
       if (!result) return { rejected: '材料の原文を確認できません' };
       working = { ...working, sourceSnapshots: result.snapshots };
       selected.push(result.snapshot);
@@ -83,7 +83,7 @@ export function reviseMaterial(args: { commandId: string; target: DraftTarget; a
     const ref = args.kind === 'add' ? args.ref : original?.source.ref;
     const seed = ref && store.seeds.find((entry) => entry.id === ref.seedId);
     const liveRef = ref?.part === 'synthesis' && seed?.synthesis ? { ...ref, synthesisId: seed.synthesis.id } : ref;
-    const result = liveRef && capture(store, liveRef, args.id, args.at);
+    const result = liveRef && captureMaterial(store, liveRef, args.id, args.at);
     if (!result) return { rejected: '現在の原文を確認できません' };
     if (draft.materials.some((entry) => entry !== before && entry.snapshotId === result.snapshot.id)) return store;
     const next = { snapshotId: result.snapshot.id, versionMode: 'current' as const };
@@ -196,7 +196,7 @@ export function adoptAtelierRevision(args: { id: string; revisionId: string; cen
       if (!snapshot || materialState(store.seeds, snapshot) !== 'current') return { rejected: '現在の材料を選び直し、新しい版を残してください' };
       materials.push({ seedId: snapshot.source.ref.seedId, sourcePart: snapshot.source.ref.part, expectedText: snapshot.text });
     }
-    const previous = old && capture(store, { seedId: center.id, part: 'synthesis', synthesisId: old.id }, args.snapshotId, args.at);
+    const previous = old && captureMaterial(store, { seedId: center.id, part: 'synthesis', synthesisId: old.id }, args.snapshotId, args.at);
     if (old && !previous) return { rejected: '現在の芽の控えを保存できません' };
     const synthesisId = old?.id ?? args.newSynthesisId;
     const result = withCoreCommand(promoteToSprout({ commandId: args.id, centerId: center.id, statement: revision.text, synthesisId,
