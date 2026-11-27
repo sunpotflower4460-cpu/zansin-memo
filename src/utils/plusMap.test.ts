@@ -8,7 +8,7 @@ import { GardenV3Writer } from '../data/gardenV3Writer';
 import type { MapScope, MapView } from '../domain/plus/contracts';
 import { allNotes, captureMapReturn, focusMap, indexMap, mapGroupLinks, mapGroups, mapInScope, mapViewportBounds, newMapView,
   outsideMap, placeMap, restoreMapReturn, saveMapView } from '../domain/plus/map';
-import { routeMapLine } from '../domain/plus/mapGeometry';
+import { routeMapLine, routeMapSynapse } from '../domain/plus/mapGeometry';
 
 const at = '2026-11-27T00:00:00.000Z';
 const chain = [makeConnection('A', 'X', 'manual', at), makeConnection('X', 'B', 'manual', at)];
@@ -74,6 +74,48 @@ test('drawn links stop outside cards and can go around a third card', () => {
   assert.equal(route[0].end.y, route[2].start.y);
   assert.ok(Math.abs(route[1].start.y - obstacle.y) > obstacle.height / 2);
   assert.deepEqual(routeMapLine(a, b, [a, b, { ...obstacle, height: frame.height }], frame), []);
+});
+
+test('synaptic curves are continuous and undirected, and have a visible junction', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const fibre = routeMapSynapse(a, b, [a, b], frame);
+  assert.ok(fibre);
+  assert.deepEqual(fibre, routeMapSynapse(b, a, [a, b], frame));
+  assert.equal(fibre.boutons.length, 2);
+  assert.ok(fibre.strokes.some(({ start }) => Math.abs(start.y - a.y) > 6));
+  assert.ok(fibre.strokes.every(({ end }, i) => i === fibre.strokes.length - 1 || end === fibre.strokes[i + 1].start));
+  assert.ok(fibre.strokes[0].start.x < a.x + a.width / 2);
+  assert.ok(fibre.strokes.at(-1)!.end.x > b.x - b.width / 2);
+});
+
+test('synaptic curves are softened around cards and use the clear route when a bend would touch a third card', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 255 };
+  const frame = { width: 300, height: 130 };
+  const beside = { x: 110, y: 80, width: 24, height: 12 };
+  const safe = routeMapSynapse(a, b, [a, b, beside], frame);
+  assert.deepEqual(safe?.strokes.slice(1, -1), routeMapLine(a, b, [a, b, beside], frame));
+
+  const obstacle = { ...a, x: 150 };
+  const around = routeMapSynapse(a, b, [a, b, obstacle], frame);
+  assert.ok(around);
+  assert.ok(around.strokes.length > 5);
+  assert.ok(around.strokes.every(({ start, end }) => [start, end].every(({ x, y }) =>
+    x < 121 || x > 179 || Math.abs(y - obstacle.y) > 19)));
+  assert.equal(routeMapSynapse(a, b, [a, b, { ...obstacle, height: frame.height }], frame), undefined);
+});
+
+test('candidate curves have real gaps even in a narrow gutter', () => {
+  const a = { x: 45, y: 65, width: 50, height: 30 };
+  const b = { ...a, x: 107 };
+  const frame = { width: 152, height: 130 };
+  const candidate = routeMapSynapse(a, b, [a, b], frame, true);
+  assert.ok(candidate);
+  assert.deepEqual(candidate.boutons, []);
+  assert.ok(candidate.strokes.slice(1).some(({ start }, i) =>
+    Math.hypot(start.x - candidate.strokes[i].end.x, start.y - candidate.strokes[i].end.y) > 2));
 });
 
 test('pan bounds are limited to the current drawing, including negative and saved coordinates', () => {
