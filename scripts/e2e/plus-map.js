@@ -34,6 +34,8 @@ async function checkCardBounds(page, label, minimum) {
       const plot = document.querySelector(`[aria-label="${label}"]`);
       if (!plot) return false;
       const area = plot.getBoundingClientRect();
+      const canvas = plot.querySelector('canvas');
+      if (!canvas || Math.abs(canvas.getBoundingClientRect().width - area.width) >= 2) return false;
       const boxes = [...plot.querySelectorAll('[role="button"]')].map((card) => card.getBoundingClientRect());
       return boxes.length >= minimum && boxes.every((box, i) =>
         box.width >= 44 && box.height >= 44 && box.left >= area.left && box.right <= area.right && box.top >= area.top && box.bottom <= area.bottom &&

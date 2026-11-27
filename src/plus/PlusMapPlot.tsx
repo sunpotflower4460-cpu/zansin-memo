@@ -61,6 +61,7 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
     }));
   }, [positions, seeds, viewport, width]);
   const rendered = [...points.values()];
+  const offscreen = seeds.length - rendered.length;
   const lines = React.useMemo(() => [...connections.map(({ id, aSeedId, bSeedId }) => ({ id, from: aSeedId, to: bSeedId })),
     ...(candidates ?? []).map(({ id, pair }) => ({ id, from: pair[0], to: pair[1], candidate: true }))], [connections, candidates]);
   return <View style={plusStyles.row}>
@@ -82,7 +83,7 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
         </Pressable>;
       })}
     </View>
-    <PlusMapLegend>実線は確定したつながり。図に表示中 {rendered.length}件{rendered.length < seeds.length ? `、ほか${seeds.length - rendered.length}件はリストから読めます` : ''}。</PlusMapLegend>
+    <PlusMapLegend>実線は確定したつながり{'\n'}図に{rendered.length}件を表示{offscreen > 0 ? ` · ほか${offscreen}件はリストで` : ''}</PlusMapLegend>
     {Boolean(candidates?.length) && <PlusMapLegend candidate>点線は未採用の例の候補です。</PlusMapLegend>}
   </View>;
 }
