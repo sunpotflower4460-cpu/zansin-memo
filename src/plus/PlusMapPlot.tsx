@@ -5,8 +5,8 @@ import { mapCell } from '../domain/plus/map';
 import type { Seed, SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
 import { toSeedSnippet } from '../utils/seedText';
-import { PlusMapEdges, PlusMapLegend } from './PlusMapEdges';
-import { PlusMapSoil, soilMapColors, soilMapStyles } from './PlusMapSoil';
+import { PlusMapEdges, PlusMapLegend, useRoutedMapEdges } from './PlusMapEdges';
+import { PlusMapSoil, soilMapColors, soilMapStyles, type MapCardPressState } from './PlusMapSoil';
 import { buttonSelectionProps, plusStyles } from './PlusUI';
 
 const height = 310;
@@ -63,18 +63,19 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
   const offscreen = seeds.length - rendered.length;
   const lines = React.useMemo(() => [...connections.map(({ id, aSeedId, bSeedId }) => ({ id, from: aSeedId, to: bSeedId })),
     ...(candidates ?? []).map(({ id, pair }) => ({ id, from: pair[0], to: pair[1], candidate: true }))], [connections, candidates]);
+  const fibers = useRoutedMapEdges(points, lines, width, height);
   return <View style={plusStyles.row}>
     <View style={[soilMapStyles.board, styles.plot]} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} accessibilityLabel="確定したつながりの図">
       <PlusMapSoil />
-      {width > 0 && <PlusMapEdges points={points} edges={lines} width={width} height={height} selectedId={selectedId} />}
+      {width > 0 && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={selectedId} />}
       {width > 0 && rendered.length === 0 && <Text style={styles.empty}>この位置に表示できる種はありません。</Text>}
       {rendered.map(({ seed, x, y, width: cardW, pinned }) => {
         const selected = selectedId === seed.id;
         return <Pressable key={seed.id} onPress={() => onSelect(seed.id)}
           accessibilityRole="button" {...buttonSelectionProps(selected)}
           accessibilityLabel={`${toSeedSnippet(seed, 50)}${pinned ? '。位置を固定しています' : ''}`}
-          style={({ pressed }) => [soilMapStyles.seed, styles.node, { width: cardW, left: x - cardW / 2, top: y - cardH / 2 },
-            pinned && styles.pinned, selected && soilMapStyles.selected, pressed && soilMapStyles.pressed]}>
+          style={({ pressed, focused }: MapCardPressState) => [soilMapStyles.seed, styles.node, { width: cardW, left: x - cardW / 2, top: y - cardH / 2 },
+            pinned && styles.pinned, selected && soilMapStyles.selected, focused && soilMapStyles.focused, pressed && soilMapStyles.pressed]}>
           {selected && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
           <Text style={styles.nodeText} numberOfLines={2}>{toSeedSnippet(seed, 60)}</Text>
           {pinned && <Text style={styles.mark}>位置固定</Text>}
@@ -82,7 +83,7 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
       })}
     </View>
     <PlusMapLegend>実線は確定したつながり{'\n'}図に{rendered.length}件を表示{offscreen > 0 ? ` · ほか${offscreen}件はリストで` : ''}</PlusMapLegend>
-    {Boolean(candidates?.length) && <PlusMapLegend candidate>点線は未採用の例の候補です。</PlusMapLegend>}
+    {fibers.some(({ edge }) => edge.candidate) && <PlusMapLegend candidate>点線は未採用の例の候補です。</PlusMapLegend>}
   </View>;
 }
 

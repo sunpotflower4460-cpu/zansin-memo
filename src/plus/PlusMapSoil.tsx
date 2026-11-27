@@ -1,6 +1,9 @@
 import { Image, StyleSheet } from 'react-native';
 import soil from '../../assets/soil.png';
 
+// React Native Web also provides focus in the press state.
+export type MapCardPressState = { pressed: boolean; focused?: boolean };
+
 export const soilMapColors = {
   ground: '#33261f',
   groundRim: '#8a6a50',
@@ -24,6 +27,7 @@ export const soilMapStyles = StyleSheet.create({
   seed: { zIndex: 1, borderRadius: 46, borderWidth: 1, borderColor: soilMapColors.seedRim, backgroundColor: soilMapColors.seed,
     shadowColor: '#190f08', shadowOpacity: 0.32, shadowOffset: { width: 0, height: 3 }, shadowRadius: 6 },
   selected: { borderWidth: 2, borderColor: soilMapColors.selectedRim, backgroundColor: soilMapColors.selected },
+  focused: { outlineColor: soilMapColors.selectedConnection, outlineStyle: 'solid', outlineWidth: 2, outlineOffset: 2 },
   pressed: { backgroundColor: soilMapColors.pressed },
   ring: { position: 'absolute', top: 3, left: 3, right: 3, bottom: 3, borderWidth: 1, borderColor: '#b29263', borderRadius: 42 },
   texture: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', opacity: 0.34 },

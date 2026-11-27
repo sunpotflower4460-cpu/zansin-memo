@@ -1,16 +1,16 @@
 import * as React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { routeMapFiber, type MapBox } from '../domain/plus/mapGeometry';
+import { routeMapFiber, type MapBox, type MapFiber } from '../domain/plus/mapGeometry';
 import { PlusMapFibers, type MapFiberPaint } from './PlusMapFibers';
 import { soilMapColors } from './PlusMapSoil';
 import { plusStyles } from './PlusUI';
 
 export type PlotEdge = { id: string; from: string; to: string; candidate?: boolean };
+type RoutedMapEdge = MapFiber & { edge: PlotEdge };
 
-export function PlusMapEdges({ points, edges, width, height, selectedId }: {
-  points: ReadonlyMap<string, MapBox>; edges: readonly PlotEdge[]; width: number; height: number; selectedId?: string;
-}) {
-  const fibers = React.useMemo(() => {
+export function useRoutedMapEdges(points: ReadonlyMap<string, MapBox>, edges: readonly PlotEdge[], width: number, height: number): RoutedMapEdge[] {
+  return React.useMemo(() => {
+    if (width <= 0) return [];
     const boxes = [...points.values()];
     return edges.flatMap((edge) => {
       const from = points.get(edge.from);
@@ -20,7 +20,11 @@ export function PlusMapEdges({ points, edges, width, height, selectedId }: {
       return path ? [{ ...path, edge }] : [];
     });
   }, [points, edges, width, height]);
+}
 
+export function PlusMapEdges({ fibers, width, height, selectedId }: {
+  fibers: readonly RoutedMapEdge[]; width: number; height: number; selectedId?: string;
+}) {
   const paint = React.useMemo(() => {
     const quiet: MapFiberPaint[] = [];
     const focused: MapFiberPaint[] = [];

@@ -3,8 +3,8 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { mapGroupLinks, type MapGroup } from '../domain/plus/map';
 import type { SeedConnection } from '../domain/types';
 import { theme } from '../styles/theme';
-import { PlusMapEdges, PlusMapLegend } from './PlusMapEdges';
-import { PlusMapSoil, soilMapColors, soilMapStyles } from './PlusMapSoil';
+import { PlusMapEdges, PlusMapLegend, useRoutedMapEdges } from './PlusMapEdges';
+import { PlusMapSoil, soilMapColors, soilMapStyles, type MapCardPressState } from './PlusMapSoil';
 import { buttonSelectionProps, plusStyles } from './PlusUI';
 
 const inset = 16;
@@ -39,22 +39,24 @@ export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup }:
   const links = React.useMemo(() => diagram ? mapGroupLinks(edges, groups) : [], [diagram, edges, groups]);
   const lines = React.useMemo(() => links.map(({ groups: [a, b] }) => ({ id: JSON.stringify([a.id, b.id]), from: a.id, to: b.id })), [links]);
   const draw = diagram && cardWidth >= 104;
+  const fibers = useRoutedMapEdges(points, lines, draw ? width : 0, height);
+  const visibleLinks = links.filter((_, i) => fibers.some(({ edge }) => edge.id === lines[i].id));
 
   return <View style={plusStyles.row}>
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       accessibilityLabel={diagram ? 'まとまりの地図' : undefined}
       style={draw ? [soilMapStyles.board, { height }] : styles.compact}>
       {draw && <PlusMapSoil />}
-      {draw && <PlusMapEdges points={points} edges={lines} width={width} height={height} selectedId={expandedId} />}
+      {draw && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={expandedId} />}
       {groups.map((group) => {
         const box = points.get(group.id)!;
         const manual = group.kind === 'manual';
         const selected = group.id === expandedId;
         return <Pressable key={group.id} accessibilityRole="button" {...buttonSelectionProps(selected)}
           accessibilityLabel={`${group.label} · ${group.seedIds.length}件${manual ? ' · 自分のまとまり' : ''}`}
-          onPress={() => onGroup(group)} style={({ pressed }) => draw ? [styles.group, soilMapStyles.seed, styles.pod,
+          onPress={() => onGroup(group)} style={({ pressed, focused }: MapCardPressState) => draw ? [styles.group, soilMapStyles.seed, styles.pod,
             { left: box.x - box.width / 2, top: box.y - box.height / 2, width: box.width, height: box.height },
-            manual && styles.manualPod, selected && soilMapStyles.selected, pressed && soilMapStyles.pressed]
+            manual && styles.manualPod, selected && soilMapStyles.selected, focused && soilMapStyles.focused, pressed && soilMapStyles.pressed]
             : [styles.group, manual && styles.manual, selected && styles.selected, pressed && styles.pressed]}>
           {draw && selected && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
           {draw && manual && <Text numberOfLines={1} style={styles.owner}>自分のまとまり</Text>}
@@ -63,7 +65,7 @@ export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup }:
         </Pressable>;
       })}
     </View>
-    {draw && links.length > 0 && <PlusMapLegend>実線はまとまりをまたぐ確定接続{links.length > 1 ? ` · ${links.length}組` : ` · ${links[0].edges.length}件`}</PlusMapLegend>}
+    {visibleLinks.length > 0 && <PlusMapLegend>実線はまとまりをまたぐ確定接続{visibleLinks.length > 1 ? ` · ${visibleLinks.length}組` : ` · ${visibleLinks[0].edges.length}件`}</PlusMapLegend>}
   </View>;
 }
 

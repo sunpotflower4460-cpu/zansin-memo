@@ -27,6 +27,17 @@ async function checkFiberPaint(plot, confirmed, candidates = 0) {
   }, candidates));
 }
 
+async function checkKeyboardFocus(page, card) {
+  await card.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  const focus = await card.evaluate((node) => {
+    const { outlineStyle, outlineWidth, outlineColor } = getComputedStyle(node);
+    return { visible: node.matches(':focus-visible'), outlineStyle, outlineWidth, outlineColor };
+  });
+  assert.deepEqual(focus, { visible: true, outlineStyle: 'solid', outlineWidth: '2px', outlineColor: 'rgb(255, 241, 210)' });
+  assert.equal(await card.getAttribute('aria-pressed'), 'false');
+}
+
 async function checkCardBounds(page, label, minimum) {
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
@@ -99,7 +110,9 @@ async function measurePlus(page) {
   await page.getByText('実線はまとまりをまたぐ確定接続 · 1件', { exact: true }).waitFor();
   await checkCardBounds(page, overviewLabel, 5);
   const group = counter();
-  await group.click(overview.getByRole('button', { name: /^散歩で見つけたこと · 3件/ }));
+  const firstGroup = overview.getByRole('button', { name: /^散歩で見つけたこと · 3件/ });
+  await checkKeyboardFocus(page, firstGroup);
+  await group.click(firstGroup);
   await page.getByRole('heading', { name: 'まとまりをまたぐ確定接続 1件' }).waitFor();
   await page.getByText(crossing, { exact: true }).waitFor();
   for (const label of ['散歩の記録', '雨の日の音', '光の色']) await button(page, `${label} · 選ぶ`).waitFor();
@@ -142,7 +155,9 @@ async function cameraAndLayout(page) {
   await button(page, '検索を閉じる').click();
   const plot = notePlot(page);
   const before = await cardsAt(plot);
-  await plot.getByRole('button', { name: '雨の日の音', exact: true }).press('Enter');
+  const rain = plot.getByRole('button', { name: '雨の日の音', exact: true });
+  await checkKeyboardFocus(page, rain);
+  await rain.press('Enter');
   await plot.getByRole('button', { name: '雨の日の音', exact: true, pressed: true }).waitFor();
   assert.deepEqual(await cardsAt(plot), before);
   await plot.getByRole('button', { name: hub, exact: true }).click();
@@ -237,11 +252,21 @@ async function checkPendingFiber(page) {
   await page.getByRole('heading', { name: '例の候補 · 条件と手がかり' }).waitFor();
   await button(page, '地図に戻る').click();
   await checkFiberPaint(notePlot(page), 2, 1);
-  await page.getByText('点線は未採用の例の候補です。', { exact: true }).waitFor();
+  const legend = page.getByText('点線は未採用の例の候補です。', { exact: true });
+  await legend.waitFor();
+  const before = await cardsAt(notePlot(page));
+  await page.setViewportSize({ width: 320, height: 844 });
+  await notePlot(page).locator('canvas[data-candidate-links="0"]').waitFor();
+  await legend.waitFor({ state: 'hidden' });
+  await page.setViewportSize({ width: 768, height: 844 });
+  await checkFiberPaint(notePlot(page), 2, 1);
+  await legend.waitFor();
+  assert.deepEqual(await cardsAt(notePlot(page)), before);
   assert.equal(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).connections.length, storageKey), 4);
   await button(page, '点線を隠す').click();
   await checkFiberPaint(notePlot(page), 2);
-  console.log('PASS an offline proposal paints one dashed fiber without changing confirmed connections');
+  await legend.waitFor({ state: 'hidden' });
+  console.log('PASS an offline proposal and its legend appear together after resizing, without changing confirmed connections');
 }
 
 (async () => {
