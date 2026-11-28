@@ -1048,7 +1048,8 @@ function CoreApp() {
   return (
     <SafeAreaProvider>
       <View style={styles.root}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}
+        aria-hidden={comparisonOpen} importantForAccessibility={comparisonOpen ? 'no-hide-descendants' : 'auto'}>
         <StatusBar style="dark" />
         <View style={styles.app}>
           {renderMainScreen()}

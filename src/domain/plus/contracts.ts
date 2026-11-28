@@ -166,6 +166,12 @@ const outbox = object({
   reservationId: id.optional(), quotaPeriodId: id.optional(), createdAt: time,
 });
 
+const studioPreferences = object({
+  layout: z.enum(['radial', 'constellation', 'list']),
+  palette: z.enum(['paper', 'indigo', 'night']),
+});
+const reflection = object({ day: z.iso.date(), body: text.min(1), updatedAt: time });
+
 export const gardenV3 = object({
   storeVersion: z.literal(3), ...gardenCore, permissions: z.array(permission), sourceSnapshots: z.array(sourceSnapshot),
   mapViews: z.array(mapView), atelierProjects: z.array(atelierProject), atelierDrafts: z.array(atelierDraft),
@@ -173,6 +179,7 @@ export const gardenV3 = object({
   collectionItems: z.array(collectionItem), collectionDrafts: z.array(collectionDraft), collectionRevisions: z.array(collectionRevision),
   collectionExportReceipts: z.array(collectionExportReceipt), connectionProposals: z.array(connectionProposal),
   proposalSuppressions: z.array(suppression), aiRequestReceipts: z.array(aiRequestReceipt), outbox: z.array(outbox),
+  studioPreferences: studioPreferences.optional(), reflections: z.array(reflection).optional(),
 });
 
 export type GardenStoreV3 = z.infer<typeof gardenV3>;
@@ -191,6 +198,7 @@ export type MapScope = z.infer<typeof scope>;
 export type MapFocus = z.infer<typeof focus>;
 export type MapView = z.infer<typeof mapView>;
 export type MapReturnContext = z.infer<typeof mapReturnContext>;
+export type StudioPreferences = z.infer<typeof studioPreferences>;
 export type AtelierProject = z.infer<typeof atelierProject>;
 export type AtelierDraft = z.infer<typeof atelierDraft>;
 export type AtelierRevision = z.infer<typeof atelierRevision>;

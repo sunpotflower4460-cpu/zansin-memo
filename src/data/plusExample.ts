@@ -31,3 +31,32 @@ export function buildPlusExample(count = 64) {
   ];
   return { seeds, connections, displayGroups };
 }
+
+export function buildStudioExample(reference = new Date()) {
+  function ago(days: number, hour = 17) {
+    const date = new Date(reference);
+    date.setDate(date.getDate() - days);
+    date.setHours(hour, 0, 0, 0);
+    return new Date(Math.min(date.getTime(), reference.getTime())).toISOString();
+  }
+  const original = buildPlusExample(8);
+  const more = [
+    ['川辺の銀杏', '川沿いの遊歩道に落ち葉。地面に差す光を、歩きながら見つけた。', '散歩'],
+    ['五分だけ書く', '就寝前に今日の出来事を一言だけ書いてみた。短ければ毎晩できそう。', '記録'],
+    ['窓辺で深呼吸', '携帯の通知を切ったら、部屋の静けさに気づいた。短い休憩でも頭が切り替わる。', '暮らし'],
+    ['葉のかたち', '鉢植えの新芽を毎朝見ている。昨日と今日の葉の色を、週に一枚ずつ撮ってみる。', '植物'],
+    ['声から始まる絵本', '読み進める前に声をまねてもらった。最初の一歩があると子どもが自分から参加した。', '遊び'],
+    ['雨上がりの縁側', '葉にたまった水滴の向こうに庭の緑が映っていた。', '植物'],
+    ['封筒を一枚だけ', 'ひとことと切手だけで送れる手紙を作ってみる。読む人が忙しい日にも届くといい。', '記録'],
+    ['朝の台所', 'お弁当の献立を前日に決めたら、朝の調理が落ち着いた。', '暮らし'],
+  ];
+  const offsets = [0, 3, 1, 7, 9, 6, 2, 4, 2, 0, 8, 5, 4, 12, 3, 14];
+  const seeds = original.seeds.map((seed, index) => ({ ...seed, createdAt: ago(offsets[index]), updatedAt: ago(offsets[index]) }))
+    .concat(more.map(([title, body, tag], index) => buildSeed(`example-${index + 8}`, { title, body, tags: [tag] }, ago(offsets[index + 8]))));
+  const connections: typeof original.connections = original.connections.map((edge, index) => ({ ...edge, createdAt: ago([0, 0, 1, 5][index], 19) }));
+  for (const [a, b, days, note] of [
+    [0, 6, 1, '帰り道に目を向ける'], [0, 7, 0, '短く記録する手がかり'], [0, 8, 0, '歩いた場所を残す'],
+    [2, 6, 1, '光を一枚に残す'], [3, 14, 3, '短い便りの形を考える'], [5, 12, 3, '最初に声を出してみる'], [11, 13, 4, '庭で見つけた色'],
+  ] as const) connections.push(makeConnection(seeds[a].id, seeds[b].id, 'manual', ago(days, 19), note));
+  return { seeds, connections };
+}

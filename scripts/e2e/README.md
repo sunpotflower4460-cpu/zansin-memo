@@ -45,7 +45,11 @@ export E2E_OUT=/tmp/e2e-out             # スクリーンショットの出力�
 
 ### 無料と Plus の比較版
 
-内部配布の iOS ビルドは `npx --yes eas-cli@27.11.0 build --platform ios --profile comparison` で生成する。iPhone では「きざし比較」を開き、ホームの「無料と Plus を比較」→「例の庭を開く」→「Plus を試す」。比較は無料から始まり、例のメモ・アトリエ・作品は比較を閉じた後も端末内に残る。アプリIDは `com.sunpotflower4460.kizashinotes.comparison`。購入・復元は試験用の状態で動作する。
+内部配布の iOS ビルドは `npx --yes eas-cli@27.11.0 build --platform ios --profile comparison` で生成する。iPhone では「きざし比較」を開き、ホームの「無料と Plus を比較」から「例の庭を開く」か「自分でメモを書いて試す」を選び、「Plus を試す」をオンにする。メモ、デザイン設定、振り返り、アトリエと作品は比較を閉じた後も端末内に残る。アプリIDは `com.sunpotflower4460.kizashinotes.comparison`。その他の購入・復元は試験用の状態で動作する。
+
+- 地図の「マインドマップ」「星座」「つながり一覧」を切り替える。「表示スタイル」で和紙・藍・月夜を選び、図はドラッグ・ピンチ、拡大ボタンと画面に合わせるボタンで動かせる。文字が大きい設定では一覧で開く。
+- 「AIの提案」を開くと、起点のメモをもとに候補と原文の引用が表示される。「候補を地図で見る」の点線は、本人が保存すると実線になる。候補に使う文章は端末内で照合する。iOS 17 以降は利用できる言語モデルも用いる。OS のモデルが未準備のときは文章の照合が先に動き、任意で言語モデルだけを取得できる。 [Apple の言語モデル](https://developer.apple.com/documentation/naturallanguage/nlcontextualembedding)
+- 「記録」ではカレンダーと足あとを切り替え、日付ごとのメモ・つながり・作品を開いたり、振り返りを保存したりできる。既存の振り返りは比較を無料に戻したあとも見返せる。
 
 ブラウザーの比較試験では同じチェックアウトから比較版・通常版の順に書き出す。Metro キャッシュを引き継いだ通常版で比較の入口が無効になり、比較でオフに戻したときに下書きが残ることを確認する。
 
@@ -54,7 +58,7 @@ EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON=1 npx expo export -p web --output-dir /tmp/k
 EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON=0 npx expo export -p web --output-dir /tmp/kizashi-standard
 ```
 
-比較版を8104、通常版を8102で配信し、`node scripts/e2e/plus-comparison.js` を実行する。ポートを変更した場合は `COMPARISON_URL` と `FREE_E2E_URL` を指定する。
+比較版を8104、通常版を8102で配信し、`node scripts/e2e/plus-comparison.js` と `node scripts/e2e/plus-studio.js` を実行する。ポートを変更した場合は `COMPARISON_URL` と `FREE_E2E_URL` を指定する。ブラウザーでは端末内の文章照合を確認する。Apple のモデルは iOS ビルドの「AIの提案」で確認する。
 
 ### Plus 専用の開発プレビュー
 
