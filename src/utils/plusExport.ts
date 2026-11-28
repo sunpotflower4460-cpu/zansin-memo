@@ -5,7 +5,7 @@ import { buildTextExport } from './exportFormat';
 export function buildPlusJsonExport(store: GardenStoreV3, exportedAt = new Date().toISOString()): string {
   return JSON.stringify({
     exportFormat: 'kizashi-notes', exportVersion: 3, exportedAt,
-    includes: ['deletedSeeds', 'connections', 'syntheses', 'drafts', 'mapViews', 'atelier', 'collection', 'sources', 'permissions', 'proposalHistory'],
+    includes: ['deletedSeeds', 'connections', 'syntheses', 'drafts', 'mapViews', 'studioArrangements', 'atelier', 'collection', 'sources', 'permissions', 'proposalHistory', 'reflections'],
     ...store,
     outbox: [],
   }, null, 2);
@@ -22,6 +22,9 @@ export function buildPlusTextExport(store: GardenStoreV3): string {
     return `  ・選んだときの材料\n${snapshot.text}`;
   });
   const output = [buildTextExport(store)];
+  for (const reflection of [...store.reflections ?? []].sort((a, b) => a.day.localeCompare(b.day))) {
+    output.push(`【振り返り】 ${reflection.day}`, reflection.body);
+  }
   for (const project of store.atelierProjects) {
     output.push(`【アトリエ】 ${project.title || '題名なし'}`);
     for (const revision of store.atelierRevisions.filter((entry) => entry.projectId === project.id)) {

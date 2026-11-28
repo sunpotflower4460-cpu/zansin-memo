@@ -17,6 +17,7 @@ function checkReferences(store: GardenStoreV3): boolean {
   if (idLists.some((items) => !unique(items as readonly { id: string }[], ownId)) ||
       !unique(store.permissions, (permission) => permission.seedId) ||
       !unique(store.proposalSuppressions, ({ pair }) => JSON.stringify(pair)) ||
+      !unique(store.reflections ?? [], ({ day }) => day) ||
       !unique(store.atelierDrafts, ({ projectId, branchId }) => JSON.stringify([projectId, branchId])) ||
       !unique(store.collectionDrafts, ({ itemId }) => itemId)) return false;
 

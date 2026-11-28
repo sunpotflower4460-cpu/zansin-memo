@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SectionCard } from '../components/SectionCard';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import { materialState } from '../domain/plus/atelier';
@@ -13,6 +14,7 @@ import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { PlusWorkPaper, paperMap } from './PlusWorkPaper';
+import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
 import { useBufferedText } from './useBufferedText';
 import { makeWorkFile, makeWorkText } from './workFiles';
 import type { GeneratedWorkFile } from './workFileTypes';
@@ -20,11 +22,14 @@ import type { GeneratedWorkFile } from './workFileTypes';
 const now = () => new Date().toISOString();
 const missingWork = '開いていた作品の版を確認できません';
 
-export function PlusCollectionScreen({ writer, source, onBack, canCompose, canComposeNow }: {
+export function PlusCollectionScreen({ writer, source, onBack, canCompose, canComposeNow, comparison, backLabel, onStartDraft }: {
   writer: GardenV3Writer; source?: AtelierRevision; onBack: () => void; canCompose: boolean; canComposeNow: () => boolean;
+  comparison?: boolean; backLabel?: string; onStartDraft?: () => void;
 }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
-  const [composing, setComposing] = React.useState(Boolean(source));
+  const [composing, setComposing] = React.useState(source);
+  const [choosing, setChoosing] = React.useState(false);
+  const [reordering, setReordering] = React.useState(false);
   const [selected, setSelected] = React.useState<CollectionReturnContext>();
   const [notice, setNotice] = React.useState('');
   const context = selected && getWorkOnReturn(store, selected);
@@ -35,12 +40,64 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose, canCo
     setNotice('');
     setSelected({ collectionItemId: work.itemId, collectionRevisionId: work.id, scrollOffset: 0 });
   };
-  if (composing && source) return <Composer writer={writer} source={source} store={store} onCancel={onBack} canCompose={canCompose} canComposeNow={canComposeNow}
-    onSave={(work) => { setComposing(false); open(work); }} />;
+  if (composing) return <Composer writer={writer} source={composing} store={store} comparison={comparison}
+    onCancel={source ? onBack : () => setComposing(undefined)} canCompose={canCompose} canComposeNow={canComposeNow}
+    onSave={(work) => { setComposing(undefined); setChoosing(false); open(work); }} />;
 
   if (context && selected) return <WorkView key={context.revision.id} content={workContent(store, context.revision)}
-    context={selected} newer={context.newer} store={store} writer={writer} onList={() => { setSelected(undefined); setNotice(''); }}
+    context={selected} newer={context.newer} store={store} writer={writer} comparison={comparison} onList={() => { setSelected(undefined); setNotice(''); }}
     onRevision={open} onMissing={showMissing} />;
+
+  const back = source ? 'アトリエに戻る' : backLabel ?? '地図に戻る';
+  if (comparison) {
+    if (choosing) return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
+      <StudioTitle title="作品にする版を選ぶ" back={{ label: '作品集に戻る', onPress: () => setChoosing(false) }} />
+      {[...store.atelierRevisions].reverse().map((revision) => <StudioRow key={revision.id} icon="bookmark-outline"
+        title={revision.title || toSeedSnippet({ body: revision.text }, 39)} detail={new Date(revision.savedAt).toLocaleDateString('ja-JP')}
+        onPress={() => setComposing(revision)} />)}
+    </ScrollView>;
+    const hasVersions = store.atelierRevisions.length > 0;
+    const start = hasVersions ? () => setChoosing(true) : onStartDraft;
+    return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
+      <StudioTitle title="作品集" back={{ label: back, onPress: onBack }}>
+        {store.collectionItems.length > 1 && <IconButton label={reordering ? '並べ替えを終える' : '作品を並べ替える'}
+          icon={reordering ? 'checkmark' : 'swap-vertical-outline'} onPress={() => setReordering(!reordering)} />}
+      </StudioTitle>
+      {!!notice && <Text accessibilityLiveRegion="polite" style={studioStyles.status}>{notice}</Text>}
+      {!store.collectionItems.length ? <View style={[studioStyles.card, galleryStyles.empty]}>
+        <View style={galleryStyles.paperSymbol} aria-hidden><Ionicons name="albums-outline" size={32} color="#805844" /></View>
+        <Text accessibilityRole="header" style={studioStyles.subtitle}>文章を一枚の作品に</Text>
+        <Text style={studioStyles.muted}>ことばカードや、地図つきの紙面をつくれます。</Text>
+        {canCompose && start && <StudioAction label={hasVersions ? '作品をつくる' : 'アトリエで下書きを書く'} icon={hasVersions ? 'add' : 'create-outline'} primary onPress={start} />}
+      </View> : <>
+        {canCompose && start && <StudioAction label={hasVersions ? '作品をつくる' : 'アトリエで下書きを書く'} icon="add" onPress={start} />}
+        {[...store.collectionItems].sort((a, b) => a.order - b.order).map((item, i, list) => {
+          const work = store.collectionRevisions.find((revision) => revision.id === item.currentRevisionId);
+          if (!work) return null;
+          const isMap = work.kind !== 'word_card';
+          return <View key={item.id} style={galleryStyles.shelf}>
+            <Pressable accessibilityRole="button" accessibilityLabel="作品を開く" accessibilityHint={work.title}
+              onPress={() => open(work)} style={({ pressed }) => [galleryStyles.work, pressed && studioStyles.quiet]}>
+              <View aria-hidden style={[galleryStyles.cover, work.layout?.paper === 'white' && galleryStyles.white]}>
+                <Ionicons name={isMap ? 'git-network-outline' : 'text-outline'} size={21} color="#805844" />
+                <View style={galleryStyles.rule} /><View style={[galleryStyles.rule, galleryStyles.shortRule]} />
+              </View>
+              <View style={studioStyles.grow}>
+                <Text style={galleryStyles.format}>{isMap ? '地図つきの紙面' : 'ことばカード'}</Text>
+                <Text numberOfLines={2} style={studioStyles.subtitle}>{work.title || '題名のない作品'}</Text>
+                <Text numberOfLines={2} style={studioStyles.muted}>{work.textSnapshot}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={studioColors.green} />
+            </Pressable>
+            {reordering && <View style={studioStyles.wrap}>
+              <IconButton label="前へ移動" icon="arrow-up" disabled={i === 0} onPress={() => void writer.run(moveWork(item.id, -1, createId()))} />
+              <IconButton label="後ろへ移動" icon="arrow-down" disabled={i === list.length - 1} onPress={() => void writer.run(moveWork(item.id, 1, createId()))} />
+            </View>}
+          </View>;
+        })}
+      </>}
+    </ScrollView>;
+  }
 
   return <ScrollView contentContainerStyle={plusStyles.page}>
     <PlusButton label={source ? 'アトリエに戻る' : '地図に戻る'} onPress={onBack} />
@@ -62,14 +119,15 @@ export function PlusCollectionScreen({ writer, source, onBack, canCompose, canCo
   </ScrollView>;
 }
 
-function Composer({ writer, store, source, onCancel, onSave, canCompose, canComposeNow }: {
+function Composer({ writer, store, source, onCancel, onSave, canCompose, canComposeNow, comparison }: {
   writer: GardenV3Writer; store: GardenStoreV3; source: AtelierRevision; onCancel: () => void; onSave: (work: CollectionRevision) => void;
-  canCompose: boolean; canComposeNow: () => boolean;
+  canCompose: boolean; canComposeNow: () => boolean; comparison?: boolean;
 }) {
   const [title, setTitle] = React.useState(source.title ?? '');
   const [text, setText] = React.useState(source.text);
   const [layout, setLayout] = React.useState<NonNullable<CollectionRevision['layout']>>(defaultWorkLayout);
   const [page, setPage] = React.useState(false);
+  const [paperOptions, setPaperOptions] = React.useState(false);
   const [chosen, setChosen] = React.useState<string[]>([]);
   const [included, setIncluded] = React.useState<string[]>([]);
   const [search, setSearch] = React.useState('');
@@ -110,26 +168,26 @@ function Composer({ writer, store, source, onCancel, onSave, canCompose, canComp
 
   if (preview) {
     const height = Math.round(paperWidth * (page ? Math.SQRT2 : 1.25));
-    return <ScrollView contentContainerStyle={plusStyles.page}>
-      <Heading title>作品のプレビュー</Heading>
+    return <ScrollView style={studioStyles.root} contentContainerStyle={plusStyles.page}>
+      <StudioTitle title="作品のプレビュー" back={{ label: '内容を選び直す', onPress: () => setPreview(undefined), disabled: busy }} />
       <PlusWorkPaper content={preview.content} width={paperWidth} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {used > height && <Text style={plusStyles.alert}>この内容は一枚に収まりません。文章や出典を調整できます。</Text>}
       {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
-      <Actions><PlusButton label="内容を選び直す" disabled={busy} onPress={() => setPreview(undefined)} />
-        <PlusButton label="作品集に残す" primary disabled={busy || !canCompose} onPress={() => void save()} /></Actions>
+      <StudioAction label="作品集に残す" icon="checkmark" primary disabled={busy || !canCompose} onPress={() => void save()} />
       {!canCompose && <Text style={plusStyles.meta}>新しい作品を保存できる利用権の確認が必要です。編集中の文章は残っています。</Text>}
     </ScrollView>;
   }
 
-  return <ScrollView contentContainerStyle={plusStyles.page} keyboardShouldPersistTaps="handled">
-    <PlusButton label="アトリエに戻る" onPress={onCancel} />
-    <Heading title>作品をつくる</Heading>
-    <Actions><PlusButton label="ことばカード" selected={!page} onPress={() => setPage(false)} />
-      <PlusButton label="地図と文章の1ページ" selected={page} onPress={() => setPage(true)} /></Actions>
+  return <ScrollView style={studioStyles.root} contentContainerStyle={comparison ? studioStyles.content : plusStyles.page}
+    automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+    <StudioTitle title="作品をつくる" back={{ label: '作品づくりを閉じる', onPress: onCancel }} />
+    <StudioSegments label="作品のかたち" items={[{ id: 'card', label: 'ことばカード' }, { id: 'page', label: '地図と文章の1ページ' }]}
+      value={page ? 'page' : 'card'} onChange={(value) => setPage(value === 'page')} />
     <PlusInput accessibilityLabel="作品の題名" placeholder="題名（任意）" value={title} onChangeText={setTitle} />
     <PlusInput accessibilityLabel="作品に残す文章" value={text} multiline onChangeText={setText} />
     {!canCompose && <Text style={plusStyles.meta}>新しい作品の保存には利用権が必要です。入力中の文章はここで読めます。</Text>}
-    <SectionCard>
+    {comparison && <StudioAction label={paperOptions ? '紙面と出典を閉じる' : '紙面と出典を選ぶ'} icon="options-outline" onPress={() => setPaperOptions(!paperOptions)} />}
+    {(!comparison || paperOptions) && <SectionCard>
       <Heading>紙面と出典</Heading>
       <Actions><PlusButton label="和紙色" selected={layout.paper === 'washi'} onPress={() => setLayout({ ...layout, paper: 'washi' })} />
         <PlusButton label="白い紙" selected={layout.paper === 'white'} onPress={() => setLayout({ ...layout, paper: 'white' })} />
@@ -142,7 +200,7 @@ function Composer({ writer, store, source, onCancel, onSave, canCompose, canComp
         return <PlusButton key={id} label={`${material?.title || '題名なし'}の当時の材料を作品に残す`} selected={included.includes(id)}
           onPress={() => setIncluded((before) => before.includes(id) ? before.filter((value) => value !== id) : [...before, id])} />;
       })}
-    </SectionCard>
+    </SectionCard>}
     {page && <SectionCard><Heading>地図に含める種 · {chosen.length}件</Heading>
       <PlusButton label="図を文章の下に置く" selected={layout.mapPosition === 'below'} onPress={() => setLayout({ ...layout, mapPosition: layout.mapPosition === 'below' ? 'above' : 'below' })} />
       <PlusInput accessibilityLabel="作品の地図に含める種を探す" value={search} onChangeText={(value) => { setSearch(value); setLimit(16); }} />
@@ -155,12 +213,13 @@ function Composer({ writer, store, source, onCancel, onSave, canCompose, canComp
   </ScrollView>;
 }
 
-function WorkView({ content, context, newer, store, writer, onList, onRevision, onMissing }: {
+function WorkView({ content, context, newer, store, writer, onList, onRevision, onMissing, comparison }: {
   content: WorkContent; context: CollectionReturnContext; newer: boolean; store: GardenStoreV3; writer: GardenV3Writer;
-  onList: () => void; onRevision: (next: CollectionRevision) => void; onMissing: () => void;
+  onList: () => void; onRevision: (next: CollectionRevision) => void; onMissing: () => void; comparison?: boolean;
 }) {
   const { work } = content;
   const [editing, setEditing] = React.useState(false);
+  const [details, setDetails] = React.useState(false);
   const [read, setRead] = React.useState<{ snapshotId: string; mode: 'current' | 'historical'; context: CollectionReturnContext }>();
   const [used, setUsed] = React.useState(0);
   const [notice, setNotice] = React.useState('');
@@ -249,10 +308,11 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
 
   if (editing && isCurrent) return <WorkEditor writer={writer} store={store} work={work} onBack={() => setEditing(false)} onSave={(next) => { setEditing(false); onRevision(next); }} />;
   return <View style={plusStyles.full}>
-    <View style={[plusStyles.full, read && { display: 'none' }]}><ScrollView ref={scroller} contentContainerStyle={plusStyles.page}
+    <View style={[plusStyles.full, read && { display: 'none' }]}><ScrollView ref={scroller} contentContainerStyle={comparison ? studioStyles.content : plusStyles.page}
       onScroll={(event) => { scroll.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={48}>
-      <PlusButton label="作品集に戻る" focusRef={listBack} onPress={onList} />
-      <Heading title>{work.title || '題名のない作品'}</Heading>
+      <StudioTitle title={work.title || '題名のない作品'} back={{ label: '作品集に戻る', focusRef: listBack, onPress: onList }}>
+        {comparison && isCurrent && <IconButton label="本文・題名を編集" icon="create-outline" onPress={() => setEditing(true)} />}
+      </StudioTitle>
       {newer && <PlusButton label="新しい作品版を開く" onPress={() => {
         const item = store.collectionItems.find(({ id }) => id === work.itemId);
         const next = store.collectionRevisions.find(({ id }) => id === item?.currentRevisionId);
@@ -261,22 +321,24 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       <PlusWorkPaper content={content} width={width} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {overflow && <Text style={plusStyles.alert}>一枚には収まりません。文章を調整するか、テキストで取り出せます。</Text>}
       {(content.hidden.length > 0 || content.missingMaterials > 0) && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
-      {last && <Text style={plusStyles.meta}>{file && last.collectionRevisionId === work.id && file.format === last.format ? '現在の版のファイルを用意しました' : '最後の出力版は作品集に記録されています'}</Text>}
+      {!comparison && last && <Text style={plusStyles.meta}>{file && last.collectionRevisionId === work.id && file.format === last.format ? '現在の版のファイルを用意しました' : '最後の出力版は作品集に記録されています'}</Text>}
       <Actions>
-        {isCurrent && <PlusButton label="本文・題名を編集" onPress={() => setEditing(true)} />}
-        <PlusButton label={`${workFormat(work).toUpperCase()}ファイルを作る`} primary disabled={busy || overflow || used === 0} onPress={() => void output('paper')} />
-        <PlusButton label="テキストファイルを作る" disabled={busy} onPress={() => void output('text')} />
-        {file && <PlusButton label="ファイルを取り出す・共有" onPress={deliverFile} />}
+        {!comparison && isCurrent && <PlusButton label="本文・題名を編集" onPress={() => setEditing(true)} />}
+        <StudioAction label={`${workFormat(work).toUpperCase()}ファイルを作る`} icon="download-outline" primary={!file} disabled={busy || overflow || used === 0} onPress={() => void output('paper')} />
+        <StudioAction label="テキストファイルを作る" title={comparison ? 'テキスト' : undefined} icon="document-text-outline" disabled={busy} onPress={() => void output('text')} />
+        {file && <StudioAction label="ファイルを取り出す・共有" title="共有・保存" icon="share-outline" primary onPress={deliverFile} />}
       </Actions>
       {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.meta}>{notice}</Text>}
-      {linkedMaterials.length > 0 && <SectionCard><Heading>作品の材料</Heading>
+      {comparison && (linkedMaterials.length > 0 || isCurrent) && <StudioAction label={details ? '作品の詳細を閉じる' : '作品の詳細を開く'}
+        title={details ? '詳細を閉じる' : '材料と作品の設定'} icon="ellipsis-horizontal" onPress={() => setDetails(!details)} />}
+      {(!comparison || details) && linkedMaterials.length > 0 && <SectionCard><Heading>作品の材料</Heading>
         {linkedMaterials.map((entry) => <View key={entry.id} style={plusStyles.rule}>
           <Text style={plusStyles.text}>{entry.title || '題名のない材料'}</Text>
           <Actions><PlusButton label="作ったときの材料を見る" focusRef={materialControl(entry.id, 'historical')} onPress={() => openMaterial(entry, 'historical')} />
             <PlusButton label="現在の原文を開く" focusRef={materialControl(entry.id, 'current')} onPress={() => openMaterial(entry, 'current')} /></Actions>
         </View>)}
       </SectionCard>}
-      {isCurrent && <PlusButton label="作品を削除する" onPress={() => showConfirm('作品を削除しますか？', '選んだ作品とその版を作品集から削除します。', [
+      {(!comparison || details) && isCurrent && <StudioRow title="作品を削除する" danger icon="trash-outline" onPress={() => showConfirm('作品を削除しますか？', '選んだ作品とその版を作品集から削除します。', [
         { text: 'やめる', style: 'cancel' }, { text: '削除する', style: 'destructive', onPress: () => void writer.run(removeWork(work.itemId, createId())).then((result) => {
           if (result.ok) onList(); else setNotice('作品を削除できませんでした');
         }) }])} />}
@@ -319,7 +381,7 @@ function WorkEditor({ writer, store, work, onBack, onSave }: {
       else setNotice(result.detail ?? '作品を保存できませんでした。入力は残っています。');
     } finally { lock.current = false; }
   }
-  return <ScrollView contentContainerStyle={plusStyles.page} keyboardShouldPersistTaps="handled">
+  return <ScrollView contentContainerStyle={plusStyles.page} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
     <Heading title>作品の文章を編集</Heading>
     <PlusInput accessibilityLabel="保存済み作品の題名" value={form.title} onChangeText={(title) => buffered.edit(JSON.stringify({ ...form, title }))} />
     <PlusInput accessibilityLabel="保存済み作品の本文" value={form.text} multiline onChangeText={(text) => buffered.edit(JSON.stringify({ ...form, text }))} />
@@ -328,3 +390,17 @@ function WorkEditor({ writer, store, work, onBack, onSave }: {
     {(buffered.message || notice) && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{buffered.message || notice}</Text>}
   </ScrollView>;
 }
+
+const galleryStyles = StyleSheet.create({
+  empty: { alignItems: 'flex-start', padding: 16, backgroundColor: '#f6edde', borderColor: '#e5d8c5' },
+  paperSymbol: { width: 56, height: 60, borderRadius: 10, backgroundColor: '#fff9ea', alignItems: 'center', justifyContent: 'center' },
+  shelf: { gap: 6 },
+  work: { minHeight: 118, flexDirection: 'row', gap: 11, padding: 10, alignItems: 'center', borderRadius: 16, borderWidth: 1,
+    borderColor: studioColors.rule, backgroundColor: studioColors.surface },
+  cover: { width: 63, minHeight: 84, gap: 5, borderWidth: 1, borderRadius: 7, borderColor: '#e7d7bc',
+    backgroundColor: '#f5ecd7', alignItems: 'center', justifyContent: 'center' },
+  white: { backgroundColor: '#fffefa', borderColor: '#dddcd2' },
+  rule: { height: 1, width: 28, backgroundColor: '#b59d82' },
+  shortRule: { width: 21 },
+  format: { fontSize: 12, color: '#805844', fontWeight: '700' },
+});

@@ -22,24 +22,30 @@ export function useRoutedMapEdges(points: ReadonlyMap<string, MapBox>, edges: re
   }, [points, edges, width, height]);
 }
 
-export function PlusMapEdges({ fibers, width, height, selectedId }: {
-  fibers: readonly RoutedMapEdge[]; width: number; height: number; selectedId?: string;
+const paperMapColors = {
+  ground: '#e5ebdd', connection: '#557260', branch: '#718773', selectedConnection: '#284d3d',
+  selectedBranch: '#4a6f57', selectedHalo: '#d1dfce', candidate: '#934d36',
+};
+
+export function PlusMapEdges({ fibers, width, height, selectedId, paper }: {
+  fibers: readonly RoutedMapEdge[]; width: number; height: number; selectedId?: string; paper?: boolean;
 }) {
   const paint = React.useMemo(() => {
+    const colors = paper ? paperMapColors : soilMapColors;
     const quiet: MapFiberPaint[] = [];
     const focused: MapFiberPaint[] = [];
     for (const { edge, strokes, branches } of fibers) {
       const active = !edge.candidate && (edge.from === selectedId || edge.to === selectedId);
-      const ink = edge.candidate ? soilMapColors.candidate : active ? soilMapColors.selectedConnection : soilMapColors.connection;
+      const ink = edge.candidate ? colors.candidate : active ? colors.selectedConnection : colors.connection;
       (active ? focused : quiet).push({
         id: edge.id, candidate: Boolean(edge.candidate), strokes, branches, ink,
         thickness: active ? 2.35 : edge.candidate ? 1.65 : 1.9,
-        halo: active ? { thickness: 4, ink: soilMapColors.selectedHalo } : undefined,
-        branchPaint: active ? { thickness: 1.1, ink: soilMapColors.selectedBranch } : { thickness: 0.95, ink: soilMapColors.branch },
+        halo: active ? { thickness: 4, ink: colors.selectedHalo } : undefined,
+        branchPaint: active ? { thickness: 1.1, ink: colors.selectedBranch } : { thickness: 0.95, ink: colors.branch },
       });
     }
     return [...quiet, ...focused];
-  }, [fibers, selectedId]);
+  }, [fibers, paper, selectedId]);
 
   return <View testID="map-link-layer" pointerEvents="none" aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
     style={styles.layer}>
@@ -47,11 +53,13 @@ export function PlusMapEdges({ fibers, width, height, selectedId }: {
   </View>;
 }
 
-export function PlusMapLegend({ children, candidate = false }: { children: React.ReactNode; candidate?: boolean }) {
+export function PlusMapLegend({ children, candidate = false, paper }: { children: React.ReactNode; candidate?: boolean; paper?: boolean }) {
+  const colors = paper ? paperMapColors : soilMapColors;
   return <View style={styles.legend}>
-    <View aria-hidden style={styles.swatch}>
-      {candidate ? <View style={styles.candidateSwatch}><View style={styles.dash} /><View style={styles.dash} /><View style={styles.dash} /></View>
-        : <View style={styles.linkSwatch} />}
+    <View aria-hidden style={[styles.swatch, { backgroundColor: colors.ground }]}>
+      {candidate ? <View style={styles.candidateSwatch}>{[0, 1, 2].map((n) =>
+        <View key={n} style={[styles.dash, { backgroundColor: colors.candidate }]} />)}</View>
+        : <View style={[styles.linkSwatch, { backgroundColor: colors.connection }]} />}
     </View>
     <Text style={[plusStyles.meta, styles.legendText]}>{children}</Text>
   </View>;
@@ -61,9 +69,9 @@ const styles = StyleSheet.create({
   layer: { ...StyleSheet.absoluteFillObject, zIndex: 0 },
   legend: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   legendText: { flex: 1 },
-  swatch: { width: 24, height: 15, marginTop: 2, borderRadius: 7.5, backgroundColor: soilMapColors.ground,
+  swatch: { width: 24, height: 15, marginTop: 2, borderRadius: 7.5,
     justifyContent: 'center', alignItems: 'center' },
-  linkSwatch: { width: 15, height: 2, backgroundColor: soilMapColors.connection, borderRadius: 1 },
+  linkSwatch: { width: 15, height: 2, borderRadius: 1 },
   candidateSwatch: { flexDirection: 'row', gap: 3 },
-  dash: { width: 4, height: 1.5, borderRadius: 1, backgroundColor: soilMapColors.candidate },
+  dash: { width: 4, height: 1.5, borderRadius: 1 },
 });

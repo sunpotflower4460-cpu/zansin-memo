@@ -1,15 +1,30 @@
 {
   "cli": {
-    "version": ">= 16.0.0",
-    "appVersionSource": "local"
+    "version": "27.11.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "production": {
       "distribution": "store",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON": "0"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      }
     },
     "preview": {
       "distribution": "internal"
+    },
+    "comparison": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON": "1"
+      },
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      }
     }
   },
   "submit": {

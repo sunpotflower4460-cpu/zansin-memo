@@ -13,6 +13,7 @@ import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet }
 import { PlusMapOverview } from './PlusMapOverview';
 import { PlusMapPlot } from './PlusMapPlot';
 import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
+import { IconButton, StudioAction, StudioRow, StudioTitle, studioStyles } from './StudioUI';
 
 const now = () => new Date().toISOString();
 const pageSize = 20;
@@ -95,12 +96,15 @@ type MapProps = {
   onOpenCandidates?: (seedId: string, scope: string[], context: MapReturnContext) => void;
   onOpenAtelier?: (seedId: string, materials: string[], context: MapReturnContext) => void;
   restoreContext?: MapReturnContext;
+  comparison?: boolean; onBack?: () => void;
 };
 
-export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier, restoreContext }: MapProps) {
+export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArrange = true, onOpenCandidates, onOpenAtelier, restoreContext,
+  comparison, onBack }: MapProps) {
   const [view, setView] = React.useState<MapView>(() => ({ ...newMapView(createId(), now()), displayGroups: initialGroups }));
-  const [scopeMenu, setScopeMenu] = React.useState(false);
+  const [scopeMenu, setScopeMenu] = React.useState(Boolean(comparison && !restoreContext));
   const [layoutMenu, setLayoutMenu] = React.useState(false);
+  const [noteTools, setNoteTools] = React.useState(false);
   const [name, setName] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
   const [marked, setMarked] = React.useState<string[]>([]);
@@ -283,7 +287,7 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     } else {
       setUndo({ positions, viewport: preview.beforeViewport });
       setView((before) => ({ ...before, positions: preview.layout }));
-      setNotice('配置を更新しました。見方を保存すると次回も開けます。');
+      setNotice(comparison ? '配置を更新しました。' : '配置を更新しました。見方を保存すると次回も開けます。');
       setPreview(undefined);
     }
   }
@@ -327,20 +331,35 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
       y: Math.max(bounds.top, Math.min(bounds.bottom, before.viewport.y + dy)),
     } }));
   }
-  return <ScrollView ref={scroller} contentContainerStyle={plusStyles.page} keyboardShouldPersistTaps="handled"
+
+  function openSaved(saved: MapView) {
+    setView(saved); setName(saved.name ?? ''); setTemporary(undefined); setPreview(undefined); setUndo(undefined); setNotice('');
+    const activeGroup = saved.expandedGroupIds?.[0];
+    const groupIndex = activeGroup ? mapGroups(mapInScope(index, saved.scope), saved.displayGroups).findIndex((group) => group.id === activeGroup) : 0;
+    setGroupPage(Math.floor(Math.max(0, groupIndex) / groupPageSize));
+    if (comparison) setScopeMenu(false);
+  }
+
+  return <ScrollView ref={scroller} style={studioStyles.root} contentContainerStyle={comparison ? studioStyles.content : plusStyles.page}
+    automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled"
     onScroll={({ nativeEvent }) => { scroll.current = nativeEvent.contentOffset.y; }} scrollEventThrottle={48}>
-    <Heading title>考えの地図</Heading>
-    <Text style={plusStyles.meta}>{view.name ? `${view.name} · ` : ''}{scopeLabel} · {graph.seeds.length}件{graph.missing ? ` · 表示できない種 ${graph.missing}件` : ''}</Text>
+    {comparison ? <StudioTitle title="地図の範囲" subtitle={view.name ? `${view.name} · ${graph.seeds.length}件` : `${graph.seeds.length}件のメモ`}
+      back={onBack ? { label: '地図の設定から戻る', onPress: onBack } : undefined}>
+      <IconButton label={scopeMenu ? '地図で確認' : '範囲と保存した見方'} icon={scopeMenu ? 'map-outline' : 'options-outline'}
+        onPress={() => setScopeMenu(!scopeMenu)} />
+    </StudioTitle> : <><Heading title>考えの地図</Heading>
+      <Text style={plusStyles.meta}>{view.name ? `${view.name} · ` : ''}{scopeLabel} · {graph.seeds.length}件{graph.missing ? ` · 表示できない種 ${graph.missing}件` : ''}</Text></>}
     {temporary && <SectionCard muted><Text style={plusStyles.text}>元の範囲の外を一時表示しています</Text><PlusButton label="元の範囲に戻る" onPress={returnToMap} /></SectionCard>}
-    <Actions>
+    {(!comparison || !scopeMenu) && <Actions>
       <PlusButton label="全体" selected={overview} onPress={toggleOverview} />
       <PlusButton label="周辺" selected={!overview} disabled={!selected} onPress={() => selected && select(selected.id, true)} />
       <PlusButton label="図" selected={!listMode} disabled={largeText} onPress={() => setView((before) => ({ ...before, presentation: 'plot' }))} />
       <PlusButton label="リスト" selected={listMode} onPress={() => setView((before) => ({ ...before, presentation: 'list' }))} />
-      <PlusButton label="範囲と保存した見方" selected={scopeMenu} onPress={() => setScopeMenu(!scopeMenu)} />
-    </Actions>
-    {largeText && <Text style={plusStyles.meta}>大きい文字ではリストで表示します。</Text>}
-    <PlusInput accessibilityLabel="地図と全件を探す" placeholder="地図と全件を探す" value={search} onChangeText={(searchText) => setView((before) => ({ ...before, searchText }))} />
+      {!comparison && <PlusButton label="範囲と保存した見方" selected={scopeMenu} onPress={() => setScopeMenu(!scopeMenu)} />}
+    </Actions>}
+    {largeText && !comparison && <Text style={plusStyles.meta}>大きい文字ではリストで表示します。</Text>}
+    {(!comparison || !scopeMenu || !!search) && <PlusInput accessibilityLabel="地図と全件を探す" placeholder={comparison ? 'メモを探す' : '地図と全件を探す'}
+      value={search} onChangeText={(searchText) => setView((before) => ({ ...before, searchText }))} />}
     {query && <SectionCard>
       <Heading>検索結果 {results.length}件</Heading>
       {results.length ? <SeedRows key={query} seeds={results} onPick={pickSeed} inside={scopedIds} search={search} details={searchDetails}
@@ -348,33 +367,35 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
       <PlusButton label="検索を閉じる" onPress={() => setView((before) => ({ ...before, searchText: '' }))} />
     </SectionCard>}
     {scopeMenu && <SectionCard>
-      <Heading>表示する範囲</Heading>
+      <Heading>{comparison ? '表示するメモ' : '表示する範囲'}</Heading>
       {canArrange && <>
-        <PlusInput accessibilityLabel="範囲に使う検索語" placeholder="条件として残す検索語" value={view.scope.kind === 'query' ? scopeQuery.text : ''}
+        <PlusInput accessibilityLabel="範囲に使う検索語" placeholder={comparison ? '言葉で絞り込む' : '条件として残す検索語'} value={view.scope.kind === 'query' ? scopeQuery.text : ''}
           onChangeText={(text) => changeScope({ kind: 'query', query: { ...scopeQuery, text } })} />
         <Actions>
-          <PlusButton label="すべての種" onPress={() => changeScope(allNotes)} />
-          <PlusButton label={marked.length ? `選んだ${marked.length}件を固定` : '表示中の種を固定'}
+          <StudioAction label="すべての種" title={comparison ? 'すべてのメモ' : undefined} icon={comparison ? 'layers-outline' : undefined}
+            onPress={() => changeScope(allNotes)} />
+          <StudioAction label={marked.length ? `選んだ${marked.length}件を固定` : '表示中の種を固定'}
+            title={comparison && !marked.length ? '今のメモを固定' : undefined} icon={comparison ? 'pin-outline' : undefined}
             onPress={() => changeScope({ kind: 'selection', seedIds: marked.length ? marked : graph.seeds.map(({ id }) => id) })} />
           <PlusButton label="つながりのない種だけ" selected={scopeQuery.connection === 'unlinked'}
             onPress={() => changeScope({ kind: 'query', query: { ...scopeQuery, connection: 'unlinked' } })} />
         </Actions>
-        <Text style={plusStyles.meta}>条件で保存すると、あとで条件に合う種も表示されます。</Text>
-        <PlusInput accessibilityLabel="見方の名前" placeholder="見方の名前（任意）" value={name} onChangeText={setName} />
-        <PlusButton label={saving ? '保存中' : 'この見方を保存'} disabled={saving || Boolean(preview)} primary onPress={() => void persistView()} />
+        {!comparison && <Text style={plusStyles.meta}>条件で保存すると、あとで条件に合う種も表示されます。</Text>}
+        <PlusInput accessibilityLabel="見方の名前" placeholder={comparison ? '地図の名前（任意）' : '見方の名前（任意）'} value={name} onChangeText={setName} />
+        <StudioAction label={saving ? '保存中' : 'この見方を保存'} title={comparison && !saving ? 'この地図を保存' : undefined} icon="bookmark-outline"
+          disabled={saving || Boolean(preview)} primary onPress={() => void persistView()} />
       </>}
-      {store.mapViews.map((saved) => <PlusButton key={saved.id} label={`${saved.name || '名前のない見方'}を開く`} onPress={() => {
-        setView(saved); setName(saved.name ?? ''); setTemporary(undefined); setPreview(undefined); setUndo(undefined); setNotice('');
-        const activeGroup = saved.expandedGroupIds?.[0];
-        const groupIndex = activeGroup ? mapGroups(mapInScope(index, saved.scope), saved.displayGroups).findIndex((group) => group.id === activeGroup) : 0;
-        setGroupPage(Math.floor(Math.max(0, groupIndex) / groupPageSize));
-      }} />)}
+      {comparison && !!store.mapViews.length && <Heading>保存した地図</Heading>}
+      {store.mapViews.map((saved) => <StudioRow key={saved.id} title={saved.name || '名前のない地図'} icon="bookmark-outline"
+        label={`${saved.name || '名前のない見方'}を開く`} onPress={() => openSaved(saved)} />)}
+      {comparison && <StudioAction label="絞り込んだ地図を開く" title="絞り込んだ地図を見る" icon="map-outline" onPress={() => setScopeMenu(false)} />}
     </SectionCard>}
     {notice !== '' && <Text accessibilityLiveRegion="polite" style={plusStyles.meta}>{notice}</Text>}
 
+    {(!comparison || !scopeMenu) && <>
     {overview && groups.length > 0 && <View style={plusStyles.row}>
       <Heading>まとまり</Heading>
-      <PlusMapOverview groups={pageGroups} edges={graph.edges} diagram={!listMode && !showPlot} expandedId={expanded?.id} onGroup={toggleGroup} />
+      <PlusMapOverview groups={pageGroups} edges={graph.edges} diagram={!listMode && !showPlot} expandedId={expanded?.id} onGroup={toggleGroup} paper={comparison} />
       {!expanded && groups.reduce((sum, group) => sum + group.seedIds.length, 0) > graph.seeds.length &&
         <Text style={plusStyles.meta}>複数のまとまりにある種を含みます。</Text>}
       {lastGroupPage > 0 && <Actions>
@@ -389,7 +410,7 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
       <PlusButton label="配置の変更をやめる" onPress={cancelLayout} />
     </Actions></SectionCard>}
     {showPlot && <>
-      <PlusMapPlot seeds={plotSeeds} connections={plotLines} candidates={candidates} positions={plotPositions} viewport={view.viewport} selectedId={selected?.id}
+      <PlusMapPlot seeds={plotSeeds} connections={plotLines} candidates={candidates} positions={plotPositions} viewport={view.viewport} selectedId={selected?.id} paper={comparison}
         onSelect={(id) => setView((before) => ({ ...before, selectedSeedId: id }))} />
       <Actions>
         <PlusButton label="左へ" disabled={!bounds || view.viewport.x <= bounds.left} onPress={() => pan(-mapCell.x, 0)} />
@@ -415,11 +436,12 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
     {(groupConnections.edges.length > 0 || groupConnections.otherCount > 0) && <GroupConnections key={expandedId} {...groupConnections} seeds={graph.byId} onRead={readSeed} />}
     {selected && <SectionCard>
       <Heading>{toSeedSnippet(selected, 60)}</Heading>
-      <Text numberOfLines={3} style={plusStyles.original}>{selected.body}</Text>
+      {(!comparison || noteTools) && <Text numberOfLines={3} style={plusStyles.original}>{selected.body}</Text>}
       <Text style={plusStyles.meta}>選択中 · 範囲内の確定接続 {related.length}件{positions[selected.id]?.pinned ? ' · 位置固定' : ''}</Text>
       <Actions>
         <PlusButton label="全文を読む" primary focusRef={readControl} onPress={() => readSeed(selected.id, () => focusControl(readControl.current))} />
-        {onOpenCandidates && <PlusButton label="候補を見る" onPress={() => {
+        {comparison && <IconButton label={noteTools ? 'メモの詳細を閉じる' : 'メモの詳細を開く'} icon="ellipsis-horizontal" onPress={() => setNoteTools(!noteTools)} />}
+        {(!comparison || noteTools) && <>{onOpenCandidates && <PlusButton label="候補を見る" onPress={() => {
           setShowCandidates(true);
           onOpenCandidates(selected.id, [...scopedIds], captureMapReturn({ ...view, positions }, store.mapViews, scroll.current));
         }} />}
@@ -432,9 +454,9 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
         {showCandidates && Boolean(candidates?.length) && <PlusButton label="点線を隠す" onPress={() => setShowCandidates(false)} />}
         {canArrange && <PlusButton label={marked.includes(selected.id) ? '範囲の選択から外す' : '範囲の選択に加える'} onPress={() => setMarked((before) =>
           before.includes(selected.id) ? before.filter((id) => id !== selected.id) : [...before, selected.id])} />}
-        {canArrange && <PlusButton label="配置を変える" onPress={() => setLayoutMenu(!layoutMenu)} />}
+        {canArrange && <PlusButton label="配置を変える" onPress={() => setLayoutMenu(!layoutMenu)} />}</>}
       </Actions>
-      {layoutMenu && canArrange && <View style={plusStyles.row}>
+      {(!comparison || noteTools) && layoutMenu && canArrange && <View style={plusStyles.row}>
         <Actions>
           <PlusButton label={positions[selected.id]?.pinned ? '位置の固定を外す' : '位置を固定'} onPress={() => setView((before) => ({ ...before,
             positions: { ...positions, [selected.id]: { ...positions[selected.id], pinned: !positions[selected.id].pinned } } }))} />
@@ -444,14 +466,14 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
           </>}
         </Actions>
       </View>}
-      {selectedEdges.length > 0 && <RelatedNotes key={selected.id} seeds={related} notes={connectionNotes} onPick={(id) => select(id)} onRead={readSeed} />}
-      {outside.length > 0 && <><Heading>この範囲の外につながる種 {outside.length}件</Heading><SeedRows key={`outside-${selected.id}`} seeds={outside} onPick={openTemporary} action="周辺を開く" /></>}
+      {(!comparison || noteTools) && selectedEdges.length > 0 && <RelatedNotes key={selected.id} seeds={related} notes={connectionNotes} onPick={(id) => select(id)} onRead={readSeed} />}
+      {(!comparison || noteTools) && outside.length > 0 && <><Heading>この範囲の外につながる種 {outside.length}件</Heading><SeedRows key={`outside-${selected.id}`} seeds={outside} onPick={openTemporary} action="周辺を開く" /></>}
     </SectionCard>}
-    {(listMode || expanded || !overview || showPlot) && plotSeeds.length > 0 && <SectionCard>
+    {(listMode || (!comparison && (expanded || !overview || showPlot))) && plotSeeds.length > 0 && <SectionCard>
       <Heading>{expanded?.label ?? (overview ? '範囲内の種' : '周辺の種')} · {plotSeeds.length}件</Heading>
       <SeedRows key={`${expandedId}-${view.viewMode}-${view.viewMode === 'neighborhood' ? view.centerSeedId : ''}`} seeds={plotSeeds} onPick={(id) => select(id)} />
     </SectionCard>}
-    {canArrange && graph.seeds.length > 0 && <SectionCard>
+    {canArrange && graph.seeds.length > 0 && (!comparison || noteTools || !!marked.length) && <SectionCard>
       <Actions>
         <PlusButton label="地図を整える" onPress={() => stageLayout(placeMap(graph, positions, groups, true))} />
         {undo && !preview && <PlusButton label="前の配置に戻す" onPress={() => { setView((before) => ({ ...before, ...undo })); setUndo(undefined); }} />}
@@ -460,5 +482,6 @@ export function PlusMapScreen({ store, commit, initialGroups, onOpenSeed, canArr
         <PlusButton label={`選んだ${marked.length}件でまとまりを作る`} disabled={!groupName.trim()} onPress={addGroup} /></>}
       {saving && <ActivityIndicator accessibilityLabel="見方を保存中" />}
     </SectionCard>}
+    </>}
   </ScrollView>;
 }

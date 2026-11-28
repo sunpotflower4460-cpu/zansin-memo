@@ -18,7 +18,6 @@ export function HelpButton({ content }: HelpButtonProps) {
     <>
       <AnimatedPressable
         onPress={() => setOpen(true)}
-        hitSlop={10}
         haptic="light"
         style={styles.button}
         accessibilityRole="button"
@@ -51,8 +50,8 @@ export function HelpButton({ content }: HelpButtonProps) {
 
 const styles = StyleSheet.create({
   button: {
-    minWidth: 32,
-    minHeight: 32,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

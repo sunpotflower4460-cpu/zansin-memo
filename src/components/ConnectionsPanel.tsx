@@ -25,11 +25,11 @@ type ConnectionsPanelProps = {
   viewMode: ConnectionsViewMode;
   onChangeViewMode: (mode: ConnectionsViewMode) => void;
   onOpenSeed: (seedId: string) => void;
-  onLink: (otherId: string) => void;
-  onUnlink: (otherId: string) => void;
+  onLink?: (otherId: string) => void;
+  onUnlink?: (otherId: string) => void;
   /** false を返したら保存できていないので、入力欄を閉じない。 */
-  onSetNote: (otherId: string, note: string) => void | Promise<boolean>;
-  onAddMemo: () => void;
+  onSetNote?: (otherId: string, note: string) => void | Promise<boolean>;
+  onAddMemo?: () => void;
   /** 練習など、「メモを足す」を出せない場面で隠す。 */
   hideAddMemo?: boolean;
   /** 「今回は見送る」にした候補のペア。候補から外す（手動の検索・接続は妨げない）。 */
@@ -88,7 +88,11 @@ export function ConnectionsPanel({
   }, [seeds, connections, center, index]);
   const neighborIds = React.useMemo(() => new Set(neighbors.map((seed) => seed.id)), [neighbors]);
   const candidates = React.useMemo(() => seeds.filter((seed) => seed.id !== center.id), [seeds, center.id]);
-  const suggestions = React.useMemo(() => suggestLinks(center, seeds, connections, { limit: 3, dismissed }), [center, seeds, connections, dismissed]);
+  const canLink = Boolean(onLink);
+  const suggestions = React.useMemo(
+    () => canLink ? suggestLinks(center, seeds, connections, { limit: 3, dismissed }) : [],
+    [canLink, center, seeds, connections, dismissed],
+  );
 
   const mapNeighbors = neighbors.slice(0, MAP_NEIGHBOR_LIMIT);
   const hiddenCount = neighbors.length - mapNeighbors.length;
@@ -132,7 +136,7 @@ export function ConnectionsPanel({
 
         {connection?.note && noteEditing !== seed.id ? <Text style={styles.note}>つながる理由: {connection.note}</Text> : null}
 
-        {noteEditing === seed.id ? (
+        {onSetNote && noteEditing === seed.id ? (
           <View style={styles.noteEditor}>
             <TextInput
               value={noteText}
@@ -161,8 +165,8 @@ export function ConnectionsPanel({
         <View style={styles.rowActions}>
           <SmallButton label="このメモを開く" primary onPress={() => onOpenSeed(seed.id)} accessibilityLabel={`このメモを開く。${toSeedSnippet(seed, 20)}`} />
           {withFullText ? <SmallButton label={isExpanded ? '閉じる' : '全文'} onPress={() => toggleExpanded(seed.id)} accessibilityLabel={`${isExpanded ? '短くする' : '全文を読む'}。${toSeedSnippet(seed, 20)}`} /> : null}
-          <SmallButton label={connection?.note ? '理由を直す' : '理由を書く'} onPress={() => startNote(seed.id)} accessibilityLabel={`つながる理由を書く。${toSeedSnippet(seed, 20)}`} />
-          <SmallButton label="つながりを外す" onPress={() => onUnlink(seed.id)} accessibilityLabel={`つながりを外す。メモは両方残ります。${toSeedSnippet(seed, 20)}`} />
+          {onSetNote && <SmallButton label={connection?.note ? '理由を直す' : '理由を書く'} onPress={() => startNote(seed.id)} accessibilityLabel={`つながる理由を書く。${toSeedSnippet(seed, 20)}`} />}
+          {onUnlink && <SmallButton label="つながりを外す" onPress={() => onUnlink(seed.id)} accessibilityLabel={`つながりを外す。メモは両方残ります。${toSeedSnippet(seed, 20)}`} />}
         </View>
       </View>
     );
@@ -266,8 +270,8 @@ export function ConnectionsPanel({
         </>
       )}
 
-      <View style={styles.actions}>
-        {hideAddMemo ? null : (
+      {((onAddMemo && !hideAddMemo) || onLink) && <View style={styles.actions}>
+        {onAddMemo && !hideAddMemo && (
         <AnimatedPressable
           onPress={onAddMemo}
           containerStyle={styles.actionContainer}
@@ -280,7 +284,7 @@ export function ConnectionsPanel({
           <Text style={styles.actionText}>書いてつなぐ</Text>
         </AnimatedPressable>
         )}
-        <AnimatedPressable
+        {onLink && <AnimatedPressable
           onPress={() => setPickerOpen(true)}
           containerStyle={styles.actionContainer}
           style={styles.action}
@@ -290,10 +294,10 @@ export function ConnectionsPanel({
         >
           <Ionicons name="link-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.actionText}>選んでつなぐ</Text>
-        </AnimatedPressable>
-      </View>
+        </AnimatedPressable>}
+      </View>}
 
-      {suggestions.length > 0 || dismissedCount > 0 ? (
+      {onLink && (suggestions.length > 0 || dismissedCount > 0) ? (
         <View style={styles.block}>
           <AnimatedPressable
             onPress={() => setSuggestionsOpen((value) => !value)}
@@ -358,13 +362,13 @@ export function ConnectionsPanel({
         </View>
       ) : null}
 
-      <SeedPickerModal
+      {onLink && <SeedPickerModal
         visible={pickerOpen}
         candidates={candidates}
         linkedIds={neighborIds}
-        onToggle={(otherId) => (neighborIds.has(otherId) ? onUnlink(otherId) : onLink(otherId))}
+        onToggle={(otherId) => (neighborIds.has(otherId) ? onUnlink?.(otherId) : onLink(otherId))}
         onClose={() => setPickerOpen(false)}
-      />
+      />}
     </SectionCard>
   );
 }

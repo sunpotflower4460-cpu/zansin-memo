@@ -1,0 +1,110 @@
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps, ReactNode, Ref } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { theme } from '../styles/theme';
+import { buttonSelectionProps } from './PlusUI';
+
+export type StudioIcon = ComponentProps<typeof Ionicons>['name'];
+export const studioColors = {
+  page: '#f8f6ef', surface: '#fffdf7', text: '#242d26', muted: '#535f54', rule: '#dedfd2',
+  green: '#295341', soft: '#e7eee2', orange: '#985338', apricot: '#f5e8d9',
+};
+
+export function IconButton({ label, icon, onPress, disabled, color, background, focusRef }: {
+  label: string; icon: StudioIcon; onPress: () => void; disabled?: boolean; color?: string; background?: string; focusRef?: Ref<View>;
+}) {
+  return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} onPress={onPress} disabled={disabled}
+    style={({ pressed }) => [studioStyles.iconButton, background && { backgroundColor: background }, (disabled || pressed) && studioStyles.quiet]}>
+    <Ionicons name={icon} size={20} color={color ?? studioColors.green} />
+  </Pressable>;
+}
+
+export function StudioTitle({ title, subtitle, children, back, compact }: {
+  title: string; subtitle?: string; children?: ReactNode; compact?: boolean;
+  back?: { label: string; onPress: () => void; disabled?: boolean; focusRef?: Ref<View> };
+}) {
+  return <View style={studioStyles.titleRow}>
+    {back && <IconButton label={back.label} icon="chevron-back" onPress={back.onPress} disabled={back.disabled} focusRef={back.focusRef} />}
+    <View style={studioStyles.grow}>
+      <Text accessibilityRole="header" style={[studioStyles.title, compact && studioStyles.compactTitle]}>{title}</Text>
+      {subtitle && <Text style={studioStyles.muted}>{subtitle}</Text>}
+    </View>
+    {children}
+  </View>;
+}
+
+export function StudioAction({ label, title = label, icon, onPress, primary, disabled, expanded, focusRef }: {
+  label: string; title?: string; icon?: StudioIcon; onPress: () => void; primary?: boolean; disabled?: boolean;
+  expanded?: boolean; focusRef?: Ref<View>;
+}) {
+  return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, expanded }} onPress={onPress} disabled={disabled}
+    style={({ pressed }) => [studioStyles.action, primary && studioStyles.primary, (pressed || disabled) && studioStyles.quiet]}>
+    {icon && <Ionicons name={icon} size={17} color={primary ? '#fffdf6' : studioColors.green} />}
+    <Text style={[studioStyles.actionText, primary && studioStyles.onPrimary]}>{title}</Text>
+  </Pressable>;
+}
+
+export function StudioRow({ title, detail, icon, onPress, label = title, disabled, danger }: {
+  title: string; detail?: string; icon: StudioIcon; onPress: () => void; label?: string; disabled?: boolean; danger?: boolean;
+}) {
+  const ink = danger ? '#a04234' : studioColors.green;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={detail}
+    accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => [studioStyles.destination, (disabled || pressed) && studioStyles.quiet]}>
+    <View style={[studioStyles.emblem, danger && { backgroundColor: '#faebe5' }]} aria-hidden>
+      <Ionicons name={icon} size={21} color={ink} />
+    </View>
+    <View style={studioStyles.grow}>
+      <Text style={[studioStyles.text, studioStyles.destinationTitle, danger && { color: ink }]}>{title}</Text>
+      {!!detail && <Text style={studioStyles.muted}>{detail}</Text>}
+    </View>
+    <Ionicons name="chevron-forward" size={17} color={ink} />
+  </Pressable>;
+}
+
+export function StudioSegments<T extends string>({ items, value, onChange, label, compact }: {
+  items: readonly { id: T; label: string; accessibilityLabel?: string; icon?: StudioIcon }[]; value: T; onChange: (id: T) => void; label: string;
+  compact?: boolean;
+}) {
+  return <View accessibilityLabel={label} style={[studioStyles.segments, compact && studioStyles.grow]}>
+    {items.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.accessibilityLabel ?? item.label} {...buttonSelectionProps(value === item.id)}
+      onPress={() => onChange(item.id)} style={({ pressed }) => [studioStyles.segment, value === item.id && studioStyles.onSegment, pressed && studioStyles.quiet]}>
+      {item.icon && !compact && <Ionicons name={item.icon} size={15} color={value === item.id ? studioColors.green : studioColors.muted} />}
+      <Text style={[studioStyles.segmentText, value === item.id && studioStyles.onSegmentText]}>{item.label}</Text>
+    </Pressable>)}
+  </View>;
+}
+
+export const studioStyles = StyleSheet.create({
+  root: { flex: 1, minHeight: 0, backgroundColor: studioColors.page },
+  content: { width: '100%', maxWidth: 840, alignSelf: 'center', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 20, gap: 12 },
+  grow: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title: { color: studioColors.text, fontSize: 27, fontFamily: theme.fonts.serif, fontWeight: '600', lineHeight: 37 },
+  compactTitle: { fontSize: 24, lineHeight: 32 },
+  subtitle: { color: studioColors.text, fontSize: 18, fontWeight: '600', lineHeight: 25 },
+  muted: { color: studioColors.muted, fontSize: 13, lineHeight: 19 },
+  text: { color: studioColors.text, fontSize: 15, lineHeight: 23 },
+  status: { color: studioColors.green, fontSize: 14, lineHeight: 20 },
+  error: { color: '#9a3e29', fontSize: 14, lineHeight: 20 },
+  card: { borderWidth: 1, borderColor: studioColors.rule, borderRadius: 17, backgroundColor: studioColors.surface, padding: 13, gap: 9 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
+  rule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: studioColors.rule },
+  iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: studioColors.soft },
+  action: { minHeight: 44, borderWidth: 1, borderColor: studioColors.rule, backgroundColor: studioColors.surface,
+    borderRadius: 11, paddingHorizontal: 11, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  primary: { backgroundColor: studioColors.green, borderColor: studioColors.green },
+  actionText: { color: studioColors.green, fontSize: 13, lineHeight: 19, fontWeight: '600', flexShrink: 1 },
+  onPrimary: { color: '#fffdf6' },
+  quiet: { opacity: 0.55 },
+  destination: { flexDirection: 'row', alignItems: 'center', minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, gap: 10,
+    backgroundColor: studioColors.surface, borderWidth: 1, borderColor: studioColors.rule, borderRadius: 13 },
+  destinationTitle: { fontWeight: '700' },
+  emblem: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: studioColors.soft },
+  segments: { flexDirection: 'row', gap: 3, borderWidth: 1, borderColor: studioColors.rule, borderRadius: 13, padding: 3, backgroundColor: '#eeeee5' },
+  segment: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, paddingHorizontal: 4 },
+  onSegment: { backgroundColor: studioColors.surface, borderWidth: 1, borderColor: '#d7ddcf' },
+  segmentText: { color: studioColors.muted, fontSize: 12, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
+  onSegmentText: { color: studioColors.green },
+});

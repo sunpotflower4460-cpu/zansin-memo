@@ -7,15 +7,15 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f5efe2"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sunpotflower4460.kizashinotes",
       "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ja",
+        "CFBundleLocalizations": ["ja"],
+        "RCTAsyncStorageExcludeFromBackup": true
+      },
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -64,7 +64,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 192,
+          "backgroundColor": "#f5efe2"
+        }
+      ]
     ]
   }
 }

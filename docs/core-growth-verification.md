@@ -1,5 +1,7 @@
 # 中核体験の統合検証（Phase 10.6）の記録
 
+2026年11月28日の iOS 実機試験と提出素材の更新は [App Store 公開準備の記録](app-store-readiness.md) にあります。以下は Phase 10.6 時点の記録です。
+
 状態: Phase 10.6 時点。**実機（iPhone）・VoiceOver・初見ユーザーでの確認は、まだ一件も行っていない。** この文書は、行った確認・行っていない確認・次に誰が何をするかを分けて残す。コード上や Web 上で動いたことを、実機や人の確認の代わりにしない。
 
 関連: [実装順・受入条件・公開判定](core-growth-plan.md)（契約）／[実装・検証の記録（Phase別）](core-growth-progress.md)／[再実行手順](../scripts/e2e/README.md)

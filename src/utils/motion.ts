@@ -6,5 +6,4 @@ export const motion = {
   fadeInMs: 300,
   fadeOutMs: 300,
   riseDistance: 8,
-  launchMinVisibleMs: 0,
 };
