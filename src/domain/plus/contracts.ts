@@ -120,6 +120,7 @@ const atelierRevision = object({
 }).refine(matchesPins);
 const atelierSuggestion = object({
   id, requestId: id, resultId: id, projectId: id, branchId: id, baseEditRevision: count, baseTextDigest: id,
+  craft: object({ recipe: z.enum(['experience', 'experiment', 'letter']), generator: z.enum(['recipe', 'on_device']), title: text }).optional(),
   kind: z.enum(['perspective', 'title', 'outline']), content: text.min(1), evidence: z.array(evidence),
   processingRootSeedIds: ids, permissionEpochs: z.record(id, count), decision: z.enum(['pending', 'inserted', 'dismissed']),
   availability, insertedAt: time.optional(), createdAt: time,

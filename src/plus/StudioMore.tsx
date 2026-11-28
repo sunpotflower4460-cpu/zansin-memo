@@ -33,7 +33,7 @@ export function StudioMore({ drafts, works, onAtelier, onCollection, onArrange, 
   return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
     <StudioTitle title="その他" />
     {(onAtelier || onCollection) && <View style={styles.library}>
-      {onAtelier && <LibraryTile label="アトリエを開く" title="アトリエ" detail="メモから下書きを育てる" icon="create-outline" count={drafts} onPress={onAtelier} />}
+      {onAtelier && <LibraryTile label="アトリエを開く" title="アトリエ" detail="メモを組み合わせて作品へ" icon="create-outline" count={drafts} onPress={onAtelier} />}
       {onCollection && <LibraryTile label="作品集を開く" title="作品集" detail="カードや地図を残す" icon="albums-outline" count={works} warm onPress={onCollection} />}
     </View>}
     <View style={styles.rows}>

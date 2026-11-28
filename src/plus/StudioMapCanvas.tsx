@@ -62,11 +62,11 @@ function pathFor({ a, b }: StudioGraph['lines'][number]) {
 }
 
 export function StudioMapCanvas({ index, center, selected, emphasisId, palette, suggestions, expanded, neighborhood, viewKey,
-  back, onDepth, onMore, moreButton, onSelect, fitRequest, placement, arrange, fullScreen }: {
+  back, onDepth, onMore, moreButton, onAtlas, atlasButton, onSelect, fitRequest, placement, arrange, fullScreen }: {
   index: MapIndex; center: Seed; selected: string; emphasisId?: string; palette: StudioPreferences['palette'];
   suggestions: readonly Suggestion[]; expanded: boolean; neighborhood: RadialNeighborhood; viewKey: string;
   back?: { title: string; onPress: () => void }; onDepth?: () => void; onMore: (visibleIds: string[]) => void; moreButton: React.Ref<View>;
-  onSelect: (id: string) => void; fitRequest: number;
+  onAtlas?: () => void; atlasButton: React.Ref<View>; onSelect: (id: string) => void; fitRequest: number;
   placement?: readonly StudioPlacement[]; arrange?: Arrange; fullScreen?: { active: boolean; label: string; onPress: () => void };
 }) {
   const { fontScale } = useWindowDimensions();
@@ -231,6 +231,7 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
   const hasCandidates = suggestions.length > 0;
   const label = hasCandidates ? `表示 ${shown}件` : `${expanded ? '周辺' : '直接'} ${shown}件`;
   const hidden = graph?.hidden ?? 0;
+  const overview = camera.scale === 1 && camera.x === 0 && camera.y === 0 && onAtlas;
   return <View ref={surface} testID="studio-map-canvas" onLayout={({ nativeEvent }) => {
     const { width: nextWidth, height: nextHeight } = nativeEvent.layout;
     if (nextWidth > 0 && nextHeight > 0) setSize((before) => before.width === nextWidth && before.height === nextHeight
@@ -285,7 +286,7 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
             const labelText = studioMapLabel(title, Math.floor((nodeWidth - 16) / (fontSize * Math.min(fontScale, 1.28))));
             const moving = drag?.node.seed.id === seed.id;
             return <Pressable key={seed.id} testID={`studio-map-node-${seed.id}`} accessibilityRole="button"
-              accessibilityLabel={`${title}${suggested ? '、AIの候補' : ''}`}
+              accessibilityLabel={`${title}${suggested ? '、未保存の候補' : ''}`}
               accessibilityHint={suggested ? '理由と原文を確認できます' : filled ? '地図の中心のメモ' : parent ? '中心から2つ先のメモ' : undefined}
               {...buttonSelectionProps(active)} onPressIn={() => { dragged.current = false; }}
               accessibilityActions={arrange ? [{ name: 'left', label: '左へ移動' }, { name: 'right', label: '右へ移動' },
@@ -350,15 +351,15 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
           : <View style={styles.key}><View style={[styles.keyLine, { borderTopColor: focusRoute ? colors.highlight : colors.line }]} />
             <Text style={[styles.keyText, { color: colors.ink }]}>{focusRoute ? '選んだ経路' : 'つながり'}</Text></View>}
         {hasCandidates && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
-          <Text style={[styles.keyText, { color: colors.ink }]}>AIの候補</Text></View>}
+          <Text style={[styles.keyText, { color: colors.ink }]}>未保存の候補</Text></View>}
       </View>
       <View style={[styles.controls, { backgroundColor: colors.node, borderColor: colors.border }]}>
         <IconButton label="地図を縮小" icon="remove" color={colors.ink} background="transparent" disabled={camera.scale <= 1} onPress={() => zoom(1 / 1.25)} />
         <IconButton label="地図を拡大" icon="add" color={colors.ink} background="transparent" disabled={camera.scale >= maxScale} onPress={() => zoom(1.25)} />
-        <Pressable accessibilityRole="button" accessibilityLabel="地図を画面に合わせる" onPress={() => set(initialCamera)}
+        <Pressable ref={atlasButton} accessibilityRole="button" accessibilityLabel={overview ? "庭の全体図を開く" : "地図を画面に合わせる"} onPress={overview || (() => set(initialCamera))}
           style={({ pressed }) => [styles.fit, { borderLeftColor: colors.border }, pressed && styles.pressed]}>
           <Ionicons name="scan-outline" color={colors.ink} size={16} />
-          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>全体</Text>
+          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>{overview ? '全体図' : '標準'}</Text>
         </Pressable>
       </View>
       {fullScreen && <Pressable accessibilityRole="button" accessibilityLabel={fullScreen.label} onPress={fullScreen.onPress}

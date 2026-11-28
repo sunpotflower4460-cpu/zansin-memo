@@ -132,7 +132,7 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     await button('星座').click();
     await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key)).studioPreferences.layout === 'constellation', storageKey);
     const arrange = button('マインドマップの配置を編集');
-    await arrange.getByText('配置を編集', { exact: true }).waitFor();
+    await arrange.getByText('マップの配置', { exact: true }).waitFor();
     await arrange.click();
     await heading('配置を編集').waitFor();
     assert.equal(await tab('その他').count(), 0);

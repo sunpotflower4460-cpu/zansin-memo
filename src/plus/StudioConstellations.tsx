@@ -4,12 +4,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import type { StudioPreferences } from '../domain/plus/contracts';
 import type { MapIndex } from '../domain/plus/map';
+import { topicConstellations } from '../domain/plus/studioAtlas';
 import { constellationFigure, constellationGroups, type ConstellationFigure, type ConstellationGroup } from '../domain/plus/studioGraph';
 import { theme } from '../styles/theme';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { PlusInput, buttonSelectionProps, focusControl } from './PlusUI';
 import { StudioNoteList } from './StudioNoteList';
-import { IconButton, StudioAction, StudioRow, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
+import { IconButton, StudioAction, StudioSegments, StudioRow, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
 export const constellationPalettes = {
   paper: { space: '#091624', glow: '#233e51', mist: '#326071', ink: '#f4f5ec', dim: '#bdced7', light: '#d7efe6', focus: '#ffe4a7', rule: '#476077' },
@@ -95,11 +96,11 @@ function TracedStars({ figure, frame, colors, selected, miniature = false }: {
   </>;
 }
 
-function SkyControl({ label, title, icon, colors, onPress, focusRef }: {
-  label: string; title?: string; icon: StudioIcon; colors: SkyColors; onPress: () => void; focusRef?: React.Ref<View>;
+function SkyControl({ label, title, icon, colors, onPress, focusRef, disabled = false }: {
+  label: string; title?: string; icon: StudioIcon; colors: SkyColors; onPress: () => void; focusRef?: React.Ref<View>; disabled?: boolean;
 }) {
-  return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
-    style={({ pressed }) => [styles.skyControl, { borderColor: colors.rule, backgroundColor: colors.space }, pressed && studioStyles.quiet]}>
+  return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} accessibilityState={{ disabled }}
+    style={({ pressed }) => [styles.skyControl, { borderColor: colors.rule, backgroundColor: colors.space }, (pressed || disabled) && studioStyles.quiet]}>
     <Ionicons name={icon} size={17} color={colors.ink} />
     {title && <Text maxFontSizeMultiplier={1.2} style={[styles.controlText, { color: colors.ink }]}>{title}</Text>}
   </Pressable>;
@@ -120,6 +121,7 @@ function AtlasTile({ group, index, colors, onPress }: {
     <View style={styles.tileText}>
       <Text numberOfLines={1} style={[styles.tileTitle, { color: colors.ink }]}>{group.label}</Text>
       <Text style={[styles.tileCount, { color: colors.dim }]}>{group.seedIds.length}件のメモ</Text>
+      <Text numberOfLines={1} style={[styles.tileExample, { color: colors.dim }]}>{toSeedSnippet(index.byId.get(group.seedIds[0])!, 30)}</Text>
       <Ionicons name="chevron-forward" size={15} color={colors.light} style={styles.tileArrow} />
     </View>
   </Pressable>;
@@ -129,39 +131,57 @@ function StarDiagram({ figure, frame, selected, index, colors, onLayout, onSelec
   figure: ConstellationFigure; frame: Frame; selected: string; index: MapIndex; colors: SkyColors;
   onLayout: (frame: Frame) => void; onSelect: (id: string) => void;
 }) {
+  const labelWidth = Math.max(starTarget, Math.min(148, frame.width / 2 - 8));
+  const rows = Math.ceil(figure.stars.length / 2);
+  const layoutStars = figure.stars.map((star, i) => {
+    const row = Math.floor(i / 2);
+    const alone = i + 1 === figure.stars.length && i % 2 === 0;
+    return { ...star, x: alone ? 0.5 : i % 2 ? 0.77 : 0.23,
+      y: (row + (i % 2 ? 0.58 : 0.42)) / rows };
+  });
+  const byId = new Map(layoutStars.map((star) => [star.id, star]));
+  const diagram = { stars: layoutStars, lines: figure.lines.map((line) => ({ ...line, a: byId.get(line.a.id)!, b: byId.get(line.b.id)! })) };
   return <View style={styles.figure} testID="studio-constellation-figure"
     onLayout={({ nativeEvent }) => onLayout(nativeEvent.layout)}>
     {frame.width > 0 && frame.height > 0 && <>
       <View style={StyleSheet.absoluteFill} pointerEvents="none" aria-hidden>
         <Svg width={frame.width} height={frame.height}>
-          <TracedStars figure={figure} frame={frame} colors={colors} selected={selected} />
+          <TracedStars figure={diagram} frame={frame} colors={colors} selected={selected} />
         </Svg>
       </View>
-      {figure.stars.map((star) => {
+      {layoutStars.map((star) => {
         const note = index.byId.get(star.id);
         if (!note) return null;
         const { x, y } = starPoint(star, frame, starTarget / 2);
         return <Pressable key={star.id} testID={`studio-constellation-star-${star.id}`} accessibilityRole="button"
           accessibilityLabel={`星「${toSeedSnippet(note, 50)}」を選ぶ`} {...buttonSelectionProps(star.id === selected)} onPress={() => onSelect(star.id)}
-          style={({ pressed }) => [styles.starTarget, { left: x - starTarget / 2, top: y - starTarget / 2 },
-            pressed && { backgroundColor: 'rgba(255,255,255,0.16)' }]} />;
+          style={({ pressed }) => [styles.starTarget, { width: labelWidth, left: Math.max(0, Math.min(frame.width - labelWidth, x - labelWidth / 2)), top: y - starTarget / 2 },
+            pressed && { backgroundColor: 'rgba(255,255,255,0.16)' }]}>
+          <Text numberOfLines={1} style={[styles.starLabel, { color: star.id === selected ? colors.focus : colors.ink, backgroundColor: colors.space }]}>
+            {toSeedSnippet(note, 36)}
+          </Text>
+        </Pressable>;
       })}
     </>}
   </View>;
 }
 
-export function StudioConstellations({ index, centerId, palette, compact, showDetails, fullScreen, onRead, onMindMap }: {
+export function StudioConstellations({ index, centerId, palette, compact, showDetails, fullScreen, onRead, onMindMap, onCraft }: {
   index: MapIndex; centerId: string; palette: StudioPreferences['palette']; compact: boolean; showDetails: boolean;
   fullScreen: { active: boolean; label: string; onPress: () => void };
-  onRead: (id: string, onReturn: () => void) => void; onMindMap: (id: string) => void;
+  onRead: (id: string, onReturn: () => void) => void; onMindMap: (id: string) => void; onCraft?: (ids: string[]) => void;
 }) {
   const colors = constellationPalettes[palette];
-  const groups = React.useMemo(() => constellationGroups(index), [index]);
-  const connected = React.useMemo(() => groups.filter(({ linked }) => linked), [groups]);
-  const isolated = groups.find(({ linked }) => !linked);
+  const [lens, setLens] = React.useState<'topics' | 'links'>('topics');
+  const topics = lens === 'topics';
+  const groups = React.useMemo(() => topics ? topicConstellations(index) : constellationGroups(index), [index, topics]);
+  const connected = React.useMemo(() => groups.filter(({ linked }) => topics || linked), [groups, topics]);
+  const isolated = !topics && groups.find(({ linked }) => !linked);
   const centerGroup = connected.find(({ seedIds }) => seedIds.includes(centerId));
   const atlas = (centerGroup ? [centerGroup, ...connected.filter((group) => group !== centerGroup)] : connected)
     .slice(0, compact ? 2 : 4);
+  const [ingredient, setIngredient] = React.useState<string>();
+  const pinned = ingredient && index.byId.get(ingredient);
   const [visit, setVisit] = React.useState<Visit>();
   const [list, setList] = React.useState<'groups' | 'notes'>();
   const [term, setTerm] = React.useState('');
@@ -174,14 +194,16 @@ export function StudioConstellations({ index, centerId, palette, compact, showDe
   const directoryButton = React.useRef<View>(null);
   const originalButton = React.useRef<View>(null);
   const group = groups.find(({ id }) => id === visit?.groupId);
-  const selected = group && index.byId.get(visit?.selectedId ?? group.seedIds[0]);
-  const starLimit = frame.height > 0 && frame.height < 166 ? 4 : 6;
+  const selected = group && index.byId.get(visit && group.seedIds.includes(visit.selectedId) ? visit.selectedId : group.seedIds[0]);
+  const starLimit = frame.height > 0 && frame.height < 108 ? 2 : frame.height > 0 && frame.height < 166 ? 4 : 6;
+  const pageStart = topics && selected && group ? Math.floor(group.seedIds.indexOf(selected.id) / starLimit) * starLimit : 0;
   const figure = React.useMemo(() => {
     if (!group) return undefined;
+    if (topics) return constellationFigure(index, { ...group, seedIds: group.seedIds.slice(pageStart, pageStart + starLimit) }, starLimit);
     const drawn = constellationFigure(index, group, starLimit, visit?.anchorId);
     return selected && !drawn.stars.some((star) => star.id === selected.id)
       ? constellationFigure(index, group, starLimit, selected.id) : drawn;
-  }, [group, index, selected, starLimit, visit?.anchorId]);
+  }, [group, index, pageStart, selected, starLimit, topics, visit?.anchorId]);
   const query = normalizeSearchText(term.trim());
   const found = React.useMemo(() => query ? groups.filter(({ label, seedIds }) => normalizeSearchText(label).includes(query)
     || seedIds.some((id) => { const memo = index.byId.get(id); return memo && searchableText(memo).includes(query); })) : groups,
@@ -233,17 +255,27 @@ export function StudioConstellations({ index, centerId, palette, compact, showDe
           {group && <SkyControl label="星座の全体へ戻る" icon="chevron-back" colors={colors} focusRef={atlasButton}
             onPress={() => { moveFocus.current = true; setVisit(undefined); }} />}
           <View style={studioStyles.grow}>
-            <Text accessibilityRole="header" numberOfLines={1} style={[styles.skyTitle, { color: colors.ink }]}>{group?.label ?? 'つながりの星座'}</Text>
-            <Text style={[styles.skyDetail, { color: colors.dim }]}>{group ? `${group.seedIds.length}件のメモ` : `${connected.length}組の星座`}</Text>
+            <Text accessibilityRole="header" numberOfLines={1} style={[styles.skyTitle, { color: colors.ink }]}>{group?.label ?? (topics ? '話題の星座' : 'つながりの星座')}</Text>
+            <Text style={[styles.skyDetail, { color: colors.dim }]}>{group ? `${group.seedIds.length}件のうち ${figure?.stars.length ?? 0}件を表示` : `庭のメモ ${index.live.length}件 · ${connected.length}組`}</Text>
           </View>
           {!group && <SkyControl label="星座一覧を開く" title="星座一覧" icon="list-outline" colors={colors} focusRef={directoryButton} onPress={() => openList('groups')} />}
           <SkyControl label={fullScreen.label} icon={fullScreen.active ? 'contract-outline' : 'expand-outline'} colors={colors} onPress={fullScreen.onPress} />
         </View>
+        {!group && <View style={styles.lenses}><StudioSegments label="星座の集め方" value={lens}
+          items={[{ id: 'topics', label: '話題で集める' }, { id: 'links', label: 'つながりで集める' }]}
+          onChange={(next) => { setLens(next); setVisit(undefined); setList(undefined); }} /></View>}
         {group && figure && selected ? <>
           <StarDiagram figure={figure} frame={frame} selected={selected.id} index={index} colors={colors}
             onLayout={({ width, height }) => setFrame((before) => width === before.width && height === before.height ? before : { width, height })}
             onSelect={chooseStar} />
-          <Text style={[styles.skyCaption, { color: colors.dim }]}>{group.linked ? '星をタップしてメモを選ぶ' : 'つながりのないメモから選ぶ'}</Text>
+          {topics && group.seedIds.length > starLimit ? <View style={styles.pageNav}>
+            <SkyControl colors={colors} icon="chevron-back" label="前の星を表示" disabled={pageStart === 0}
+              onPress={() => chooseStar(group.seedIds[pageStart - starLimit])} />
+            <Text accessibilityLiveRegion="polite" style={[styles.pageInfo, { color: colors.dim }]}>{group.basis === 'category' ? '同じカテゴリ' : group.basis === 'word' ? '本文の共通語' : '個別のメモ'} · {pageStart + 1}〜{pageStart + figure.stars.length}件目</Text>
+            <SkyControl colors={colors} icon="chevron-forward" label="次の星を表示" disabled={pageStart + starLimit >= group.seedIds.length}
+              onPress={() => chooseStar(group.seedIds[pageStart + starLimit])} />
+          </View> : <Text style={[styles.skyCaption, { color: colors.dim }]}>{group.basis === 'category' ? `カテゴリ「${group.label}」のメモ` : group.basis === 'word' ? `本文に「${group.label}」があるメモ` :
+            group.basis === 'ungrouped' ? '個別に読み返せるメモ' : group.linked ? '星はメモ、線は保存したつながり' : 'つながりのないメモから選ぶ'}</Text>}
         </> : atlas.length > 0 ? <View style={styles.atlas}>
           {Array.from({ length: Math.ceil(atlas.length / 2) }, (_, row) => <View key={row} style={styles.atlasRow}>
             {atlas.slice(2 * row, 2 * row + 2).map((entry) =>
@@ -259,7 +291,7 @@ export function StudioConstellations({ index, centerId, palette, compact, showDe
         <View style={studioStyles.row}>
           <View style={[studioStyles.emblem, styles.selectionIcon]} aria-hidden><Ionicons name="star-outline" size={19} color={studioColors.green} /></View>
           <View style={studioStyles.grow}>
-            <Text style={studioStyles.muted}>選んだメモ</Text>
+            <Text style={studioStyles.muted} numberOfLines={1}>{pinned ? `素材「${toSeedSnippet(pinned, 18)}」と組む星` : '選んだメモ'}</Text>
             <Text accessibilityRole="header" numberOfLines={1} style={styles.selectionTitle}>{toSeedSnippet(selected, 58)}</Text>
           </View>
           <StudioAction label="星のメモの原文を開く" title="原文" icon="document-text-outline" primary focusRef={originalButton}
@@ -267,13 +299,19 @@ export function StudioConstellations({ index, centerId, palette, compact, showDe
         </View>
         <View style={styles.selectionActions}>
           <StudioAction label="星座のメモ一覧を開く" title={`メモ一覧 ${group.seedIds.length}件`} icon="list-outline" onPress={() => openList('notes')} />
+          {onCraft && <StudioAction label={pinned && pinned.id !== selected.id ? '選んだ星2枚でアイデアをつくる' :
+            pinned ? '星を素材から外す' : 'この星を最初の素材にする'} title={pinned && pinned.id !== selected.id ? '2枚で作る' : pinned ? '素材を外す' : '素材にする'}
+            icon="construct-outline" onPress={() => {
+              if (pinned && pinned.id !== selected.id) onCraft([pinned.id, selected.id]);
+              else setIngredient(pinned ? undefined : selected.id);
+            }} />}
           <StudioAction label="このメモをマインドマップで開く" title="マップへ" icon="git-network-outline" onPress={() => onMindMap(selected.id)} />
         </View>
       </View> : <View style={[studioStyles.card, styles.legend]}>
         <View style={[studioStyles.emblem, styles.selectionIcon]} aria-hidden><Ionicons name="sparkles-outline" size={18} color={studioColors.green} /></View>
         <View style={studioStyles.grow}>
-          <Text style={styles.legendTitle}>星座をタップしてメモをたどる</Text>
-          <Text style={studioStyles.muted}>星はメモ、線はつながり</Text>
+          <Text style={styles.legendTitle}>{pinned ? `「${toSeedSnippet(pinned, 24)}」と組む星を選ぶ` : topics ? '別々に書いたメモを話題から探す' : '星座をタップしてメモをたどる'}</Text>
+          <Text style={studioStyles.muted}>{topics ? 'カテゴリと、カテゴリのないメモに共通する言葉で集めます。' : '星はメモ、線はつながり'}</Text>
         </View>
       </View>)}
     </View>
@@ -286,7 +324,7 @@ export function StudioConstellations({ index, centerId, palette, compact, showDe
           <PlusInput accessibilityLabel="メモから星座を探す" placeholder="メモの題名・本文から探す" value={term} returnKeyType="search"
             onChangeText={(text) => { setLimit(directoryPageSize); setTerm(text); }} />
           {found.slice(0, limit).map((entry) => <StudioRow key={entry.id}
-            label={entry.linked ? `「${entry.label}」の星座を開く` : 'つながりのないメモを見る'} title={entry.label}
+            label={topics || entry.linked ? `「${entry.label}」の星座を開く` : 'つながりのないメモを見る'} title={entry.label}
             detail={`${entry.seedIds.length}件のメモ`} icon={entry.linked ? 'sparkles-outline' : 'star-outline'} onPress={() => openGroup(entry)} />)}
           {found.length > limit && <StudioAction label="さらに星座を表示" onPress={() => setLimit(limit + directoryPageSize)} />}
           {!found.length && <Text accessibilityLiveRegion="polite" style={studioStyles.muted}>一致する星座はありません。</Text>}
@@ -317,11 +355,16 @@ const styles = StyleSheet.create({
   miniature: { flexShrink: 1, width: '100%', maxWidth: 178, height: '65%', minHeight: 34 },
   tileText: { width: '100%', alignItems: 'center', paddingHorizontal: 13, paddingBottom: 4 },
   tileTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  tileExample: { fontSize: 11, lineHeight: 15 },
+  lenses: { marginHorizontal: 9, marginTop: 4 },
   tileCount: { fontSize: 11, lineHeight: 16, fontWeight: '600' },
   tileArrow: { position: 'absolute', right: 0, top: 3 },
   figure: { flex: 1, minHeight: 0, marginHorizontal: 9, marginTop: 5 },
   skyCaption: { fontSize: 12, lineHeight: 18, paddingHorizontal: 12, paddingBottom: 9, textAlign: 'center' },
-  starTarget: { position: 'absolute', width: starTarget, height: starTarget, borderRadius: starTarget / 2 },
+  pageNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, paddingHorizontal: 9, paddingBottom: 6 },
+  pageInfo: { flex: 1, textAlign: 'center', fontSize: 13 },
+  starLabel: { fontSize: 12, lineHeight: 16, paddingHorizontal: 4, borderRadius: 4, maxWidth: '100%' },
+  starTarget: { position: 'absolute', alignItems: 'center', justifyContent: 'flex-end', width: starTarget, height: starTarget, borderRadius: starTarget / 2 },
   empty: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 8 },
   emptyText: { textAlign: 'center', fontSize: 15 },
   legend: { flexDirection: 'row', alignItems: 'center', padding: 9, gap: 9 },

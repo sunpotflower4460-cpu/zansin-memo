@@ -26,6 +26,7 @@ import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI
 import { StudioCapture } from './StudioCapture';
 import { StudioRecords } from './StudioRecords';
 import { IconButton, StudioAction, StudioRow, StudioTitle, studioColors, studioStyles } from './StudioUI';
+import { StudioCraftBench, type CraftStart } from './StudioCraftBench';
 import { clearWorkFileCache } from './workFiles';
 
 const exampleGroups = buildPlusExample(8).displayGroups;
@@ -58,6 +59,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
   const [origin, setOrigin] = React.useState<MapReturnContext>();
   const [atelier, setAtelier] = React.useState<string>();
+  const [craft, setCraft] = React.useState<CraftStart>();
   const [atelierList, setAtelierList] = React.useState(false);
   const [collection, setCollection] = React.useState<{ source?: AtelierRevision; backLabel?: string }>();
   const atelierReturn = React.useRef<typeof collection>(undefined);
@@ -86,7 +88,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const selected = reading ? store.seeds.find((seed) => seed.id === reading && !seed.deletedAt) : undefined;
   const captureCenter = capture?.centerId ? store.seeds.find((seed) => seed.id === capture.centerId && !seed.deletedAt) : undefined;
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.seeds, store.connections]);
-  const overlay = Boolean(reading || ai || atelier || atelierList || collection || capture || reflectionPage);
+  const overlay = Boolean(reading || ai || atelier || craft || atelierList || collection || capture || reflectionPage);
   React.useEffect(() => { void reconcilePreviewProposals(writer, true); }, [writer]);
 
   React.useEffect(() => {
@@ -171,7 +173,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
         <View style={[plusStyles.full, manualMap && { display: 'none' }]}>
           <PlusStudio writer={writer} canArrange={canArrange} canSuggest={canRequest} onRead={openReading}
             onWrite={(centerId) => setCapture({ centerId })} onAtelier={enabled.atelier ? () => setAtelierList(true) : undefined}
-            onAtelierFromMemo={enabled.atelier ? (id) => void openAtelier(id, [id]) : undefined}
+            onAtelierFromMemo={enabled.atelier && rights.atelierAdvanced ? (id, seedIds = [id], quotes) => setCraft({ seedIds, quotes }) : undefined}
             onCollection={enabled.collection ? (from) => setCollection({ backLabel: from === 'records' ? '記録に戻る' : 'その他に戻る' }) : undefined}
             onData={() => setData(true)} onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap('more')}
             onMapImmersiveChange={setMapImmersive} />
@@ -207,18 +209,22 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     </ScrollView>}
     {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} allowRequest={rights.requestFixtureAi} canRequest={canRequest}
       onMaterial={enabled.atelier && rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
-    {atelierList && !atelier && !collection && <AtelierLibrary store={store} notice={notice} hasAccess={enabled.atelier && rights.atelierAdvanced}
+    {atelierList && !atelier && !collection && !craft && <AtelierLibrary store={store} notice={notice} hasAccess={enabled.atelier && rights.atelierAdvanced}
       backLabel={atelierReturn.current ? '作品集に戻る' : comparison && !showFreeMap ? 'その他に戻る' : '地図に戻る'}
       onBack={() => {
         if (atelierReturn.current) setCollection(atelierReturn.current);
         atelierReturn.current = undefined; setAtelierList(false); setNotice('');
       }}
-      onNew={() => void openAtelier()} onResume={setAtelier} />}
-    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={enabled.atelier && rights.atelierAdvanced} comparison={comparison}
-      canUseAdvanced={canUseAtelier} onBack={() => setAtelier(undefined)}
+      onNew={() => void openAtelier()} onCraft={() => setCraft({ seedIds: [] })} onResume={setAtelier} />}
+    {atelier && <View style={[plusStyles.full, (collection || craft) && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={enabled.atelier && rights.atelierAdvanced} comparison={comparison}
+      canUseAdvanced={canUseAtelier} onCraft={setCraft} onBack={() => setAtelier(undefined)}
       onCreateWork={enabled.collection && rights.composeWork ? (source) => { if (canCompose()) setCollection({ source }); } : undefined}
       onOriginMap={(context) => { setOrigin({ ...context }); setAtelier(undefined); setAtelierList(false); setAi(undefined); atelierReturn.current = undefined;
         if (comparison && !showFreeMap) setManualMap('origin'); }} /></View>}
+    {craft && <StudioCraftBench start={craft} writer={writer} advanced={rights.atelierAdvanced && enabled.atelier} canUse={canUseAtelier}
+      canUseAI={canRequest} canCompose={canCompose} onBack={() => setCraft(undefined)}
+      onDraft={(id) => { setCraft(undefined); setAtelier(id); }}
+      onWork={(id, source) => { setCraft(undefined); setAtelier(id); setCollection({ source }); }} />}
     {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={enabled.collection && rights.composeWork}
       comparison={comparison} backLabel={collection.backLabel} onStartDraft={enabled.atelier && rights.atelierAdvanced ? () => {
         atelierReturn.current = collection; setCollection(undefined); setAtelierList(true);

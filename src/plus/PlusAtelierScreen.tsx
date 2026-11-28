@@ -5,11 +5,14 @@ import type { GardenV3Writer, PlusCommand } from '../data/gardenV3Writer';
 import { activeDraft, adoptAtelierRevision, atelierExampleCurrent, changedRange, chooseAtelierBranch, forkAtelier, insertAtelierExample, materialState, movePins,
   reviseMaterial, saveAtelierExample, saveAtelierRevision, saveAtelierText, trackPin } from '../domain/plus/atelier';
 import type { AtelierDraft, AtelierProject, AtelierRevision, GardenStoreV3, MapReturnContext } from '../domain/plus/contracts';
+import { craftRecipes, craftRoles } from '../domain/plus/craft';
 import { requirePlusAccess } from '../domain/plus/entitlements';
+import { sameSourceRef } from '../domain/plus/sources';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { Actions, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
+import type { CraftStart } from './StudioCraftBench';
 import { useBufferedText } from './useBufferedText';
 
 const now = () => new Date().toISOString();
@@ -19,7 +22,7 @@ type Props = {
   writer: GardenV3Writer; projectId: string; onBack: () => void; advanced: boolean; canUseAdvanced: () => boolean;
   onCreateWork?: (revision: AtelierRevision) => void;
   onOriginMap?: (context: MapReturnContext) => void;
-  comparison?: boolean;
+  comparison?: boolean; onCraft?: (start: CraftStart) => void;
 };
 type BuildDraftCommand = (target: { projectId: string; branchId: string; expected: number }) => PlusCommand;
 
@@ -32,24 +35,33 @@ export function PlusAtelierScreen(props: Props) {
   return <AtelierEditor key={JSON.stringify([project.id, draft.branchId])} {...props} project={project} draft={draft} store={store} />;
 }
 
-export function AtelierLibrary({ store, notice, hasAccess, backLabel, onBack, onNew, onResume }: {
-  store: GardenStoreV3; notice?: string; hasAccess: boolean; backLabel: string; onBack: () => void; onNew: () => void; onResume: (id: string) => void;
+export function AtelierLibrary({ store, notice, hasAccess, backLabel, onBack, onNew, onResume, onCraft }: {
+  store: GardenStoreV3; notice?: string; hasAccess: boolean; backLabel: string; onBack: () => void; onNew: () => void; onCraft: () => void; onResume: (id: string) => void;
 }) {
+  const [showEmpty, setShowEmpty] = React.useState(false);
   const projects = store.atelierProjects.map((project, i) => ({ project, draft: activeDraft(store, project), i }))
     .sort((a, b) => (b.draft?.updatedAt ?? b.project.updatedAt).localeCompare(a.draft?.updatedAt ?? a.project.updatedAt));
+  const empty = projects.filter(({ project, draft }) => !project.title && project.branches.length === 1 && !project.centerSeedId &&
+    !project.originNavigation && draft?.editRevision === 0 && !draft.text && !draft.materials.length && !draft.baseRevisionId);
+  const emptyIds = new Set(empty.map(({ project }) => project.id));
   return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
     <StudioTitle title="アトリエ" back={{ label: backLabel, onPress: onBack }} />
-    {!projects.length && <View style={[studioStyles.card, editorStyles.welcome]}>
-      <Text style={studioStyles.subtitle}>下書きを育てる</Text>
-      <Text style={studioStyles.muted}>気になるメモを手元に置いて、思いついたことから書けます。</Text>
-      {hasAccess && <StudioAction label="新しいアトリエ" title="下書きをはじめる" icon="add" primary onPress={onNew} />}
+    {hasAccess && <View style={[studioStyles.card, editorStyles.welcome]}>
+      <Text accessibilityRole="header" style={studioStyles.subtitle}>メモからアイデアをつくる</Text>
+      <Text style={studioStyles.text}>「きっかけ」と「手がかり」に一節ずつ置くと、体験・実験・便りの案を読み比べられます。</Text>
+      <StudioAction label="アイデアの作業台を開く" title="メモを組み合わせる" icon="construct-outline" primary onPress={onCraft} />
+      <StudioAction label="新しいアトリエ" title="白紙から書く" icon="create-outline" onPress={() => empty[0] ? onResume(empty[0].project.id) : onNew()} />
     </View>}
-    {!!projects.length && hasAccess && <StudioAction label="新しいアトリエ" title="新しい下書き" icon="add" primary onPress={onNew} />}
-    {projects.map(({ project, draft, i }) => {
+    {projects.length > empty.length && <Heading>制作中の下書き</Heading>}
+    {empty.length > 0 && <StudioAction label={`空の下書き ${empty.length}件`} expanded={showEmpty} icon={showEmpty ? 'chevron-up' : 'chevron-down'}
+      onPress={() => setShowEmpty(!showEmpty)} />}
+    {projects.filter(({ project }) => showEmpty || !emptyIds.has(project.id)).map(({ project, draft, i }) => {
       const text = draft?.text.trim() ?? '';
-      const title = project.title || (text ? toSeedSnippet({ body: text }, 29) : '題名のない下書き');
+      const material = store.sourceSnapshots.find((item) => item.id === draft?.materials[0]?.snapshotId);
+      const original = material && store.seeds.find((seed) => seed.id === material.source.ref.seedId && !seed.deletedAt);
+      const title = project.title || (text ? toSeedSnippet({ body: text }, 29) : original ? `${toSeedSnippet(original, 29)}からの下書き` : `白紙の下書き ${i + 1}`);
       const versions = store.atelierRevisions.filter(({ projectId }) => projectId === project.id).length;
-      const detail = versions ? `残した版 ${versions}件` : text ? '書きかけ' : '下書きは空です';
+      const detail = versions ? `残した版 ${versions}件` : draft?.materials.length ? `材料 ${draft.materials.length}枚` : text ? '書きかけ' : '本文をまだ書いていません';
       return <StudioRow key={project.id} title={title} detail={detail} icon="document-text-outline"
         label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => onResume(project.id)} />;
     })}
@@ -57,7 +69,30 @@ export function AtelierLibrary({ store, notice, hasAccess, backLabel, onBack, on
   </ScrollView>;
 }
 
-function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, onOriginMap, advanced, canUseAdvanced, comparison }: Props & {
+function CraftSources({ store, ids }: { store: GardenStoreV3; ids: string[] }) {
+  const [open, setOpen] = React.useState(false);
+  const suggestions = store.atelierSuggestions.filter((entry) => entry.craft && ids.includes(entry.id));
+  if (!suggestions.length) return null;
+  return <View style={editorStyles.material}>
+    <StudioAction label="作業台で使った一節" icon="construct-outline" expanded={open} onPress={() => setOpen(!open)} />
+    {open && suggestions.map((entry) => <View key={entry.id} style={studioStyles.card}>
+      <Text style={studioStyles.subtitle}>{entry.craft!.title}</Text>
+      <Text style={studioStyles.muted}>{craftRecipes.find((item) => item.id === entry.craft!.recipe)?.label} · {entry.craft!.generator === 'on_device' ? '端末内AIの案' : 'レシピで組んだ案'}</Text>
+      {entry.evidence.map((item, i) => {
+        const snapshot = store.sourceSnapshots.find((s) => sameSourceRef(s.source.ref, item.source.ref) &&
+          s.source.textDigest === item.source.textDigest && s.source.updatedAt === item.source.updatedAt);
+        const state = materialState(store.seeds, snapshot);
+        if (!snapshot || state === 'deleted' || state === 'missing') return <Text key={i} style={studioStyles.muted}>{craftRoles[i]} · 原文を確認できません</Text>;
+        return <View key={i}>
+          <Text style={studioStyles.muted}>{craftRoles[i]} · {snapshot.title || '題名のないメモ'}{state === 'changed' ? ' · 選んだ当時の一節' : ''}</Text>
+          <Text selectable style={studioStyles.text}>「{item.quote}」</Text>
+        </View>;
+      })}
+    </View>)}
+  </View>;
+}
+
+function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, onOriginMap, advanced, canUseAdvanced, comparison, onCraft }: Props & {
   project: AtelierProject; draft: AtelierDraft; store: GardenStoreV3;
 }) {
   const [notice, setNotice] = React.useState('');
@@ -90,7 +125,7 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
   const center = store.seeds.find((seed) => seed.id === centerId && !seed.deletedAt);
   const fixtureMaterial = draft.materials.map((item) => store.sourceSnapshots.find((snapshot) => snapshot.id === item.snapshotId))
     .find((snapshot) => snapshot?.source.ref.seedId === 'example-0' && snapshot.text === '長い日記は続かない。帰り道の気づきを、もっと手軽に残してみたい。');
-  const hint = store.atelierSuggestions.filter((entry) => entry.projectId === project.id && entry.branchId === draft.branchId).at(-1);
+  const hint = store.atelierSuggestions.filter((entry) => entry.projectId === project.id && entry.branchId === draft.branchId && entry.requestId.startsWith('offline-example:')).at(-1);
   const canInsert = hint && buffer.text === draft.text && atelierExampleCurrent(store, draft, hint);
 
   async function perform(action: () => Promise<void>) {
@@ -120,6 +155,17 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
     commitAdvanced((target) => trackPin({ target, id: createId(), range, at: now() }));
   }
 
+  function openBench() {
+    void perform(async () => {
+      const current = currentDraft();
+      if (!current || !canUseAdvanced()) return;
+      const seedIds = current.materials.flatMap(({ snapshotId }) => {
+        const snapshot = store.sourceSnapshots.find((item) => item.id === snapshotId);
+        return snapshot?.source.ref.part === 'body' && materialState(store.seeds, snapshot) === 'current' ? [snapshot.source.ref.seedId] : [];
+      });
+      onCraft?.({ seedIds, target: { ...ids, expected: current.editRevision } });
+    });
+  }
   function beginAdoption() {
     if (!center || !selected) return;
     setAdoption({ id: createId(), revisionId: selected.id, centerId: center.id, centerText: center.body, newSynthesisId: createId(),
@@ -144,6 +190,8 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
       <Heading title>{project.title || 'アトリエ'}</Heading></>}
     {(!comparison || panel === 'materials') && <SectionCard>
       {!comparison && <Heading>材料棚</Heading>}
+      {advanced && onCraft && <StudioAction label="材料を作業台で組み合わせる" icon="construct-outline" onPress={openBench} disabled={locked} />}
+      <CraftSources store={store} ids={draft.insertedSuggestionIds} />
       {comparison && !draft.materials.length && !picker && <Text style={studioStyles.muted}>下書きの横に置きたいメモを選べます。</Text>}
       {draft.materials.map(({ snapshotId, versionMode }) => {
         const snapshot = store.sourceSnapshots.find(({ id }) => id === snapshotId);
@@ -179,6 +227,8 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
     </SectionCard>}
     {(!comparison || panel === 'draft') && <View style={comparison ? editorStyles.drafting : studioStyles.card}>
       {!comparison && <Heading>作業中の文</Heading>}
+      {comparison && onCraft && advanced && <StudioRow title="作業台から案を加える" detail="選んだメモの一節を組み合わせる"
+        icon="construct-outline" onPress={openBench} disabled={locked} />}
       {(!comparison || tools || project.branches.length > 1) && <Actions>{project.branches.map((branch) => <PlusButton key={branch.id} label={branch.name ?? '案'} disabled={locked} selected={branch.id === draft.branchId}
         onPress={() => commit(() => chooseAtelierBranch(project.id, branch.id, createId()))} />)}
         {advanced && <PlusButton label="別の案を書く" disabled={locked} onPress={() => commitAdvanced(() => forkAtelier(project.id, createId(), now()))} />}</Actions>}
@@ -227,6 +277,7 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
         onPress={() => { setChosen(entry.id); setAdoption(undefined); }} />)}</Actions>}
       {selected && <>
         <Text selectable style={plusStyles.original}>{selected.text}</Text>
+        <CraftSources key={selected.id} store={store} ids={selected.insertedSuggestionIds} />
         <Actions>
           {advanced && <PlusButton label="作業中の文と比べる" selected={compare} onPress={() => setCompare(!compare)} />}
           {advanced && <PlusButton label="この版から考え直す" disabled={locked} onPress={() => commitAdvanced(() => forkAtelier(project.id, createId(), now(), selected.id))} />}

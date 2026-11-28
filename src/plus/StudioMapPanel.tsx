@@ -13,6 +13,7 @@ import { toSeedSnippet } from '../utils/seedText';
 import { buttonSelectionProps, focusControl } from './PlusUI';
 import { StudioConstellations, constellationPalettes } from './StudioConstellations';
 import { StudioMapCanvas, mapPalettes } from './StudioMapCanvas';
+import { StudioAtlas } from './StudioAtlas';
 import { StudioNoteList } from './StudioNoteList';
 import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
@@ -34,7 +35,7 @@ function DockButton({ label, text, icon, onPress, primary, focusRef }: {
   </Pressable>;
 }
 
-type Drawer = 'nearby' | 'relations' | 'path' | 'actions';
+type Drawer = 'atlas' | 'nearby' | 'relations' | 'path' | 'actions';
 type Arrangement = {
   centerId: string; selectedId: string; expanded: boolean; wasFullScreen: boolean;
   initial: readonly StudioPlacement[]; points: StudioPlacement[]; history: StudioPlacement[][];
@@ -55,7 +56,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   immersive: boolean; back?: { title: string; onPress: () => void }; onImmersive: (next: boolean) => void;
   onSearch: (onReturn: () => void) => void; onSettings: (patch: Partial<StudioPreferences>) => void;
   onSelect: (id: string) => void; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void) => void; onAI: (id: string) => void;
-  onReview: (suggestion: Suggestion) => void; onWrite: (id: string) => void; onAtelier?: (id: string) => void;
+  onReview: (suggestion: Suggestion) => void; onWrite: (id: string) => void; onAtelier?: (id: string, materials?: string[]) => void;
   canArrange: boolean; editRequest: number; placement?: readonly StudioPlacement[];
   onSavePlacement: (id: string, next: StudioPlacement[], expected: readonly StudioPlacement[]) => Promise<string | undefined>;
 }) {
@@ -89,6 +90,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const menuButton = React.useRef<View>(null);
   const pathButton = React.useRef<View>(null);
   const searchButton = React.useRef<View>(null);
+  const atlasButton = React.useRef<View>(null);
   const arrangeButton = React.useRef<View>(null);
   const moreButton = React.useRef<View>(null);
   const endArrangeButton = React.useRef<View>(null);
@@ -109,7 +111,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
     }
     for (const { to } of hints) {
       if (!ids.includes(to.id)) ids.push(to.id);
-      details.set(to.id, 'AIの候補');
+      details.set(to.id, '未保存の候補');
     }
     return { ids, details };
   }, [center.id, expanded, hints, index.byId, index.edges, neighborhood]);
@@ -120,7 +122,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const directlyLinked = index.adjacent.get(center.id)?.has(selected.id);
   const path = !pending && !atCenter && (directlyLinked || via) ? [center, ...(via ? [via] : []), selected] : undefined;
   const relation = edgeNotes.get(center.id);
-  const status = pending ? 'AIの候補' : atCenter ? '中心のメモ' : via
+  const status = pending ? '未保存の候補' : atCenter ? '中心のメモ' : via
     ? `「${toSeedSnippet(via, 19)}」を経由` : directlyLinked ? '中心と直接つながるメモ' : '選んだメモ';
 
   const startArrangement = React.useCallback(() => {
@@ -246,9 +248,9 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const primary = pending ? { label: '候補の理由を開く', text: '理由を見る', icon: 'sparkles-outline' as const, onPress: () => onReview(pending) }
     : !atCenter ? { label: 'ここを中心にする', text: '中心にする', icon: 'locate-outline' as const, onPress: () => onFocus(selected.id) }
       : neighbors.length ? connection : { label: 'つながるメモを書く', text: 'つなげて書く', icon: 'add' as const, onPress: () => onWrite(selected.id) };
-  const ai = { label: 'このメモからAIで探す', text: 'AIで探す', icon: 'sparkles-outline' as const, onPress: () => onAI(selected.id) };
+  const ai = { label: 'このメモの候補を探す', text: '候補を探す', icon: 'sparkles-outline' as const, onPress: () => onAI(selected.id) };
   const showConnection = !atCenter && neighbors.length > 0 && !pending;
-  const drawerTitle = drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : 'つながるメモ';
+  const drawerTitle = drawer === 'atlas' ? '庭の全体図' : drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : 'つながるメモ';
   const fullScreenLabel = immersive ? '全画面を閉じる' : '地図を全画面で開く';
   function toggleFullScreen() {
     setAppearance(false); onImmersive(!immersive);
@@ -259,7 +261,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       <StudioTitle title={editing ? '配置を編集' : '考えの地図'} compact={!editing && canEditMap && width <= 350}
         back={editing ? { label: '配置の編集をやめる', onPress: requestEndArrangement, disabled: saving, focusRef: endArrangeButton } : undefined}>
         {!editing && <IconButton label="地図を検索" icon="search-outline" focusRef={searchButton} onPress={() => onSearch(() => focusControl(searchButton.current))} />}
-        {!editing && canEditMap && <StudioAction label="マインドマップの配置を編集" title="配置を編集" icon="move-outline" primary
+        {!editing && canEditMap && <StudioAction label="マインドマップの配置を編集" title={layout === 'radial' ? '配置を編集' : 'マップの配置'} icon="move-outline" primary={layout === 'radial'}
           focusRef={arrangeButton} onPress={startArrangement} />}
         {!editing && immersive && layout === 'list' && <IconButton label={fullScreenLabel} icon="contract-outline" onPress={toggleFullScreen} />}
       </StudioTitle>
@@ -284,6 +286,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
         arrange={editing ? { onPlace: (point) => changePlacement((before) => [
           ...before.filter(({ seedId }) => seedId !== point.seedId), ...(point.x || point.y ? [point] : []),
         ]), onReject: () => setArrangeNotice('空いている場所へ移動できます。') } : undefined}
+        onAtlas={!editing && !preview ? () => open('atlas', atlasButton.current) : undefined} atlasButton={atlasButton}
         onMore={(visibleIds) => {
           setVisibleNotes(new Set(visibleIds));
           setNearbyFilter('hidden');
@@ -293,11 +296,13 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       {(settings.layout === 'constellation' || layout === 'constellation') && <View style={[styles.diagram, layout !== 'constellation' && styles.hidden]}>
         <StudioConstellations index={index} centerId={center.id} palette={settings.palette} compact={compact} showDetails={!appearance}
           fullScreen={{ active: immersive, label: fullScreenLabel, onPress: toggleFullScreen }} onRead={onRead}
-          onMindMap={(id) => { setAppearance(false); onFocus(id); onSettings({ layout: 'radial' }); }} />
+          onCraft={onAtelier && ((ids) => onAtelier(ids[0], ids))} onMindMap={(id) => { setAppearance(false); onFocus(id); onSettings({ layout: 'radial' }); }} />
       </View>}
       {layout === 'list' && back && !editing && <View style={studioStyles.wrap}><StudioAction label="前の中心へ戻る" icon="arrow-back-outline" onPress={back.onPress} /></View>}
       {(layout === 'list' || settings.layout === 'list') && <ScrollView style={[styles.noteList, layout !== 'list' && styles.hidden]}
         contentContainerStyle={styles.listContent} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+        {layout === 'list' && !preview && <StudioAction label="庭の全体図を開く" title={`庭の${index.live.length}件を距離別に見る`} icon="compass-outline"
+          focusRef={atlasButton} onPress={() => open('atlas', atlasButton.current)} />}
         <StudioNoteList index={index} selected={selected.id} onPick={chooseNode} />
       </ScrollView>}
       {editing && arrangement ? <View style={styles.dock}>
@@ -370,6 +375,8 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       </StudioTitle></View>
       <ScrollView key={drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent}
         automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+        {drawer === 'atlas' && <StudioAtlas index={index} centerId={center.id} onRead={(id) => onRead(id)}
+          onFocus={(id) => { setDrawer(undefined); onFocus(id); setFitRequest((value) => value + 1); }} />}
         {drawer === 'nearby' && <>
           <View style={[studioStyles.card, styles.nearbySummary]}>
             <View style={studioStyles.emblem} aria-hidden><Ionicons name="locate-outline" size={20} color={studioColors.green} /></View>
@@ -378,6 +385,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
               <Text style={studioStyles.muted}>選ぶと、今の地図に表示します</Text>
             </View>
           </View>
+          {!preview && <StudioAction label={`庭の${index.live.length}件を距離別に見る`} icon="compass-outline" onPress={() => setDrawer('atlas')} />}
           <StudioSegments label="つながるメモの表示範囲" value={nearbyFilter} onChange={setNearbyFilter} items={[
             { id: 'hidden', label: `図にない ${hiddenNotes.length}件` }, { id: 'all', label: `すべて ${nearby.ids.length}件` },
           ]} />
@@ -410,8 +418,10 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
         {drawer === 'actions' && <View style={studioStyles.card}>
           <Text accessibilityRole="header" style={studioStyles.subtitle}>{toSeedSnippet(selected, 60)}</Text>
           <StudioAction label="つながるメモを書く" icon="add" onPress={() => { setDrawer(undefined); onWrite(selected.id); }} />
+          {onAtelier && !atCenter && <StudioAction label="中心と選んだメモを作業台に置く" title="この2枚でアイデアをつくる" primary
+            icon="construct-outline" onPress={() => { setDrawer(undefined); onAtelier(center.id, [center.id, selected.id]); }} />}
           {onAtelier && <StudioAction label="このメモをアトリエで使う" icon="create-outline" onPress={() => { setDrawer(undefined); onAtelier(selected.id); }} />}
-          <StudioAction label="このメモからAIで探す" icon="sparkles-outline" onPress={() => { setDrawer(undefined); onAI(selected.id); }} />
+          <StudioAction label="このメモの候補を探す" icon="sparkles-outline" onPress={() => { setDrawer(undefined); onAI(selected.id); }} />
         </View>}
       </ScrollView>
     </View>}
