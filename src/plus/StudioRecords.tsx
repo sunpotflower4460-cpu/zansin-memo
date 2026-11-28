@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import type { MapIndex } from '../domain/plus/map';
 import { adjacentMonth, calendarDate, monthDays, recordDays, saveReflection, type RecordEvent } from '../domain/plus/studio';
@@ -54,6 +54,8 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const [notice, setNotice] = React.useState<{ text: string; error: boolean }>();
   const [busy, setBusy] = React.useState(false);
   const working = React.useRef(false);
+  const scroll = React.useRef<ScrollView>(null);
+  const editorTop = React.useRef(0);
   const reflection = store.reflections?.find((entry) => entry.day === day);
   const draft = drafts[day];
   const body = draft?.body ?? reflection?.body ?? '';
@@ -82,6 +84,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
       const result = await writer.run({ ...command, apply: (store) => canCreateReflection() || store.reflections?.some((item) => item.day === day)
         ? command.apply(store) : { rejected: '新しい日の振り返りは Plus で書けます。' } });
       if (result.ok) {
+        Keyboard.dismiss();
         setDrafts((before) => {
           const next = { ...before };
           delete next[day];
@@ -93,7 +96,8 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
     } finally { working.current = false; setBusy(false); }
   }
 
-  return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={studioStyles.content}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
     <StudioTitle title="記録" subtitle="日付からメモと、考えのつながりを振り返る">
       <IconButton label="メモを書く" icon="create-outline" onPress={onWrite} />
     </StudioTitle>
@@ -146,10 +150,12 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
       {(store.reflections ?? []).slice().sort((a, b) => b.day.localeCompare(a.day)).map((item) =>
         <StudioAction key={item.day} label={dateLabel(item.day)} onPress={() => pick(item.day)} />)}
     </View>}
-    {canEdit && (mode === 'calendar' || !advanced) && <View style={studioStyles.card}>
+    {canEdit && (mode === 'calendar' || !advanced) && <View style={studioStyles.card} onLayout={({ nativeEvent }) => { editorTop.current = nativeEvent.layout.y; }}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}の振り返り</Text>
       <PlusInput multiline accessibilityLabel="この日の振り返り" placeholder="気づいたことを、ひとこと" style={styles.editor} value={body}
-        editable={!busy} onChangeText={(text) => setDrafts((before) => ({ ...before, [day]: { body: text, base: draft?.base ?? reflection?.updatedAt } }))} />
+        editable={!busy} onFocus={() => {
+          if (Platform.OS === 'ios') scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false });
+        }} onChangeText={(text) => setDrafts((before) => ({ ...before, [day]: { body: text, base: draft?.base ?? reflection?.updatedAt } }))} />
       <View style={studioStyles.wrap}>
         <StudioAction primary label="振り返りを保存" icon="checkmark" disabled={busy || body.trim() === (reflection?.body ?? '')}
           onPress={() => void save()} />
