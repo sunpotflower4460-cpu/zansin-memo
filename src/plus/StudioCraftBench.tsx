@@ -4,7 +4,7 @@ import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import { adoptCraft, type DraftTarget } from '../domain/plus/atelier';
 import type { AtelierRevision } from '../domain/plus/contracts';
-import { composeCraft, craftExcerpts, craftPart, craftRecipes, craftRoles, type CraftCandidate, type CraftPart, type CraftRecipe } from '../domain/plus/craft';
+import { composeCraft, craftExcerpts, craftPart, craftRecipes, craftRoles, defaultCraftExcerpt, type CraftCandidate, type CraftPart, type CraftRecipe } from '../domain/plus/craft';
 import { requirePlusAccess } from '../domain/plus/entitlements';
 import { indexMap } from '../domain/plus/map';
 import { textDigest } from '../domain/plus/sources';
@@ -14,6 +14,8 @@ import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/see
 import { PlusInput, buttonSelectionProps } from './PlusUI';
 import { generateLocalCraft, localCraftAvailability } from './studioLanguage';
 import { StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
+
+const emptySlotLabels = ['考えたいこと', '借りたい視点', '任意'] as const;
 
 export type CraftStart = { seedIds: string[]; quotes?: string[]; target?: DraftTarget };
 type Props = {
@@ -28,7 +30,7 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
     const seed = index.byId.get(id);
     const quote = start.quotes?.[i];
     const offset = seed && quote ? seed.body.indexOf(quote) : -1;
-    const excerpt = quote && offset >= 0 ? { quote, start: offset, end: offset + quote.length } : seed && craftExcerpts(seed.body)[0];
+    const excerpt = quote && offset >= 0 ? { quote, start: offset, end: offset + quote.length } : seed && defaultCraftExcerpt(seed);
     return seed && excerpt ? [craftPart(seed, excerpt)] : [];
   }));
   const [recipe, setRecipe] = React.useState<CraftRecipe>('experience');
@@ -123,7 +125,7 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
       {options.slice(0, limit).map((seed) => <StudioRow key={seed.id} label={`${toSeedSnippet(seed, 45)}を素材に置く`}
         icon="add-outline" title={toSeedSnippet(seed, 45)} detail={toSeedSnippet({ body: seed.body }, 58)} onPress={() => {
           const next = [...parts];
-          const excerpt = craftExcerpts(seed.body)[0];
+          const excerpt = defaultCraftExcerpt(seed);
           if (!excerpt) return;
           next[slot] = craftPart(seed, excerpt);
           update(next);
@@ -157,10 +159,10 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
           style={({ pressed }) => [styles.slot, part && styles.filled, pressed && studioStyles.quiet]} onPress={() => selectSlot(i)}>
           <Text style={styles.role}>{role}</Text>
           {part ? <Text numberOfLines={3} style={styles.slotText}>{note ? toSeedSnippet(note, 40) : '選び直す'}</Text> :
-            <><Ionicons name="add" size={22} color={studioColors.green} /><Text style={styles.slotHint}>{i === 2 ? '任意' : 'メモを置く'}</Text></>}
+            <><Ionicons name="add" size={22} color={studioColors.green} /><Text style={styles.slotHint}>{emptySlotLabels[i]}</Text></>}
         </Pressable>;
       })}</View>
-      <Text style={styles.boardDetail}>{parts.length > 1 ? '素材をタップして、使う一節を選べます。' : 'メモを2枚置くと、案を読めます。'}</Text>
+      <Text style={styles.boardDetail}>{parts.length > 1 ? '素材をタップして、使う一節を選べます。' : 'メモを2枚置くと、体験・実験・便りの案を試せます。'}</Text>
     </View>
     {stale && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>素材に更新があります。「選び直す」から現在のメモを確認してください。</Text>}
     {!advanced && <Text style={studioStyles.muted}>新しい案の取り込みにはPlusの利用権が必要です。</Text>}
@@ -206,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f4f5ec', padding: 7, gap: 5, alignItems: 'center', justifyContent: 'center' },
   filled: { backgroundColor: '#fffdf6', borderStyle: 'solid', borderColor: '#abbda4' },
   role: { fontSize: 12, lineHeight: 17, fontWeight: '700', color: studioColors.green },
-  slotText: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: studioColors.text }, slotHint: { fontSize: 12, color: studioColors.muted },
+  slotText: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: studioColors.text }, slotHint: { fontSize: 12, color: studioColors.muted, textAlign: 'center' },
   paper: { borderLeftWidth: 4, borderLeftColor: '#ab7d48', padding: 16, backgroundColor: '#fffbf1' },
   resultLabel: { fontSize: 12, fontWeight: '700', color: '#78552f' },
   resultTitle: { fontSize: 21, lineHeight: 29, fontFamily: theme.fonts.serif, color: studioColors.text, fontWeight: '600' },

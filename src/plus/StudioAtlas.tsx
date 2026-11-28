@@ -6,6 +6,7 @@ import type { MapIndex } from '../domain/plus/map';
 import { studioAtlas, studioGroupPreview, studioRoute, type AtlasGroup } from '../domain/plus/studioAtlas';
 import { buildMatchExcerpt, toSeedSnippet } from '../utils/seedText';
 import { focusControl } from './PlusUI';
+import { StudioMaterialAction, type StudioMaterials } from './StudioMaterials';
 import { StudioNoteList } from './StudioNoteList';
 import { IconButton, StudioAction, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
@@ -42,8 +43,26 @@ function GroupRow({ group, index, atlas, onPress }: {
   </Pressable>;
 }
 
-export function StudioAtlas({ index, centerId, onFocus, onRead }: {
-  index: MapIndex; centerId: string; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void) => void;
+type ReadFromAtlas = (id: string, onReturn?: () => void, backLabel?: string) => void;
+
+function RouteStep({ id, title, reason, last, onRead }: {
+  id: string; title: string; reason?: string; last: boolean; onRead: ReadFromAtlas;
+}) {
+  const button = React.useRef<View>(null);
+  return <View style={styles.step}>
+    {!!reason && <Text style={styles.stepReason}>{reason}</Text>}
+    {last ? <Text style={[styles.stepTitle, styles.stepEnd]}>{title}</Text> :
+      <Pressable ref={button} accessibilityRole="button" accessibilityLabel={`「${title}」の原文を開く`}
+        style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]}
+        onPress={() => onRead(id, () => focusControl(button.current), '経路に戻る')}>
+        <Text style={[styles.stepTitle, studioStyles.grow]}>{title}</Text>
+        <Ionicons name="document-text-outline" size={16} color={studioColors.green} />
+      </Pressable>}
+  </View>;
+}
+
+export function StudioAtlas({ index, centerId, onFocus, onRead, materials }: {
+  index: MapIndex; centerId: string; onFocus: (id: string) => void; onRead: ReadFromAtlas; materials?: StudioMaterials;
 }) {
   const atlas = React.useMemo(() => studioAtlas(index, centerId), [index, centerId]);
   const [scope, setScope] = React.useState<'all' | 'apart' | AtlasGroup>();
@@ -79,38 +98,43 @@ export function StudioAtlas({ index, centerId, onFocus, onRead }: {
   const root = scope !== 'all' && scope !== 'apart' && !group && !selected;
   const fromApart = group?.kind === 'component' || group?.kind === 'isolated';
   const groups = scope === 'apart' ? atlas.apart : atlas.nearby;
-  const jump = React.useRef(false);
+  const jump = React.useRef<number>(undefined);
+  const scrollOffset = React.useRef(0);
+  const listOffset = React.useRef(0);
 
   React.useEffect(() => {
-    if (!jump.current) return;
-    jump.current = false;
-    scroll.current?.scrollTo({ y: 0, animated: false });
-    if (!root) {
-      const frame = requestAnimationFrame(() => focusControl(back.current));
-      return () => cancelAnimationFrame(frame);
-    }
+    const y = jump.current;
+    if (y === undefined) return;
+    jump.current = undefined;
+    const frame = requestAnimationFrame(() => {
+      scroll.current?.scrollTo({ y, animated: false });
+      if (!root && y === 0) focusControl(back.current);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [group, picked, root, scope]);
 
   function open(next: typeof scope) {
-    jump.current = true;
+    jump.current = 0;
     setScope(next); setPicked(undefined); setLimit(batch);
   }
 
   function pick(id: string) {
-    jump.current = true;
+    listOffset.current = scrollOffset.current;
+    jump.current = 0;
     setRouteLimit(8); setPicked(id);
   }
 
   function goBack() {
     if (selected) {
-      jump.current = true; setPicked(undefined);
+      jump.current = listOffset.current; setPicked(undefined);
       return;
     }
     open(fromApart ? 'apart' : undefined);
   }
 
   return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={styles.content}
-    automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+    automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" scrollEventThrottle={48}
+    onScroll={({ nativeEvent }) => { scrollOffset.current = nativeEvent.contentOffset.y; }}>
     {root ? <View style={styles.origin}>
       <View style={styles.originMark}><Ionicons name="locate-outline" size={22} color="#e0eadc" /></View>
       <View style={studioStyles.grow}>
@@ -167,16 +191,15 @@ export function StudioAtlas({ index, centerId, onFocus, onRead }: {
           <StudioAction label="この場所を中心に開く" title="中心にする" icon="locate-outline" primary onPress={() => onFocus(selected.id)} />
           <StudioAction label="この場所の原文を読む" title="原文を読む" icon="document-text-outline" focusRef={read}
             onPress={() => onRead(selected.id, () => focusControl(read.current))} />
+          {materials && selected.body.trim() && <StudioMaterialAction materials={materials} id={selected.id} />}
         </View>
       </View>
       {route.length > 1 && <View style={styles.route} testID="studio-atlas-route">
         <Text accessibilityRole="header" style={styles.sectionTitle}>保存したつながりをたどる</Text>
         {route.slice(0, routeLimit).map((id, position) => {
           const reason = position ? atlas.edgeNotes.get(connectionId(route[position - 1], id)) : undefined;
-          return <View key={id} style={styles.step}>
-            {position > 0 && <Text style={styles.stepReason}>{reason || '保存したつながり'}</Text>}
-            <Text style={[styles.stepTitle, id === picked && styles.stepEnd]}>{toSeedSnippet(index.byId.get(id)!, 60)}</Text>
-          </View>;
+          return <RouteStep key={id} id={id} title={toSeedSnippet(index.byId.get(id)!, 60)} last={id === picked} onRead={onRead}
+            reason={position > 0 ? reason || '保存したつながり' : undefined} />;
         })}
         {route.length > routeLimit && <StudioAction label="経路の続きを表示" onPress={() => setRouteLimit(routeLimit + 20)} />}
       </View>}
@@ -214,6 +237,7 @@ const styles = StyleSheet.create({
   noteTitle: { color: studioColors.text, fontSize: 22, lineHeight: 29, fontWeight: '700' },
   route: { gap: 5, padding: 14, borderColor: studioColors.rule, borderWidth: 1, borderRadius: 14, backgroundColor: studioColors.surface },
   step: { borderLeftWidth: 2, borderLeftColor: '#b5c7b5', paddingLeft: 13, gap: 4, marginLeft: 4 },
+  stepButton: { minHeight: 44, paddingRight: 7, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 8 },
   stepTitle: { color: studioColors.text, fontSize: 15, fontWeight: '600', lineHeight: 21, paddingVertical: 4 },
   stepEnd: { color: studioColors.green },
   stepReason: { color: studioColors.muted, fontSize: 13, lineHeight: 19 },

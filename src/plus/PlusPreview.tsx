@@ -27,6 +27,7 @@ import { StudioCapture } from './StudioCapture';
 import { StudioRecords } from './StudioRecords';
 import { IconButton, StudioAction, StudioRow, StudioTitle, studioColors, studioStyles } from './StudioUI';
 import { StudioCraftBench, type CraftStart } from './StudioCraftBench';
+import { StudioMaterialAction, StudioMaterialBar, StudioMaterialReview, materialConnection, materialLimit, type StudioMaterials } from './StudioMaterials';
 import { clearWorkFileCache } from './workFiles';
 
 const exampleGroups = buildPlusExample(8).displayGroups;
@@ -60,6 +61,8 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const [origin, setOrigin] = React.useState<MapReturnContext>();
   const [atelier, setAtelier] = React.useState<string>();
   const [craft, setCraft] = React.useState<CraftStart>();
+  const [materialIds, setMaterialIds] = React.useState<string[]>([]);
+  const [materialsOpen, setMaterialsOpen] = React.useState(false);
   const [atelierList, setAtelierList] = React.useState(false);
   const [collection, setCollection] = React.useState<{ source?: AtelierRevision; backLabel?: string }>();
   const atelierReturn = React.useRef<typeof collection>(undefined);
@@ -82,13 +85,36 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const creating = React.useRef(false);
   const createAttempt = React.useRef<{ key: string; args: Parameters<typeof createAtelier>[0] }>(undefined);
   const returnFocus = React.useRef<() => void>(undefined);
+  const returnMaterialFocus = React.useRef<() => void>(undefined);
   const backControl = React.useRef<View>(null);
   const [notice, setNotice] = React.useState('');
   const commit = React.useCallback((command: PlusCommand) => writer.run(requirePlusAccess(command, canArrange)), [canArrange, writer]);
   const selected = reading ? store.seeds.find((seed) => seed.id === reading && !seed.deletedAt) : undefined;
   const captureCenter = capture?.centerId ? store.seeds.find((seed) => seed.id === capture.centerId && !seed.deletedAt) : undefined;
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.seeds, store.connections]);
-  const overlay = Boolean(reading || ai || atelier || craft || atelierList || collection || capture || reflectionPage);
+  const materialNotes = React.useMemo(() => materialIds.flatMap((id) => {
+    const note = index.byId.get(id);
+    return note?.body.trim() ? [note] : [];
+  }), [index.byId, materialIds]);
+  const canUseMaterials = React.useCallback(() => comparison && canUseAtelier(), [canUseAtelier, comparison]);
+  const materials: StudioMaterials | undefined = canUseMaterials() ? {
+    notes: materialNotes,
+    toggle: (id) => {
+      if (!canUseMaterials()) return;
+      const note = index.byId.get(id);
+      setMaterialIds((before) => {
+        const live = before.filter((key) => index.byId.get(key)?.body.trim());
+        if (live.includes(id)) return live.filter((key) => key !== id);
+        return note?.body.trim() && live.length < materialLimit ? [...live, id] : live;
+      });
+    },
+    open: (onReturn) => {
+      if (!canUseMaterials()) return;
+      returnMaterialFocus.current = onReturn; setMaterialsOpen(true);
+    },
+  } : undefined;
+  const showingMaterials = Boolean(materials && materialsOpen);
+  const overlay = Boolean(reading || ai || atelier || craft || showingMaterials || atelierList || collection || capture || reflectionPage);
   React.useEffect(() => { void reconcilePreviewProposals(writer, true); }, [writer]);
 
   React.useEffect(() => {
@@ -130,6 +156,13 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     setReadingBack(back); returnFocus.current = onReturn; setReading(id);
   }
 
+  function closeMaterials(restore: boolean) {
+    setMaterialsOpen(false);
+    const focus = returnMaterialFocus.current;
+    returnMaterialFocus.current = undefined;
+    if (restore && focus) requestAnimationFrame(focus);
+  }
+
   const detailedMap = <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} comparison={comparison}
     onBack={manualMap ? () => setManualMap(false) : undefined}
     onOpenSeed={openReading}
@@ -145,7 +178,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
       </View>
       <Text style={styles.planTitle}>Plus</Text>
       <Switch accessibilityLabel="Plus を試す" value={!showFreeMap} onValueChange={(value) => {
-        if (!value) setManualMap(false);
+        if (!value) { setManualMap(false); closeMaterials(false); }
         purchaseModel.setStatus(value ? 'active' : 'free');
       }} trackColor={{ true: theme.colors.primary }} />
     </View> : <View style={styles.tools}><Actions>
@@ -173,7 +206,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
         <View style={[plusStyles.full, manualMap && { display: 'none' }]}>
           <PlusStudio writer={writer} canArrange={canArrange} canSuggest={canRequest} onRead={openReading}
             onWrite={(centerId) => setCapture({ centerId })} onAtelier={enabled.atelier ? () => setAtelierList(true) : undefined}
-            onAtelierFromMemo={enabled.atelier && rights.atelierAdvanced ? (id, seedIds = [id], quotes) => setCraft({ seedIds, quotes }) : undefined}
+            onAtelierFromMemo={enabled.atelier && rights.atelierAdvanced ? (id, seedIds = [id], quotes) => setCraft({ seedIds, quotes }) : undefined} materials={materials}
             onCollection={enabled.collection ? (from) => setCollection({ backLabel: from === 'records' ? '記録に戻る' : 'その他に戻る' }) : undefined}
             onData={() => setData(true)} onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap('more')}
             onMapImmersiveChange={setMapImmersive} />
@@ -200,13 +233,17 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
         onRead={(id) => { setReflectionPage(false); openReading(id); }} onWork={() => setCollection({})}
         onWrite={() => { setReflectionPage(false); setCapture({}); }} />
     </View>}
-    {reading && <ScrollView contentContainerStyle={plusStyles.page}>
-      <View><PlusButton label={readingBack} focusRef={backControl} onPress={() => setReading(undefined)} /></View>
-      <Heading title>{selected ? selected.title || toSeedSnippet(selected) : '原文を確認できません'}</Heading>
-      {selected && <SectionCard><Heading>元のメモ</Heading><Text selectable style={plusStyles.original}>{selected.body}</Text>
-        {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}
-      </SectionCard>}
-    </ScrollView>}
+    {reading && <View style={[plusStyles.full, (showingMaterials || craft || atelier || collection) && { display: 'none' }]}>
+      <ScrollView contentContainerStyle={plusStyles.page}>
+        <View><PlusButton label={readingBack} focusRef={backControl} onPress={() => setReading(undefined)} /></View>
+        <Heading title>{selected ? selected.title || toSeedSnippet(selected) : '原文を確認できません'}</Heading>
+        {materials && selected?.body.trim() && <Actions><StudioMaterialAction materials={materials} id={selected.id} /></Actions>}
+        {selected && <SectionCard><Heading>元のメモ</Heading><Text selectable style={plusStyles.original}>{selected.body}</Text>
+          {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}
+        </SectionCard>}
+      </ScrollView>
+      {materials && <StudioMaterialBar materials={materials} />}
+    </View>}
     {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} allowRequest={rights.requestFixtureAi} canRequest={canRequest}
       onMaterial={enabled.atelier && rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
     {atelierList && !atelier && !collection && !craft && <AtelierLibrary store={store} notice={notice} hasAccess={enabled.atelier && rights.atelierAdvanced}
@@ -221,10 +258,15 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
       onCreateWork={enabled.collection && rights.composeWork ? (source) => { if (canCompose()) setCollection({ source }); } : undefined}
       onOriginMap={(context) => { setOrigin({ ...context }); setAtelier(undefined); setAtelierList(false); setAi(undefined); atelierReturn.current = undefined;
         if (comparison && !showFreeMap) setManualMap('origin'); }} /></View>}
+    {showingMaterials && materials && <View style={[plusStyles.full, craft && { display: 'none' }]}>
+      <StudioMaterialReview key={JSON.stringify(materialNotes.map(({ id }) => id))} active={!craft} materials={materials} writer={writer} canUse={canUseMaterials}
+        connection={materialConnection(materialNotes, store.connections)} onBack={() => closeMaterials(true)}
+        onCraft={() => { if (canUseMaterials()) setCraft({ seedIds: materialNotes.map(({ id }) => id) }); }} />
+    </View>}
     {craft && <StudioCraftBench start={craft} writer={writer} advanced={rights.atelierAdvanced && enabled.atelier} canUse={canUseAtelier}
       canUseAI={canRequest} canCompose={canCompose} onBack={() => setCraft(undefined)}
-      onDraft={(id) => { setCraft(undefined); setAtelier(id); }}
-      onWork={(id, source) => { setCraft(undefined); setAtelier(id); setCollection({ source }); }} />}
+      onDraft={(id) => { setCraft(undefined); closeMaterials(false); setAtelier(id); }}
+      onWork={(id, source) => { setCraft(undefined); closeMaterials(false); setAtelier(id); setCollection({ source }); }} />}
     {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={enabled.collection && rights.composeWork}
       comparison={comparison} backLabel={collection.backLabel} onStartDraft={enabled.atelier && rights.atelierAdvanced ? () => {
         atelierReturn.current = collection; setCollection(undefined); setAtelierList(true);
@@ -233,7 +275,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     </View>
     {purchase && <PlusPurchasePreview model={purchaseModel} comparison={comparison} onBack={() => setPurchase(false)} />}
     {data && <PlusDataScreen comparison={comparison} writer={writer} onBack={() => setData(false)}
-      onReset={() => { setData(false); setOrigin(undefined); setNotice(''); setManualMap(false); }} />}
+      onReset={() => { setData(false); setOrigin(undefined); setNotice(''); setManualMap(false); setMaterialIds([]); closeMaterials(false); }} />}
   </View>;
 }
 

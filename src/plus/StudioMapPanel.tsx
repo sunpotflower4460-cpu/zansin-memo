@@ -14,6 +14,7 @@ import { buttonSelectionProps, focusControl } from './PlusUI';
 import { StudioConstellations, constellationPalettes } from './StudioConstellations';
 import { StudioMapCanvas, mapPalettes } from './StudioMapCanvas';
 import { StudioAtlas } from './StudioAtlas';
+import { StudioMaterialAction, type StudioMaterials } from './StudioMaterials';
 import { StudioNoteList } from './StudioNoteList';
 import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
@@ -50,13 +51,14 @@ function savedRelations(edges: MapIndex['edges'], seedId: string) {
 }
 
 export function StudioMapPanel({ index, center, selected: mapSelection, settings, hints, preview, immersive, back, onImmersive,
-  onSearch, onSettings, onSelect, onFocus, onRead, onAI, onReview, onWrite, onAtelier, canArrange, editRequest, placement, onSavePlacement }: {
+  onSearch, onSettings, onSelect, onFocus, onRead, onAI, onReview, onWrite, onAtelier, materials, canArrange, editRequest, placement, onSavePlacement }: {
   index: MapIndex; center: Seed; selected: Seed; settings: StudioPreferences; hints: readonly Suggestion[];
   preview?: { kind: 'suggestions' | 'connection'; label: string; emphasisId?: string; onClose: () => void };
   immersive: boolean; back?: { title: string; onPress: () => void }; onImmersive: (next: boolean) => void;
   onSearch: (onReturn: () => void) => void; onSettings: (patch: Partial<StudioPreferences>) => void;
-  onSelect: (id: string) => void; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void) => void; onAI: (id: string) => void;
+  onSelect: (id: string) => void; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onAI: (id: string) => void;
   onReview: (suggestion: Suggestion) => void; onWrite: (id: string) => void; onAtelier?: (id: string, materials?: string[]) => void;
+  materials?: StudioMaterials;
   canArrange: boolean; editRequest: number; placement?: readonly StudioPlacement[];
   onSavePlacement: (id: string, next: StudioPlacement[], expected: readonly StudioPlacement[]) => Promise<string | undefined>;
 }) {
@@ -282,7 +284,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       {(settings.layout === 'constellation' || layout === 'constellation') && <View style={[styles.diagram, layout !== 'constellation' && styles.hidden]}>
         <StudioConstellations index={index} centerId={center.id} palette={settings.palette}
           fullScreen={{ active: immersive, label: fullScreenLabel, onPress: toggleFullScreen }} onRead={onRead}
-          onCraft={onAtelier && ((ids) => onAtelier(ids[0], ids))} onMindMap={(id) => { onFocus(id); onSettings({ layout: 'radial' }); }} />
+          materials={materials} onMindMap={(id) => { onFocus(id); onSettings({ layout: 'radial' }); }} />
       </View>}
       {layout === 'list' && back && !editing && <View style={studioStyles.wrap}><StudioAction label="前の中心へ戻る" icon="arrow-back-outline" onPress={back.onPress} /></View>}
       {(layout === 'list' || settings.layout === 'list') && <ScrollView style={[styles.noteList, layout !== 'list' && styles.hidden]}
@@ -328,7 +330,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       <View style={styles.drawerHeader}><StudioTitle title={drawerTitles[drawer]}>
         <IconButton label="地図の操作画面を閉じる" icon="close" focusRef={closeButton} onPress={() => setDrawer(undefined)} />
       </StudioTitle></View>
-      {drawer === 'atlas' ? <StudioAtlas key={center.id} index={index} centerId={center.id} onRead={onRead}
+      {drawer === 'atlas' ? <StudioAtlas key={center.id} index={index} centerId={center.id} onRead={onRead} materials={materials}
         onFocus={(id) => { setDrawer(undefined); onFocus(id); setFitRequest((value) => value + 1); }} /> :
       <ScrollView key={drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent}
         automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
@@ -407,7 +409,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
           <StudioAction label="つながるメモを書く" icon="add" onPress={() => { setDrawer(undefined); onWrite(selected.id); }} />
           {onAtelier && !atCenter && <StudioAction label="中心と選んだメモを作業台に置く" title="この2枚でアイデアをつくる" primary
             icon="construct-outline" onPress={() => { setDrawer(undefined); onAtelier(center.id, [center.id, selected.id]); }} />}
-          {onAtelier && <StudioAction label="このメモをアトリエで使う" icon="create-outline" onPress={() => { setDrawer(undefined); onAtelier(selected.id); }} />}
+          {materials && selected.body.trim() && <StudioMaterialAction materials={materials} id={selected.id} onChange={() => setDrawer(undefined)} />}
           <StudioAction label="このメモの候補を探す" icon="sparkles-outline" onPress={() => { setDrawer(undefined); onAI(selected.id); }} />
         </View>}
       </ScrollView>}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { adoptCraft, createAtelier, saveAtelierText, trackPin } from '../domain/plus/atelier';
-import { composeCraft, craftExcerpts, craftPart, craftRecipes } from '../domain/plus/craft';
+import { composeCraft, craftExcerpts, craftPart, craftRecipes, defaultCraftExcerpt } from '../domain/plus/craft';
 import { requirePlusAccess } from '../domain/plus/entitlements';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
@@ -32,6 +32,14 @@ test('a craft quotes the selected occurrence including emoji, repeated sentences
   for (const excerpt of excerpts) assert.equal(body.slice(excerpt.start, excerpt.end), excerpt.quote);
   assert.deepEqual(excerpts.slice(-2).map((e) => Array.from(e.quote).length), [120, 2]);
   assert.deepEqual(craftExcerpts(' \n '), []);
+});
+
+test('the suggested excerpt skips a repeated title and retains its exact source range', () => {
+  const body = '川辺の銀杏。\n写真に残したあとの印象。';
+  const excerpt = defaultCraftExcerpt({ title: '川辺の銀杏', body })!;
+  assert.equal(excerpt.quote, '写真に残したあとの印象。');
+  assert.equal(body.slice(excerpt.start, excerpt.end), excerpt.quote);
+  assert.equal(defaultCraftExcerpt({ title: '川辺の銀杏', body: '川辺の銀杏。' })?.quote, '川辺の銀杏。');
 });
 
 test('each craft recipe uses its roles, never invents permission to take photos and accepts unrelated materials', () => {

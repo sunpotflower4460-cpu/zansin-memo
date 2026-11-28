@@ -13,6 +13,7 @@ import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
 import { InsightCard, StudioInsights } from './StudioInsights';
 import { StudioMapPanel } from './StudioMapPanel';
+import { StudioMaterialBar, type StudioMaterials } from './StudioMaterials';
 import { StudioMore } from './StudioMore';
 import { StudioNoteList } from './StudioNoteList';
 import { StudioRecords } from './StudioRecords';
@@ -35,10 +36,11 @@ type StudioProps = {
   writer: GardenV3Writer; canArrange: () => boolean; canSuggest: () => boolean;
   onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onWrite: (centerId?: string) => void;
   onAtelier?: () => void; onAtelierFromMemo?: (id: string, materials?: string[], quotes?: string[]) => void; onCollection?: (from: 'more' | 'records') => void;
+  materials?: StudioMaterials;
   onData: () => void; onPurchase?: () => void; onManualMap: () => void; onMapImmersiveChange?: (active: boolean) => void;
 };
 
-export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, onData, onPurchase,
+export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, materials, onData, onPurchase,
   onManualMap, onMapImmersiveChange }: StudioProps) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const { height } = useWindowDimensions();
@@ -175,7 +177,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         back={!preview && previous ? { title: toSeedSnippet(previous.seed, 50), onPress: () => restoreVisit(previous.position) } : undefined}
         onSearch={(onReturn) => { returnFromPick.current = onReturn; setPick('map'); }} onSettings={(patch) => void changeMap(patch)}
         onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }}
-        onWrite={onWrite} onAtelier={onAtelierFromMemo} />
+        onWrite={onWrite} onAtelier={onAtelierFromMemo} materials={materials} />
     </View>
     <View style={[studioStyles.root, (tab !== 'ai' || pick || review) && styles.hidden]}>
       {canSuggest() ? <StudioInsights onCraft={craftPair} focus={focus} state={state} notice={notice} pending={pending} skipped={skipped}
@@ -225,6 +227,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
       <InsightCard onCraft={craftPair} suggestion={review} pending={pending} onRead={(id) => onRead(id, undefined, '候補に戻る')}
         onSettle={(entry, action) => void settle(entry, action, true)} />
     </ScrollView>}
+    {materials && !review && !pick && !fullMap && <StudioMaterialBar materials={materials} />}
     {!review && !fullMap && <View accessibilityRole="tablist" style={styles.nav}>
       {nav.map((item) => <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
         accessibilityState={{ selected: !pick && tab === item.id }} onPress={() => changeTab(item.id)}

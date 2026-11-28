@@ -1,3 +1,4 @@
+import { normalizeSearchText } from '../../utils/seedText';
 import type { Seed } from '../types';
 import type { SourceVersion } from './contracts';
 import { textDigest } from './sources';
@@ -39,6 +40,14 @@ export function craftExcerpts(body: string): CraftExcerpt[] {
     }
   }
   return excerpts;
+}
+
+export function defaultCraftExcerpt({ title, body }: Pick<Seed, 'title' | 'body'>): CraftExcerpt | undefined {
+  const excerpts = craftExcerpts(body);
+  if (!title?.trim()) return excerpts[0];
+  const normalized = (value: string) => normalizeSearchText(value).trim().replace(/[。.!?]+$/u, '');
+  const heading = normalized(title);
+  return excerpts.find(({ quote }) => normalized(quote) !== heading) ?? excerpts[0];
 }
 
 export function craftPart(seed: Seed, excerpt: CraftExcerpt): CraftPart {

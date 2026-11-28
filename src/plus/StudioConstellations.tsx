@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 import type { StudioPreferences } from '../domain/plus/contracts';
 import type { MapIndex } from '../domain/plus/map';
@@ -10,6 +10,7 @@ import type { Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { buildMatchExcerpt, normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { PlusInput, focusControl } from './PlusUI';
+import { StudioMaterialAction, type StudioMaterials } from './StudioMaterials';
 import { IconButton, StudioAction, StudioSegments, studioColors, studioStyles } from './StudioUI';
 
 export const constellationPalettes = {
@@ -88,10 +89,10 @@ function StarDiagram({ figure, colors, index, onPick }: {
   </View>;
 }
 
-export function StudioConstellations({ index, centerId, palette, fullScreen, onRead, onMindMap, onCraft }: {
+export function StudioConstellations({ index, centerId, palette, fullScreen, onRead, onMindMap, materials }: {
   index: MapIndex; centerId: string; palette: StudioPreferences['palette'];
   fullScreen: { active: boolean; label: string; onPress: () => void };
-  onRead: (id: string, onReturn: () => void) => void; onMindMap: (id: string) => void; onCraft?: (ids: string[]) => void;
+  onRead: (id: string, onReturn: () => void, backLabel?: string) => void; onMindMap: (id: string) => void; materials?: StudioMaterials;
 }) {
   const colors = constellationPalettes[palette];
   const [lens, setLens] = React.useState<'topics' | 'links'>('topics');
@@ -99,7 +100,6 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
   const groups = React.useMemo(() => topics ? topicConstellations(index) : constellationGroups(index), [index, topics]);
   const [groupId, setGroupId] = React.useState<string>();
   const [seedId, setSeedId] = React.useState<string>();
-  const [ingredient, setIngredient] = React.useState<string>();
   const [query, setQuery] = React.useState('');
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [filter, setFilter] = React.useState('');
@@ -110,15 +110,21 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
   const back = React.useRef<View>(null);
   const original = React.useRef<View>(null);
   const returnTo = React.useRef<View>(null);
-  const jump = React.useRef(false);
+  const jump = React.useRef<number>(undefined);
+  const offset = React.useRef(0);
+  const directoryOffset = React.useRef(0);
+  const groupOffset = React.useRef(0);
   const group = groups.find(({ id }) => id === groupId);
   const selected = seedId && group?.seedIds.includes(seedId) ? index.byId.get(seedId) : undefined;
-  const pinned = ingredient ? index.byId.get(ingredient) : undefined;
   const directoryMatches = React.useMemo(() => {
     const q = normalizeSearchText(query.trim());
-    if (!q) return groups;
+    if (!q) return groups.map((entry) => ({ entry, hits: undefined }));
     const ids = new Set(index.live.filter((note) => searchableText(note).includes(q)).map(({ id }) => id));
-    return groups.filter(({ label, seedIds }) => normalizeSearchText(label).includes(q) || seedIds.some((id) => ids.has(id)));
+    return groups.flatMap<{ entry: ConstellationGroup; hits?: string[] }>((entry) => {
+      if (normalizeSearchText(entry.label).includes(q)) return [{ entry }];
+      const hits = entry.seedIds.filter((id) => ids.has(id));
+      return hits.length ? [{ entry, hits }] : [];
+    });
   }, [groups, index.live, query]);
   const noteQuery = normalizeSearchText(filter.trim());
   const notes = React.useMemo(() => (group?.seedIds ?? []).flatMap((id) => {
@@ -141,21 +147,30 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
   }, [group, index, selected]);
 
   React.useEffect(() => {
-    if (!jump.current) return;
-    jump.current = false;
-    scroll.current?.scrollTo({ y: 0, animated: false });
-    const frame = requestAnimationFrame(() => focusControl(back.current ?? returnTo.current));
+    const y = jump.current;
+    if (y === undefined) return;
+    jump.current = undefined;
+    const frame = requestAnimationFrame(() => {
+      scroll.current?.scrollTo({ y, animated: false });
+      if (y === 0) focusControl(back.current ?? returnTo.current);
+    });
     return () => cancelAnimationFrame(frame);
   }, [groupId, seedId]);
 
-  function enter(next: ConstellationGroup) {
-    jump.current = true; setGroupId(next.id); setSeedId(undefined); setFilterOpen(false); setFilter(''); setNoteLimit(notePage); setPlot(undefined);
+  function enter(next: ConstellationGroup, initialFilter = '') {
+    Keyboard.dismiss();
+    directoryOffset.current = offset.current;
+    jump.current = 0; setGroupId(next.id); setSeedId(undefined);
+    setFilterOpen(Boolean(initialFilter)); setFilter(initialFilter); setNoteLimit(notePage); setPlot(undefined);
   }
   function pick(id: string) {
-    jump.current = true; setSeedId(id);
+    Keyboard.dismiss();
+    if (!selected) groupOffset.current = offset.current;
+    jump.current = 0; setSeedId(id);
   }
   function goBack() {
-    jump.current = true;
+    Keyboard.dismiss();
+    jump.current = selected ? groupOffset.current : directoryOffset.current;
     if (selected) setSeedId(undefined);
     else setGroupId(undefined);
   }
@@ -165,7 +180,8 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
   const selectedBody = selected ? buildMatchExcerpt(selected, noteQuery || (group?.basis === 'word' ? group.label : '')) : undefined;
 
   return <ScrollView ref={scroll} style={styles.root} contentContainerStyle={styles.content}
-    keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+    keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets scrollEventThrottle={48}
+    onScroll={({ nativeEvent }) => { offset.current = nativeEvent.contentOffset.y; }}>
     <View testID="studio-constellation-sky" style={[styles.hero, { backgroundColor: colors.space }]}>
       <View style={styles.heroRow}>
         {group ? <IconButton label={selected ? '星座のメモへ戻る' : '星座の全体へ戻る'} icon="chevron-back" focusRef={back}
@@ -179,12 +195,10 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
           color={colors.ink} background={colors.rule} onPress={fullScreen.onPress} />}
       </View>
       {!selected && <Text style={[styles.heroSub, { color: colors.dim }]}>{context}</Text>}
-      {group && !selected && <Text style={[styles.caption, { color: colors.focus }]}>{group.seedIds.length}件のメモ</Text>}
+      {group && !selected && <Text style={[styles.caption, { color: colors.focus }]}>
+        {noteQuery ? `${group.seedIds.length}件のうち ${notes.length}件が一致` : `${group.seedIds.length}件のメモ`}
+      </Text>}
     </View>
-    {pinned && <View style={styles.pinned}>
-      <Text style={[studioStyles.muted, studioStyles.grow]} numberOfLines={2}>素材に選んだメモ「{toSeedSnippet(pinned, 32)}」</Text>
-      <IconButton label="選んだ素材を取り消す" icon="close" onPress={() => setIngredient(undefined)} />
-    </View>}
     {!group && <>
       <StudioSegments value={lens} label="星座の集め方"
         items={[{ id: 'topics', label: '話題', accessibilityLabel: '話題で集める' }, { id: 'links', label: '保存した線', accessibilityLabel: 'つながりで集める' }]}
@@ -192,12 +206,12 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
       <PlusInput accessibilityLabel="メモから星座を探す" placeholder="話題・メモから探す" value={query} returnKeyType="search"
         onChangeText={(value) => { setQuery(value); setGroupLimit(directoryPage); }} />
       <View style={styles.list}>
-        {directoryMatches.slice(0, groupLimit).map((entry) => {
-          const sample = studioGroupPreview(index, entry.seedIds, entry.label);
+        {directoryMatches.slice(0, groupLimit).map(({ entry, hits }) => {
+          const sample = studioGroupPreview(index, hits ?? entry.seedIds, hits ? undefined : entry.label);
           const current = entry.seedIds.includes(centerId);
           const label = !topics && !entry.linked ? 'つながりのないメモを見る' : `「${entry.label}」の星座を開く`;
           return <Pressable key={entry.id} accessibilityRole="button" accessibilityLabel={label}
-            accessibilityHint={`${entry.seedIds.length}件。 ${groupBasis(entry)}。 ${sample}`} onPress={() => enter(entry)}
+            accessibilityHint={`${hits?.length ?? entry.seedIds.length}件。 ${groupBasis(entry)}。 ${sample}`} onPress={() => enter(entry, hits ? query : '')}
             style={({ pressed }) => [styles.topicRow, pressed && styles.pressed]}>
             <View style={styles.topicMark}><Ionicons name={entry.linked ? 'git-branch-outline' : 'star-outline'} size={19} color="#37576b" /></View>
             <View style={studioStyles.grow}>
@@ -205,7 +219,7 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
               <Text style={styles.topicBasis}>{groupBasis(entry)}{!topics && current ? ' · 今の中心を含む' : ''}</Text>
               {!!sample && <Text numberOfLines={2} style={styles.excerpt}>{sample}</Text>}
             </View>
-            <Text style={styles.count}>{entry.seedIds.length}件</Text>
+            <Text style={styles.count}>{hits ? `一致 ${hits.length}件` : `${entry.seedIds.length}件`}</Text>
             <Ionicons name="chevron-forward" size={15} color={studioColors.muted} />
           </Pressable>;
         })}
@@ -244,13 +258,10 @@ export function StudioConstellations({ index, centerId, palette, fullScreen, onR
       <Text style={styles.noteBody} selectable>{selectedBody?.field === 'body' ? selectedBody.text : toSeedSnippet({ body: selected.body }, 240)}</Text>
       <View style={studioStyles.wrap}>
         <StudioAction label="星のメモの原文を開く" title="原文を読む" icon="document-text-outline" primary focusRef={original}
-          onPress={() => onRead(selected.id, () => focusControl(original.current))} />
+          onPress={() => onRead(selected.id, () => focusControl(original.current), '星座に戻る')} />
         <StudioAction label="このメモをマインドマップで開く" title="マップで開く" icon="git-network-outline" onPress={() => onMindMap(selected.id)} />
+        {materials && selected.body.trim() && <StudioMaterialAction materials={materials} id={selected.id} />}
       </View>
-      {onCraft && pinned?.id !== selected.id && <StudioAction
-        label={pinned ? '選んだ星2枚でアイデアをつくる' : 'この星を最初の素材にする'}
-        title={pinned ? 'この2枚でアイデアをつくる' : 'アイデアの素材に置く'} icon="construct-outline"
-        onPress={() => pinned ? onCraft([pinned.id, selected.id]) : setIngredient(selected.id)} />}
       {related.length > 0 && <>
         <Text accessibilityRole="header" style={styles.relatedTitle}>この星座でつないだメモ</Text>
         <View style={styles.list}>{related.map(({ note, reason }) => <NoteRow key={note.id} note={note} excerpt={reason || undefined} onPress={() => pick(note.id)} />)}</View>
@@ -283,7 +294,6 @@ const styles = StyleSheet.create({
   noteDetail: { gap: 12, paddingTop: 4 },
   noteBody: { color: studioColors.text, backgroundColor: studioColors.surface, padding: 13, borderRadius: 12, fontSize: 16, lineHeight: 25 },
   relatedTitle: { color: studioColors.text, fontSize: 15, fontWeight: '700', lineHeight: 21 },
-  pinned: { flexDirection: 'row', gap: 7, alignItems: 'center', paddingLeft: 9, backgroundColor: studioColors.soft, borderRadius: 11 },
   figure: { position: 'relative', borderRadius: 13 },
   starTarget: { position: 'absolute', width: '43%', borderRadius: 10, borderWidth: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5, gap: 2 },
   starTitle: { fontSize: 13, lineHeight: 17, fontWeight: '700', textAlign: 'center' },
