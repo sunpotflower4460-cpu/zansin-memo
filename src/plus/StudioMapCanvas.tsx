@@ -63,12 +63,12 @@ function pathFor({ a, b }: StudioGraph['lines'][number], radial: boolean) {
 }
 
 export function StudioMapCanvas({ index, center, selected, emphasisId, mode, palette, suggestions, expanded, neighborhood, groups, viewKey,
-  back, onDepth, onMore, onGroups, onSelect, fitRequest, placement, arrange, onStartArrange }: {
+  back, onDepth, onMore, onGroups, onSelect, fitRequest, placement, arrange, fullScreen }: {
   index: MapIndex; center: Seed; selected: string; emphasisId?: string; mode: 'radial' | 'constellation'; palette: StudioPreferences['palette'];
   suggestions: readonly Suggestion[]; expanded: boolean; neighborhood?: RadialNeighborhood; groups?: ConstellationGroup[]; viewKey: string;
   back?: { title: string; onPress: () => void }; onDepth?: () => void; onMore: (visibleIds: string[]) => void; onGroups?: () => void;
   onSelect: (id: string) => void; fitRequest: number;
-  placement?: readonly StudioPlacement[]; arrange?: Arrange; onStartArrange?: () => void;
+  placement?: readonly StudioPlacement[]; arrange?: Arrange; fullScreen?: { active: boolean; label: string; onPress: () => void };
 }) {
   const { fontScale } = useWindowDimensions();
   const [{ width, height }, setSize] = React.useState({ width: 0, height: 0 });
@@ -357,11 +357,6 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
         {hasCandidates && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
           <Text style={[styles.keyText, { color: colors.ink }]}>AIの候補</Text></View>}
       </View>
-      {onStartArrange && <Pressable accessibilityRole="button" accessibilityLabel="マインドマップの配置を編集" onPress={onStartArrange}
-        style={({ pressed }) => [styles.mapButton, styles.arrange, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
-        <Ionicons name="move-outline" size={16} color={colors.ink} />
-        <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>配置</Text>
-      </Pressable>}
       <View style={[styles.controls, { backgroundColor: colors.node, borderColor: colors.border }]}>
         <IconButton label="地図を縮小" icon="remove" color={colors.ink} background="transparent" disabled={camera.scale <= 1} onPress={() => zoom(1 / 1.25)} />
         <IconButton label="地図を拡大" icon="add" color={colors.ink} background="transparent" disabled={camera.scale >= maxScale} onPress={() => zoom(1.25)} />
@@ -371,6 +366,10 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
           <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>全体</Text>
         </Pressable>
       </View>
+      {fullScreen && <Pressable accessibilityRole="button" accessibilityLabel={fullScreen.label} onPress={fullScreen.onPress}
+        style={({ pressed }) => [styles.mapButton, styles.expand, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
+        <Ionicons name={fullScreen.active ? 'contract-outline' : 'expand-outline'} size={18} color={colors.ink} />
+      </Pressable>}
     </View>}
   </View>;
 }
@@ -395,7 +394,7 @@ const styles = StyleSheet.create({
   backTitle: { flexShrink: 1 },
   pressed: { opacity: 0.7 },
   bottom: { position: 'absolute', bottom: 7, left: 8, right: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 5 },
-  arrange: { minWidth: 47 },
+  expand: { minWidth: 44 },
   caption: { fontSize: 11, lineHeight: 15, fontWeight: '700', borderRadius: 8, overflow: 'hidden', paddingVertical: 3, paddingHorizontal: 7 },
   legend: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: 8, rowGap: 2, paddingBottom: 4 },
   key: { flexDirection: 'row', alignItems: 'center', gap: 4 },

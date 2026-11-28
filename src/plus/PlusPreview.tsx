@@ -64,6 +64,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const [purchase, setPurchase] = React.useState(false);
   const [data, setData] = React.useState(false);
   const [manualMap, setManualMap] = React.useState<false | 'more' | 'origin'>(false);
+  const [mapImmersive, setMapImmersive] = React.useState(false);
   const [reflectionPage, setReflectionPage] = React.useState(false);
   const [capture, setCapture] = React.useState<{ centerId?: string }>();
   const [purchaseModel] = React.useState(() => createPurchasePreview(comparison ? 'free' : 'active'));
@@ -134,8 +135,8 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
     onOpenAtelier={enabled.atelier && rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />;
   return <View style={plusStyles.full}>
-    {!purchase && !data && (onClose ? <View style={styles.comparisonHeader}>
-      <IconButton label="比較を閉じる" icon="close" disabled={Boolean(capture)} onPress={onClose} />
+    {!purchase && !data && (onClose ? !capture && (!mapImmersive || showFreeMap || overlay || manualMap) && <View style={styles.comparisonHeader}>
+      <IconButton label="比較を閉じる" icon="close" onPress={onClose} />
       <View style={styles.planLabel}>
         <Text style={styles.planTitle}>比較用の庭</Text>
         <Text style={styles.planState} accessibilityLiveRegion="polite">{showFreeMap ? '無料版を表示中' : 'Plus を表示中'}</Text>
@@ -172,7 +173,8 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
             onWrite={(centerId) => setCapture({ centerId })} onAtelier={enabled.atelier ? () => setAtelierList(true) : undefined}
             onAtelierFromMemo={enabled.atelier ? (id) => void openAtelier(id, [id]) : undefined}
             onCollection={enabled.collection ? (from) => setCollection({ backLabel: from === 'records' ? '記録に戻る' : 'その他に戻る' }) : undefined}
-            onData={() => setData(true)} onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap('more')} />
+            onData={() => setData(true)} onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap('more')}
+            onMapImmersiveChange={setMapImmersive} />
         </View>
         {manualMap && <View style={plusStyles.full}>{detailedMap}</View>}
       </> : detailedMap}

@@ -127,6 +127,15 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     await button('地図の設定から戻る').click();
     await button('カードを動かす').click();
     await heading('配置を編集').waitFor();
+    await button('配置の編集をやめる').click();
+    await tab('地図').click();
+    await button('星座').click();
+    await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key)).studioPreferences.layout === 'constellation', storageKey);
+    const arrange = button('マインドマップの配置を編集');
+    await arrange.getByText('配置を編集', { exact: true }).waitFor();
+    await arrange.click();
+    await heading('配置を編集').waitFor();
+    assert.equal(await tab('その他').count(), 0);
     const card = page.getByTestId('studio-map-node-example-1');
     const focus = page.getByTestId('studio-map-node-example-0');
     await card.waitFor();
@@ -145,22 +154,50 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     await drag(page, centerOf(await card.boundingBox()), to);
     await button('配置を保存').click();
     await heading('考えの地図').waitFor();
+    assert.equal(await button('星座').getAttribute('aria-pressed'), 'true');
+    await button('つながり一覧').click();
+    const listSearch = page.getByLabel('地図のメモを探す');
+    await listSearch.fill('銀杏');
+    await button('川辺の銀杏、つながり1件').click();
     const saved = (await read()).studioArrangements;
     assert.equal(saved[0].centerId, 'example-0');
     assert.equal(saved[0].placements[0].seedId, 'example-1');
     assert.equal((await read()).connections.length, 11);
-    await button('マインドマップの配置を編集').click();
+    await arrange.click();
     await heading('配置を編集').waitFor();
     assert.ok(centerOf(await card.boundingBox()).y < before.y - 20);
     await button('自動配置に戻す').click();
-    await button('配置の編集をやめる').click();
+    for (const discard of [false, true]) {
+      await Promise.all([
+        page.waitForEvent('dialog').then(async (dialog) => {
+          const message = dialog.message();
+          if (discard) await dialog.accept();
+          else await dialog.dismiss();
+          assert.match(message, /配置の変更を破棄しますか/);
+        }),
+        button('配置の編集をやめる').click(),
+      ]);
+      await heading(discard ? '考えの地図' : '配置を編集').waitFor();
+    }
     assert.deepEqual((await read()).studioArrangements, saved);
+    assert.equal(await button('つながり一覧').getAttribute('aria-pressed'), 'true');
+    assert.equal(await listSearch.inputValue(), '銀杏');
+    await heading('川辺の銀杏').waitFor();
+    await tab('記録').click();
+    await button('足あと').click();
+    await button('作品').click();
+    await button('作品、散歩の色').click();
+    await heading('作品集').waitFor();
+    await button('記録に戻る').click();
+    assert.equal(await button('作品').getAttribute('aria-pressed'), 'true');
+    await button(/の記録を開く$/).first().click();
+    assert.equal(await button('カレンダー').getAttribute('aria-pressed'), 'true');
     await page.reload();
     await start();
-    await button('マインドマップの配置を編集').click();
+    await arrange.click();
     assert.ok(centerOf(await card.boundingBox()).y < before.y - 20, 'saved arrangement reopens after reload');
     assert.deepEqual(errors, []);
-    console.log('PASS all five More destinations, draft to work, export, purchase, saved scope, drag and undo, cancellation and reload');
+    console.log('PASS More destinations, export, work records, arrangement from the Map tab and other views, undo, discard, and reload');
   } finally {
     await browser.close();
   }

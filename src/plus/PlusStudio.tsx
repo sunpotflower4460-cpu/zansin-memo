@@ -35,12 +35,13 @@ type StudioProps = {
   writer: GardenV3Writer; canArrange: () => boolean; canSuggest: () => boolean;
   onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onWrite: (centerId?: string) => void;
   onAtelier?: () => void; onAtelierFromMemo?: (id: string) => void; onCollection?: (from: 'more' | 'records') => void;
-  onData: () => void; onPurchase?: () => void; onManualMap: () => void;
+  onData: () => void; onPurchase?: () => void; onManualMap: () => void; onMapImmersiveChange?: (active: boolean) => void;
 };
 
-export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, onData, onPurchase, onManualMap }: StudioProps) {
+export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, onData, onPurchase,
+  onManualMap, onMapImmersiveChange }: StudioProps) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
-  const { width, height, fontScale } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.connections, store.seeds]);
   const first = index.byId.get('example-0') ?? index.live[0];
   const [tab, setTab] = React.useState<Tab>('map');
@@ -61,6 +62,11 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
   const focus = index.byId.get(aiCenter) ?? selected;
   const state = useStudioSuggestions(store, index, focus?.id ?? '', canSuggest() && (tab === 'ai' || (tab === 'map' && preview?.kind === 'suggestions')));
   const settings = store.studioPreferences ?? initialStudioPreferences;
+  const fullMap = immersive && tab === 'map' && !pick && !review;
+  React.useEffect(() => {
+    onMapImmersiveChange?.(fullMap);
+    return () => { if (fullMap) onMapImmersiveChange?.(false); };
+  }, [fullMap, onMapImmersiveChange]);
 
   if (!focus || !center || !selected) return null;
   const focusId = focus.id;
@@ -192,7 +198,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
     </View>
     {tab === 'more' && !pick && <StudioMore drafts={store.atelierProjects.length} works={store.collectionItems.length}
       onAtelier={onAtelier} onCollection={onCollection ? () => onCollection('more') : undefined}
-      onArrange={canArrange() && height >= 520 && fontScale <= (width <= 350 || height < 620 ? 1.3 : 1.45) ? () => {
+      onArrange={canArrange() && height >= 520 ? () => {
         changeTab('map'); setEditRequest((request) => request + 1);
       } : undefined} onSavedMaps={onManualMap} onPurchase={onPurchase} onData={onData} />}
     {pick && <ScrollView accessibilityViewIsModal onAccessibilityEscape={closePick} style={studioStyles.root}
@@ -217,7 +223,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
       <InsightCard suggestion={review} pending={pending} onRead={(id) => onRead(id, undefined, '候補に戻る')}
         onSettle={(entry, action) => void settle(entry, action, true)} />
     </ScrollView>}
-    {!review && !(immersive && tab === 'map' && !pick) && <View accessibilityRole="tablist" style={styles.nav}>
+    {!review && !fullMap && <View accessibilityRole="tablist" style={styles.nav}>
       {nav.map((item) => <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
         accessibilityState={{ selected: !pick && tab === item.id }} onPress={() => changeTab(item.id)}
         style={({ pressed }) => [styles.tab, !pick && tab === item.id && styles.active, pressed && studioStyles.quiet]}>

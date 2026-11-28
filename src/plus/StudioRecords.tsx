@@ -10,7 +10,8 @@ import { PlusInput, buttonSelectionProps } from './PlusUI';
 import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
 const modes = [{ id: 'calendar', label: 'カレンダー', icon: 'calendar-outline' }, { id: 'timeline', label: '足あと', icon: 'time-outline' }] as const;
-const filters = [{ id: 'all', label: 'すべて' }, { id: 'memo', label: 'メモ' }, { id: 'connection', label: 'つながり' }, { id: 'reflection', label: '振り返り' }] as const;
+const filters = [{ id: 'all', label: 'すべて' }, { id: 'memo', label: 'メモ' }, { id: 'connection', label: 'つながり' },
+  { id: 'reflection', label: '振り返り' }, { id: 'work', label: '作品' }] as const;
 const weekdayNames = ['月', '火', '水', '木', '金', '土', '日'];
 const eventTypes = {
   memo: { label: 'メモ', icon: 'document-text-outline' },
@@ -65,6 +66,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const scroll = React.useRef<ScrollView>(null);
   const editorTop = React.useRef(0);
   const revealEditor = React.useRef(false);
+  const revealDay = React.useRef(false);
   const reflection = store.reflections?.find((entry) => entry.day === day);
   const draft = drafts[day];
   const body = draft?.body ?? reflection?.body ?? '';
@@ -75,6 +77,8 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const monthlyConnections = monthlyEvents.filter(({ kind }) => kind === 'connection').length;
   const monthlyReflections = monthlyEvents.filter(({ kind }) => kind === 'reflection').length;
   const monthlyWorks = monthlyEvents.filter(({ kind }) => kind === 'work').length;
+  const latestDay = sortedDays[0];
+  const showLatestDay = Boolean(latestDay && latestDay !== day && latestDay !== today);
   const timeline = React.useMemo(() => sortedDays.flatMap((key) => {
     const entries = days.get(key)!;
     const matches = filter === 'all' ? entries : entries.filter(({ kind }) => kind === filter);
@@ -89,6 +93,11 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
     const next = adjacentMonth(month, offset);
     const latest = sortedDays.find((key) => key.startsWith(next));
     pick(latest ?? `${next}-01`);
+  }
+
+  function showDay(next: string) {
+    revealDay.current = true;
+    pick(next); setMode('calendar');
   }
 
   function openEditor(next = day) {
@@ -123,7 +132,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={studioStyles.content}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
     <StudioTitle title="記録">
-      {canEdit && <IconButton label="この日の振り返りへ" icon="book-outline" onPress={() => openEditor()} />}
+      {canEdit && <StudioAction label="この日の振り返りへ" title="振り返り" icon="book-outline" onPress={() => openEditor()} />}
       <IconButton label="メモを書く" icon="create-outline" onPress={onWrite} />
     </StudioTitle>
     {advanced && <StudioSegments label="記録の見方" items={modes} value={mode} onChange={(value) => { setMode(value); setLimit(basePageSize); }} />}
@@ -162,19 +171,19 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
           </Pressable>;
         })}
       </View>)}
-      <View style={studioStyles.wrap}>
+      {(day !== today || showLatestDay) && <View style={studioStyles.wrap}>
         {day !== today && <StudioAction label="今日に戻る" onPress={() => pick(today)} />}
-        {!!sortedDays[0] && sortedDays[0] !== day && <StudioAction label="最新の記録" onPress={() => pick(sortedDays[0])} />}
-      </View>
+        {showLatestDay && <StudioAction label="最新の記録" onPress={() => pick(latestDay)} />}
+      </View>}
     </View> : <>
       <StudioSegments label="足あとの絞り込み" items={filters} value={filter} onChange={(value) => { setFilter(value); setLimit(basePageSize); }} />
       <View style={studioStyles.card}>
       {timeline.length ? timeline.slice(0, limit).map(({ key, entries }) => <View key={key} style={styles.timelineDay}>
-        <Pressable accessibilityRole="button" onPress={() => { pick(key); setMode('calendar'); }} style={styles.timelineDate}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${dateLabel(key)}の記録を開く`} onPress={() => showDay(key)} style={styles.timelineDate}>
           <Text style={studioStyles.subtitle}>{dateLabel(key)}</Text><Ionicons name="chevron-forward" size={15} color={studioColors.muted} />
         </Pressable>
         <EventRows events={entries.slice(0, 4)} onRead={onRead} onWork={onWork} onRelation={onRelation} onReflect={() => openEditor(key)} />
-        {entries.length > 4 && <StudioAction label="この日の記録をすべて見る" onPress={() => { pick(key); setMode('calendar'); }} />}
+        {entries.length > 4 && <StudioAction label="この日の記録をすべて見る" onPress={() => showDay(key)} />}
       </View>) : <Text style={studioStyles.muted}>{filter === 'all' ? 'メモやつながりを残すと、日付順に並びます。' : 'この種類の記録はまだありません。'}</Text>}
       {timeline.length > limit && <StudioAction label="以前の足あとを表示" onPress={() => setLimit(limit + basePageSize)} />}
       </View>
@@ -204,7 +213,9 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
       </View>
       {notice && <Text accessibilityLiveRegion="polite" style={notice.error ? studioStyles.error : studioStyles.status}>{notice.text}</Text>}
     </View>}
-    {advanced && mode === 'calendar' && <View style={studioStyles.card}>
+    {advanced && mode === 'calendar' && <View style={studioStyles.card} onLayout={({ nativeEvent }) => {
+      if (revealDay.current) { revealDay.current = false; scroll.current?.scrollTo({ y: Math.max(0, nativeEvent.layout.y - 10), animated: false }); }
+    }}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}</Text>
       {events.length ? <EventRows events={events.slice(0, limit)} onRead={onRead} onWork={onWork} onRelation={onRelation} /> : <Text style={studioStyles.muted}>この日の記録はありません。</Text>}
       {events.length > limit && <StudioAction label="この日の記録をさらに表示" onPress={() => setLimit(limit + basePageSize)} />}

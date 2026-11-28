@@ -7,6 +7,8 @@ import type { Suggestion } from '../domain/plus/insights';
 import type { MapIndex } from '../domain/plus/map';
 import { constellationGroups, radialNeighbors } from '../domain/plus/studioGraph';
 import type { Seed } from '../domain/types';
+import { showConfirm } from '../utils/confirm';
+import { triggerSuccessFeedback } from '../utils/feedback';
 import { toSeedSnippet } from '../utils/seedText';
 import { buttonSelectionProps, focusControl } from './PlusUI';
 import { StudioMapCanvas, mapPalettes } from './StudioMapCanvas';
@@ -33,7 +35,10 @@ function DockButton({ label, text, icon, onPress, primary, focusRef }: {
 }
 
 type Drawer = 'nearby' | 'relations' | 'groups' | 'path' | 'actions';
-type Arrangement = { centerId: string; initial: readonly StudioPlacement[]; points: StudioPlacement[]; history: StudioPlacement[][]; wasFullScreen: boolean };
+type Arrangement = {
+  centerId: string; selectedId: string; expanded: boolean; wasFullScreen: boolean;
+  initial: readonly StudioPlacement[]; points: StudioPlacement[]; history: StudioPlacement[][];
+};
 
 function savedRelations(edges: MapIndex['edges'], seedId: string) {
   return new Map(edges.flatMap((edge) => {
@@ -43,7 +48,7 @@ function savedRelations(edges: MapIndex['edges'], seedId: string) {
   }));
 }
 
-export function StudioMapPanel({ index, center, selected, settings, hints, preview, immersive, back, onImmersive,
+export function StudioMapPanel({ index, center, selected: mapSelection, settings, hints, preview, immersive, back, onImmersive,
   onSearch, onSettings, onSelect, onFocus, onRead, onAI, onReview, onWrite, onAtelier, canArrange, editRequest, placement, onSavePlacement }: {
   index: MapIndex; center: Seed; selected: Seed; settings: StudioPreferences; hints: readonly Suggestion[];
   preview?: { kind: 'suggestions' | 'connection'; label: string; emphasisId?: string; onClose: () => void };
@@ -57,17 +62,20 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   const { width, height, fontScale } = useWindowDimensions();
   const compact = width <= 350 || height < 620;
   const preferList = fontScale > (compact ? 1.3 : 1.45) || height < 520;
+  const canEditMap = canArrange && !preview && height >= 520;
   const [arrangement, setArrangement] = React.useState<Arrangement>();
   const [arrangeNotice, setArrangeNotice] = React.useState<string>();
   const [saving, setSaving] = React.useState(false);
   const saveLock = React.useRef(false);
   const requestHandled = React.useRef(editRequest);
-  const editing = arrangement && arrangement.centerId === center.id && !preview && canArrange;
-  const layout = preferList ? 'list' : preview || editing ? 'radial' : settings.layout;
+  const editing = Boolean(arrangement && arrangement.centerId === center.id && canEditMap);
+  const layout = editing ? 'radial' : preferList ? 'list' : preview ? 'radial' : settings.layout;
+  const selected = editing && arrangement ? index.byId.get(arrangement.selectedId) ?? center : mapSelection;
   const [expandedViews, setExpandedViews] = React.useState<string[]>([]);
   const viewKey = preview?.kind ?? 'garden';
   const depthKey = JSON.stringify([viewKey, center.id]);
-  const expanded = expandedViews.includes(depthKey);
+  const expandedInMap = expandedViews.includes(depthKey);
+  const expanded = editing && arrangement ? arrangement.expanded : expandedInMap;
   const [drawer, setDrawer] = React.useState<Drawer>();
   const [hiddenNotes, setHiddenNotes] = React.useState<string[]>([]);
   const [fitRequest, setFitRequest] = React.useState(0);
@@ -82,6 +90,9 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   const menuButton = React.useRef<View>(null);
   const pathButton = React.useRef<View>(null);
   const searchButton = React.useRef<View>(null);
+  const arrangeButton = React.useRef<View>(null);
+  const endArrangeButton = React.useRef<View>(null);
+  const wasEditing = React.useRef(false);
   const restoreFocus = React.useRef<View>(null);
   const atCenter = center.id === selected.id;
   const neighbors = React.useMemo(() => [...index.adjacent.get(selected.id) ?? []], [index.adjacent, selected.id]);
@@ -114,12 +125,13 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
     ? `「${toSeedSnippet(via, 19)}」を経由` : directlyLinked ? '中心と直接つながるメモ' : '選んだメモ';
 
   const startArrangement = React.useCallback(() => {
-    if (!canArrange || preferList || preview || editing) return;
+    if (!canEditMap || editing) return;
     const initial = placement ?? noPlacements;
-    setArrangement({ centerId: center.id, initial, points: [...initial], history: [], wasFullScreen: immersive });
+    setArrangement({ centerId: center.id, selectedId: mapSelection.id, expanded: expandedInMap, wasFullScreen: immersive,
+      initial, points: [...initial], history: [] });
     setArrangeNotice(undefined);
     setAppearance(false); setDrawer(undefined); onImmersive(true);
-  }, [canArrange, center.id, editing, immersive, onImmersive, placement, preferList, preview]);
+  }, [canEditMap, center.id, editing, expandedInMap, immersive, mapSelection.id, onImmersive, placement]);
 
   React.useEffect(() => {
     if (requestHandled.current === editRequest) return;
@@ -127,10 +139,26 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
     startArrangement();
   }, [editRequest, startArrangement]);
 
+  React.useEffect(() => {
+    if (wasEditing.current === editing) return;
+    wasEditing.current = editing;
+    const frame = requestAnimationFrame(() => focusControl(editing ? endArrangeButton.current : arrangeButton.current));
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
+
   function endArrangement() {
     if (arrangement) onImmersive(arrangement.wasFullScreen);
     setArrangement(undefined);
     setArrangeNotice(undefined);
+  }
+
+  function requestEndArrangement() {
+    if (saveLock.current) return;
+    if (!arrangement?.history.length) { endArrangement(); return; }
+    showConfirm('配置の変更を破棄しますか？', '最後に保存した配置に戻ります。', [
+      { text: '編集を続ける', style: 'cancel' },
+      { text: '破棄する', style: 'destructive', onPress: endArrangement },
+    ]);
   }
 
   function changePlacement(change: (before: StudioPlacement[]) => StudioPlacement[]) {
@@ -153,7 +181,7 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
     try {
       const failure = await onSavePlacement(arrangement.centerId, arrangement.points, arrangement.initial);
       if (failure) setArrangeNotice(failure);
-      else endArrangement();
+      else { endArrangement(); triggerSuccessFeedback(); }
     } finally { saveLock.current = false; setSaving(false); }
   }
 
@@ -179,6 +207,10 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   }
 
   function chooseNode(id: string) {
+    if (editing) {
+      setArrangement((before) => before && before.selectedId !== id ? { ...before, selectedId: id } : before);
+      return;
+    }
     onSelect(id);
     const suggestion = hints.find(({ to }) => to.id === id);
     if (suggestion) onReview(suggestion);
@@ -191,6 +223,10 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   }
 
   function setDepth(next: boolean) {
+    if (editing) {
+      setArrangement((before) => before && { ...before, expanded: next });
+      return;
+    }
     setExpandedViews((before) => next ? [...before.filter((key) => key !== depthKey).slice(-31), depthKey] : before.filter((key) => key !== depthKey));
   }
 
@@ -204,7 +240,7 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   }
 
   function toggleDepth() {
-    if (expanded && via && !pending) onSelect(center.id);
+    if (expanded && via && !pending) chooseNode(center.id);
     setDepth(!expanded);
   }
 
@@ -218,29 +254,36 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   const drawerTitle = drawer === 'groups' ? group?.label ?? '星座のまとまり'
     : drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : '地図の続き';
   const closeLabel = drawer === 'groups' ? 'まとまりを閉じる' : '地図の操作画面を閉じる';
+  const fullScreenLabel = immersive ? '全画面を閉じる' : '地図を全画面で開く';
+  function toggleFullScreen() {
+    setAppearance(false); onImmersive(!immersive);
+  }
 
   return <View style={studioStyles.root}>
-    <View style={[styles.workspace, drawer && styles.hidden]}>
-      <StudioTitle title={editing ? '配置を編集' : '考えの地図'}
-        back={editing ? { label: '配置の編集をやめる', onPress: endArrangement, disabled: saving } : undefined}>
+    <View style={[styles.workspace, drawer && styles.hidden]} onAccessibilityEscape={editing ? requestEndArrangement : undefined}>
+      <StudioTitle title={editing ? '配置を編集' : '考えの地図'} compact={!editing && canEditMap && width <= 350}
+        back={editing ? { label: '配置の編集をやめる', onPress: requestEndArrangement, disabled: saving, focusRef: endArrangeButton } : undefined}>
         {!editing && <IconButton label="地図を検索" icon="search-outline" focusRef={searchButton} onPress={() => onSearch(() => focusControl(searchButton.current))} />}
-        {!editing && !immersive && <IconButton label={appearance ? '表示スタイルを閉じる' : '表示スタイル'} icon="color-palette-outline" focusRef={colorButton}
-            color={appearance ? '#fffdf7' : undefined} background={appearance ? studioColors.green : undefined} onPress={() => {
-              setAppearance(!appearance);
-              if (appearance) focusControl(colorButton.current);
-            }} />}
-        {!editing && (immersive || layout !== 'list') && <IconButton label={immersive ? '全画面を閉じる' : '地図を全画面で開く'}
-          icon={immersive ? 'contract-outline' : 'expand-outline'} onPress={() => { setAppearance(false); onImmersive(!immersive); }} />}
+        {!editing && canEditMap && <StudioAction label="マインドマップの配置を編集" title="配置を編集" icon="move-outline" primary
+          focusRef={arrangeButton} onPress={startArrangement} />}
+        {!editing && immersive && layout === 'list' && <IconButton label={fullScreenLabel} icon="contract-outline" onPress={toggleFullScreen} />}
       </StudioTitle>
       {preview && <View style={styles.previewBar}>
         <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={[studioStyles.text, studioStyles.grow]}>{preview.label}</Text>
         <StudioAction label="元の画面に戻る" onPress={preview.onClose} />
       </View>}
-      {!preview && !editing && !immersive && !preferList && <StudioSegments label="つながりの見方" items={layouts} value={settings.layout} onChange={(value) => onSettings({ layout: value })} />}
+      {!preview && !editing && !immersive && !preferList && <View style={studioStyles.row}>
+        <StudioSegments label="つながりの見方" items={layouts} value={settings.layout} onChange={(value) => onSettings({ layout: value })} compact />
+        <IconButton label={appearance ? '表示スタイルを閉じる' : '表示スタイル'} icon="color-palette-outline" focusRef={colorButton}
+          color={appearance ? '#fffdf7' : undefined} background={appearance ? studioColors.green : undefined} onPress={() => {
+            setAppearance(!appearance);
+            if (appearance) focusControl(colorButton.current);
+          }} />
+      </View>}
       {layout !== 'list' && <StudioMapCanvas index={index} center={center} selected={selected.id} emphasisId={preview?.emphasisId}
         mode={layout} palette={settings.palette} groups={groups} viewKey={editing ? 'arrangement' : viewKey} neighborhood={neighborhood} fitRequest={fitRequest}
         back={editing ? undefined : back} onDepth={layout === 'radial' && neighborhood.second.length ? toggleDepth : undefined}
-        onStartArrange={!editing && !preview && canArrange && layout === 'radial' ? startArrangement : undefined}
+        fullScreen={editing ? undefined : { active: immersive, label: fullScreenLabel, onPress: toggleFullScreen }}
         placement={editing && arrangement ? arrangement.points : placement}
         arrange={editing ? { onPlace: (point) => changePlacement((before) => [
           ...before.filter(({ seedId }) => seedId !== point.seedId), ...(point.x || point.y ? [point] : []),
@@ -258,7 +301,7 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
       </ScrollView>}
       {editing && arrangement ? <View style={styles.dock}>
         <Text accessibilityLiveRegion="polite" style={[studioStyles.muted, arrangeNotice && styles.placementError]}>
-          {arrangeNotice ?? (preferList ? '大きい文字では、地図の配置を確認できません。' : 'カードをドラッグ')}
+          {arrangeNotice ?? (arrangement.history.length ? '未保存の変更があります' : 'カードをドラッグ')}
         </Text>
         <View style={studioStyles.wrap}>
           <StudioAction label="配置を保存" icon="checkmark" primary disabled={saving || !arrangement.history.length} onPress={() => void saveArrangement()} />
