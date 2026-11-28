@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { GardenV3Writer } from '../data/gardenV3Writer';
 import type { MapIndex } from '../domain/plus/map';
 import { adjacentMonth, calendarDate, monthDays, recordDays, saveReflection, type RecordEvent } from '../domain/plus/studio';
@@ -10,6 +10,7 @@ import { PlusInput, buttonSelectionProps } from './PlusUI';
 import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
 const modes = [{ id: 'calendar', label: 'カレンダー' }, { id: 'timeline', label: '足あと' }] as const;
+const filters = [{ id: 'all', label: 'すべて' }, { id: 'memo', label: 'メモ' }, { id: 'connection', label: 'つながり' }, { id: 'reflection', label: '振り返り' }] as const;
 const weekdayNames = ['月', '火', '水', '木', '金', '土', '日'];
 const eventTypes = {
   memo: { label: 'メモ', icon: 'document-text-outline' },
@@ -20,27 +21,34 @@ const eventTypes = {
 const dateLabel = (key: string) => calendarDate(key).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
 const basePageSize = 24;
 
-function EventRows({ events, onRead, onWork, onReflect }: {
-  events: RecordEvent[]; onRead: (seedId: string) => void; onWork: () => void; onReflect?: () => void;
+type OpenRelation = (pair: [string, string]) => void;
+
+function EventRows({ events, onRead, onWork, onRelation, onReflect }: {
+  events: RecordEvent[]; onRead: (seedId: string) => void; onWork: () => void; onRelation?: OpenRelation; onReflect?: () => void;
 }) {
   return events.map((event) => {
-    const onPress = event.seedId ? () => onRead(event.seedId!) : event.kind === 'work' ? onWork : onReflect;
+    const onPress = event.kind === 'memo' ? () => onRead(event.seedId)
+      : event.kind === 'connection' ? onRelation && (() => onRelation(event.pair))
+        : event.kind === 'work' ? onWork : onReflect;
     const content = <>
       <View style={styles.eventIcon}><Ionicons name={eventTypes[event.kind].icon} color={studioColors.green} size={17} /></View>
       <View style={studioStyles.grow}><Text style={studioStyles.muted}>{eventTypes[event.kind].label}</Text>
-        <Text style={studioStyles.text} numberOfLines={2}>{event.label}</Text></View>
+        <Text style={studioStyles.text} numberOfLines={2}>{event.label}</Text>
+        {event.kind === 'connection' && event.note && <Text style={studioStyles.muted} numberOfLines={2}>{event.note}</Text>}</View>
       {onPress && <Ionicons name="chevron-forward" size={15} color={studioColors.muted} />}
     </>;
-    return onPress ? <Pressable key={event.id} accessibilityRole="button" onPress={onPress} style={styles.event}>{content}</Pressable>
+    return onPress ? <Pressable key={event.id} accessibilityRole="button" accessibilityLabel={event.kind === 'connection'
+      ? `${event.label}を地図で見る` : undefined} onPress={onPress} style={({ pressed }) => [styles.event, pressed && studioStyles.quiet]}>{content}</Pressable>
       : <View key={event.id} style={styles.event}>{content}</View>;
   });
 }
 
-export function StudioRecords({ writer, index, advanced, canCreateReflection, onRead, onWork, onWrite }: {
+export function StudioRecords({ writer, index, advanced, canCreateReflection, onRead, onWork, onRelation, onWrite }: {
   writer: GardenV3Writer; index: MapIndex; advanced: boolean; canCreateReflection: () => boolean;
-  onRead: (seedId: string) => void; onWork: () => void; onWrite: () => void;
+  onRead: (seedId: string) => void; onWork: () => void; onRelation?: OpenRelation; onWrite: () => void;
 }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
+  const { width } = useWindowDimensions();
   const today = getLocalDateKey();
   const days = React.useMemo(() => recordDays(store, index.byId), [index.byId, store]);
   const sortedDays = React.useMemo(() => [...days.keys()].sort().reverse(), [days]);
@@ -49,6 +57,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const calendar = React.useMemo(() => monthDays(month), [month]);
   const calendarRows = Math.ceil((calendar.map(({ inMonth }) => inMonth).lastIndexOf(true) + 1) / 7);
   const [mode, setMode] = React.useState<'calendar' | 'timeline'>('calendar');
+  const [filter, setFilter] = React.useState<typeof filters[number]['id']>('all');
   const [limit, setLimit] = React.useState(basePageSize);
   const [drafts, setDrafts] = React.useState<Record<string, { body: string; base?: string }>>({});
   const [notice, setNotice] = React.useState<{ text: string; error: boolean }>();
@@ -56,6 +65,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const working = React.useRef(false);
   const scroll = React.useRef<ScrollView>(null);
   const editorTop = React.useRef(0);
+  const revealEditor = React.useRef(false);
   const reflection = store.reflections?.find((entry) => entry.day === day);
   const draft = drafts[day];
   const body = draft?.body ?? reflection?.body ?? '';
@@ -65,6 +75,12 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const monthlyMemos = monthlyEvents.filter(({ kind }) => kind === 'memo').length;
   const monthlyConnections = monthlyEvents.filter(({ kind }) => kind === 'connection').length;
   const monthlyReflections = monthlyEvents.filter(({ kind }) => kind === 'reflection').length;
+  const monthlyWorks = monthlyEvents.filter(({ kind }) => kind === 'work').length;
+  const timeline = React.useMemo(() => sortedDays.flatMap((key) => {
+    const entries = days.get(key)!;
+    const matches = filter === 'all' ? entries : entries.filter(({ kind }) => kind === filter);
+    return matches.length ? [{ key, entries: matches }] : [];
+  }), [days, filter, sortedDays]);
 
   function pick(next: string) {
     setDay(next); setMonth(next.slice(0, 7)); setLimit(basePageSize); setNotice(undefined);
@@ -74,6 +90,14 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
     const next = adjacentMonth(month, offset);
     const latest = sortedDays.find((key) => key.startsWith(next));
     pick(latest ?? `${next}-01`);
+  }
+
+  function openEditor(next = day) {
+    if (mode !== 'calendar' || next !== day) {
+      revealEditor.current = true;
+      pick(next);
+      setMode('calendar');
+    } else scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false });
   }
 
   async function save() {
@@ -98,20 +122,26 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
 
   return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={studioStyles.content}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
-    <StudioTitle title="記録" subtitle="日付からメモと、考えのつながりを振り返る">
+    <StudioTitle title="記録" subtitle="メモと、そこから生まれたつながり">
+      {canEdit && <IconButton label="この日の振り返りへ" icon="book-outline" onPress={() => openEditor()} />}
       <IconButton label="メモを書く" icon="create-outline" onPress={onWrite} />
     </StudioTitle>
     {advanced && <StudioSegments label="記録の見方" items={modes} value={mode} onChange={(value) => { setMode(value); setLimit(basePageSize); }} />}
-    {advanced && (mode === 'calendar' ? <View style={[studioStyles.card, styles.calendar]}>
+    {advanced && (mode === 'calendar' ? <View style={[studioStyles.card, styles.calendar, width < 352 && styles.calendarNarrow]}>
       <View style={studioStyles.row}>
         <IconButton label="前の月" icon="chevron-back" onPress={() => shiftMonth(-1)} />
         <Text accessibilityRole="header" style={[studioStyles.subtitle, styles.month]}>{calendarDate(`${month}-01`).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' })}</Text>
         <IconButton label="次の月" icon="chevron-forward" onPress={() => shiftMonth(1)} />
       </View>
       <View style={styles.summary}>
-        <Text style={studioStyles.muted}>メモ {monthlyMemos}</Text>
-        <Text style={studioStyles.muted}>つながり {monthlyConnections}</Text>
-        <Text style={studioStyles.muted}>振り返り {monthlyReflections}</Text>
+        {[
+          { label: 'メモ', count: monthlyMemos, color: studioColors.green },
+          { label: 'つながり', count: monthlyConnections, color: studioColors.orange },
+          { label: '振り返り', count: monthlyReflections, color: '#625782' },
+          ...(monthlyWorks ? [{ label: '作品', count: monthlyWorks, color: '#325e82' }] : []),
+        ].map(({ label, count, color }) => <View key={label} style={styles.legend}>
+          <View style={[styles.marker, { backgroundColor: color }]} /><Text style={studioStyles.muted}>{label} {count}</Text>
+        </View>)}
       </View>
       <View style={styles.week}>{weekdayNames.map((label) => <Text key={label} style={styles.weekLabel}>{label}</Text>)}</View>
       {Array.from({ length: calendarRows }, (_, row) => <View key={row} style={styles.week}>
@@ -126,7 +156,8 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
             <View style={styles.markers}>
               {kinds.has('memo') && <View style={[styles.marker, { backgroundColor: active ? '#fff6df' : studioColors.green }]} />}
               {kinds.has('connection') && <View style={[styles.marker, { backgroundColor: active ? '#f4c99f' : studioColors.orange }]} />}
-              {(kinds.has('reflection') || kinds.has('work')) && <View style={[styles.marker, { backgroundColor: active ? '#d6c5f0' : '#625782' }]} />}
+              {kinds.has('reflection') && <View style={[styles.marker, { backgroundColor: active ? '#d6c5f0' : '#625782' }]} />}
+              {kinds.has('work') && <View style={[styles.marker, { backgroundColor: active ? '#acd4f5' : '#325e82' }]} />}
             </View>
           </Pressable>;
         })}
@@ -135,22 +166,28 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
         {day !== today && <StudioAction label="今日に戻る" onPress={() => pick(today)} />}
         {!!sortedDays[0] && sortedDays[0] !== day && <StudioAction label="最新の記録" onPress={() => pick(sortedDays[0])} />}
       </View>
-    </View> : <View style={studioStyles.card}>
-      {sortedDays.length ? sortedDays.slice(0, limit).map((key) => <View key={key} style={styles.timelineDay}>
+    </View> : <>
+      <StudioSegments label="足あとの絞り込み" items={filters} value={filter} onChange={(value) => { setFilter(value); setLimit(basePageSize); }} />
+      <View style={studioStyles.card}>
+      {timeline.length ? timeline.slice(0, limit).map(({ key, entries }) => <View key={key} style={styles.timelineDay}>
         <Pressable accessibilityRole="button" onPress={() => { pick(key); setMode('calendar'); }} style={styles.timelineDate}>
           <Text style={studioStyles.subtitle}>{dateLabel(key)}</Text><Ionicons name="chevron-forward" size={15} color={studioColors.muted} />
         </Pressable>
-        <EventRows events={days.get(key)!.slice(0, 4)} onRead={onRead} onWork={onWork} onReflect={() => { pick(key); setMode('calendar'); }} />
-        {days.get(key)!.length > 4 && <StudioAction label={`この日の記録をすべて見る · ${days.get(key)!.length}件`} onPress={() => { pick(key); setMode('calendar'); }} />}
-      </View>) : <Text style={studioStyles.muted}>メモやつながりを残すと、ここから日付順に振り返れます。</Text>}
-      {sortedDays.length > limit && <StudioAction label="以前の足あとを表示" onPress={() => setLimit(limit + basePageSize)} />}
-    </View>)}
+        <EventRows events={entries.slice(0, 4)} onRead={onRead} onWork={onWork} onRelation={onRelation} onReflect={() => openEditor(key)} />
+        {entries.length > 4 && <StudioAction label="この日の記録をすべて見る" onPress={() => { pick(key); setMode('calendar'); }} />}
+      </View>) : <Text style={studioStyles.muted}>{filter === 'all' ? 'メモやつながりを残すと、日付順に並びます。' : 'この種類の記録はまだありません。'}</Text>}
+      {timeline.length > limit && <StudioAction label="以前の足あとを表示" onPress={() => setLimit(limit + basePageSize)} />}
+      </View>
+    </>)}
     {!advanced && <View style={studioStyles.card}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>保存した振り返り</Text>
       {(store.reflections ?? []).slice().sort((a, b) => b.day.localeCompare(a.day)).map((item) =>
         <StudioAction key={item.day} label={dateLabel(item.day)} onPress={() => pick(item.day)} />)}
     </View>}
-    {canEdit && (mode === 'calendar' || !advanced) && <View style={studioStyles.card} onLayout={({ nativeEvent }) => { editorTop.current = nativeEvent.layout.y; }}>
+    {canEdit && (mode === 'calendar' || !advanced) && <View style={studioStyles.card} onLayout={({ nativeEvent }) => {
+      editorTop.current = nativeEvent.layout.y;
+      if (revealEditor.current) { revealEditor.current = false; scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false }); }
+    }}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}の振り返り</Text>
       <PlusInput multiline accessibilityLabel="この日の振り返り" placeholder="気づいたことを、ひとこと" style={styles.editor} value={body}
         editable={!busy} onFocus={() => {
@@ -164,7 +201,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
     </View>}
     {advanced && mode === 'calendar' && <View style={studioStyles.card}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}の記録</Text>
-      {events.length ? <EventRows events={events.slice(0, limit)} onRead={onRead} onWork={onWork} /> : <Text style={studioStyles.muted}>この日のメモやつながりはありません。</Text>}
+      {events.length ? <EventRows events={events.slice(0, limit)} onRead={onRead} onWork={onWork} onRelation={onRelation} /> : <Text style={studioStyles.muted}>この日のメモやつながりはありません。</Text>}
       {events.length > limit && <StudioAction label="この日の記録をさらに表示" onPress={() => setLimit(limit + basePageSize)} />}
     </View>}
   </ScrollView>;
@@ -172,8 +209,10 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
 
 const styles = StyleSheet.create({
   calendar: { paddingHorizontal: 7, gap: 4 },
+  calendarNarrow: { marginHorizontal: -10, paddingHorizontal: 0 },
   month: { flex: 1, textAlign: 'center' },
   summary: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', paddingVertical: 3, gap: 5 },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   week: { flexDirection: 'row' },
   weekLabel: { flex: 1, textAlign: 'center', fontSize: 12, color: studioColors.muted },
   day: { flex: 1, borderRadius: 11, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingTop: 4 },

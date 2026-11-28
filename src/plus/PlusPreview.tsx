@@ -54,6 +54,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const status = React.useSyncExternalStore(writer.subscribe, writer.getStatus);
   const [reading, setReading] = React.useState<string>();
+  const [readingBack, setReadingBack] = React.useState('地図に戻る');
   const [ai, setAi] = React.useState<{ seedId: string; scope: string[]; origin: MapReturnContext }>();
   const [origin, setOrigin] = React.useState<MapReturnContext>();
   const [atelier, setAtelier] = React.useState<string>();
@@ -121,8 +122,12 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     } finally { creating.current = false; }
   }
 
+  function openReading(id: string, onReturn?: () => void, back = '地図に戻る') {
+    setReadingBack(back); returnFocus.current = onReturn; setReading(id);
+  }
+
   const detailedMap = <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups}
-    onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
+    onOpenSeed={openReading}
     onOpenCandidates={enabled.proposals ? (seedId, scope, origin) => setAi({ seedId, scope, origin }) : undefined}
     restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
     onOpenAtelier={enabled.atelier && rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />;
@@ -161,7 +166,7 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
         <PlusComparisonMap store={store} />
       </> : comparison ? <>
         <View style={[plusStyles.full, manualMap && { display: 'none' }]}>
-          <PlusStudio writer={writer} canArrange={canArrange} canSuggest={canRequest} onRead={setReading}
+          <PlusStudio writer={writer} canArrange={canArrange} canSuggest={canRequest} onRead={openReading}
             onWrite={(centerId) => setCapture({ centerId })} onAtelier={enabled.atelier ? () => setAtelierList(true) : undefined}
             onCollection={enabled.collection ? () => setCollection({}) : undefined} onData={() => setData(true)}
             onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap(true)} />
@@ -188,11 +193,11 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     {reflectionPage && <View style={plusStyles.full}><View style={styles.tools}>
       <StudioAction label="無料版の地図に戻る" icon="arrow-back-outline" onPress={() => setReflectionPage(false)} /></View>
       <StudioRecords writer={writer} index={index} advanced={false} canCreateReflection={canArrange}
-        onRead={(id) => { setReflectionPage(false); setReading(id); }} onWork={() => setCollection({})}
+        onRead={(id) => { setReflectionPage(false); openReading(id); }} onWork={() => setCollection({})}
         onWrite={() => { setReflectionPage(false); setCapture({}); }} />
     </View>}
     {reading && <ScrollView contentContainerStyle={plusStyles.page}>
-      <View><PlusButton label="地図に戻る" focusRef={backControl} onPress={() => setReading(undefined)} /></View>
+      <View><PlusButton label={readingBack} focusRef={backControl} onPress={() => setReading(undefined)} /></View>
       <Heading title>{selected ? selected.title || toSeedSnippet(selected) : '原文を確認できません'}</Heading>
       {selected && <SectionCard><Heading>元のメモ</Heading><Text selectable style={plusStyles.original}>{selected.body}</Text>
         {selected.synthesis && <><Heading>現在の芽</Heading><Text selectable style={plusStyles.original}>{selected.synthesis.statement}</Text></>}

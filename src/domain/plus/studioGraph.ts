@@ -1,4 +1,5 @@
 import { connectionId } from '../../data/gardenModel';
+import { toSeedSnippet } from '../../utils/seedText';
 import type { Seed } from '../types';
 import type { Suggestion } from './insights';
 import { mapGroups, type MapIndex } from './map';
@@ -9,6 +10,7 @@ type Node = Cell & { seed: Seed; group: number; isCenter: boolean; suggested: bo
 type Line = { id: string; a: Node; b: Node; suggested: boolean };
 type Island = Cell & { group: number };
 export type StudioGraph = { nodes: Node[]; lines: Line[]; islands: Island[]; hidden: number; scope: number };
+export type ConstellationGroup = { id: string; label: string; seedIds: string[]; linked: boolean };
 
 function linkGraph(index: MapIndex, nodes: Node[], suggestions: Suggestion[]) {
   const lookup = new Map(nodes.map((node) => [node.seed.id, node]));
@@ -28,7 +30,7 @@ function linkGraph(index: MapIndex, nodes: Node[], suggestions: Suggestion[]) {
   return lines;
 }
 
-export function radialGraph(index: MapIndex, center: Seed, { width, height }: Size, suggestions: Suggestion[], expanded: boolean): StudioGraph {
+export function radialGraph(index: MapIndex, center: Seed, { width, height }: Size, suggestions: readonly Suggestion[], expanded: boolean, emphasisId?: string): StudioGraph {
   const direct = [...index.adjacent.get(center.id) ?? []];
   const directIds = new Set(direct);
   const indirect = new Set<string>();
@@ -54,7 +56,8 @@ export function radialGraph(index: MapIndex, center: Seed, { width, height }: Si
   const branchCount = Math.min(8, Math.max(4, Math.floor((height - 90) / 60) * 2));
   const directVisible = branches.slice(0, Math.max(1, branchCount - (hints.length ? 2 : 0) - (indirect.size ? 2 : 0)));
   const nearIndirect = directVisible.flatMap((id) => [...index.adjacent.get(id) ?? []].filter((peer) => indirect.has(peer)));
-  const ordered = [...new Set([...directVisible, ...hintIds, ...nearIndirect, ...distinct, ...repetitive, ...indirect])];
+  const priority = emphasisId && (directIds.has(emphasisId) || hintIds.has(emphasisId)) ? [emphasisId] : [];
+  const ordered = [...new Set([...priority, ...directVisible, ...hintIds, ...nearIndirect, ...distinct, ...repetitive, ...indirect])];
   const ids = ordered.slice(0, branchCount);
   const centerY = (height - 20) / 2;
   const nodes: Node[] = [{
@@ -74,11 +77,18 @@ export function radialGraph(index: MapIndex, center: Seed, { width, height }: Si
   return { nodes, lines: linkGraph(index, nodes, hints), islands: [], hidden: ordered.length - ids.length, scope: ordered.length + 1 };
 }
 
-export function constellationGraph(index: MapIndex, center: Seed, { width, height }: Size): StudioGraph {
+export function constellationGroups(index: MapIndex): ConstellationGroup[] {
   const groups = mapGroups({ ...index, seeds: index.live, missing: 0 }, []);
-  const components = groups.flatMap((group) => group.kind === 'isolated'
-    ? Array.from({ length: Math.ceil(group.seedIds.length / 3) }, (_, i) => ({ ids: group.seedIds.slice(i * 3, i * 3 + 3), linked: false }))
-    : [{ ids: group.seedIds, linked: true }]);
+  return groups.map(({ id, seedIds, kind }) => {
+    const linked = kind === 'connections';
+    const ordered = linked ? [...seedIds].sort((a, b) => (index.adjacent.get(b)?.size ?? 0) - (index.adjacent.get(a)?.size ?? 0) || a.localeCompare(b)) : seedIds;
+    return { id, label: linked ? `「${toSeedSnippet(index.byId.get(ordered[0])!, 19)}」のまとまり` : 'つながりのないメモ', seedIds: ordered, linked };
+  }).sort((a, b) => Number(b.linked) - Number(a.linked) || b.seedIds.length - a.seedIds.length || a.id.localeCompare(b.id));
+}
+
+export function constellationGraph(index: MapIndex, center: Seed, { width, height }: Size, groups = constellationGroups(index)): StudioGraph {
+  const components = groups.flatMap<{ ids: string[]; linked: boolean }>(({ seedIds, linked }) => linked ? [{ ids: seedIds, linked }]
+    : Array.from({ length: Math.ceil(seedIds.length / 3) }, (_, i) => ({ ids: seedIds.slice(i * 3, i * 3 + 3), linked })));
   const columns = width > 540 ? 3 : 2;
   const anchor = components.find((group) => group.ids.includes(center.id));
   const visible = (anchor ? [anchor, ...components.filter((group) => group !== anchor)] : components).slice(0, columns * 2);
@@ -88,8 +98,15 @@ export function constellationGraph(index: MapIndex, center: Seed, { width, heigh
   const rowHeight = (height - 83) / rows;
   const islands: Island[] = [];
   const nodes = visible.flatMap(({ ids, linked }, groupIndex) => {
-    const ranked = [...ids].sort((a, b) => Number(b === center.id) - Number(a === center.id) ||
-      (index.adjacent.get(b)?.size ?? 0) - (index.adjacent.get(a)?.size ?? 0) || a.localeCompare(b, undefined, { numeric: true }));
+    const start = ids.includes(center.id) ? center.id : ids[0];
+    // Extend the preview along real links from its representative, so a visible
+    // component still reads as connected when most of its members are omitted.
+    const walk = new Set([start]);
+    if (linked) for (const id of walk) {
+      for (const peer of index.adjacent.get(id) ?? []) walk.add(peer);
+      if (walk.size >= 3) break;
+    }
+    const ranked = [...new Set([...walk, ...ids])];
     const clusterX = 13 + (groupIndex % columns + 0.5) * columnWidth;
     const clusterY = 36 + (Math.floor(groupIndex / columns) + 0.5) * rowHeight;
     const count = Math.min(3, ranked.length);

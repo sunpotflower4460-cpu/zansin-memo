@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, ReactNode, Ref } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../styles/theme';
 import { buttonSelectionProps } from './PlusUI';
@@ -10,10 +10,10 @@ export const studioColors = {
   green: '#295341', soft: '#e7eee2', orange: '#985338', apricot: '#f5e8d9',
 };
 
-export function IconButton({ label, icon, onPress, disabled, color, background }: {
-  label: string; icon: StudioIcon; onPress: () => void; disabled?: boolean; color?: string; background?: string;
+export function IconButton({ label, icon, onPress, disabled, color, background, focusRef }: {
+  label: string; icon: StudioIcon; onPress: () => void; disabled?: boolean; color?: string; background?: string; focusRef?: Ref<View>;
 }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} onPress={onPress} disabled={disabled}
+  return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} onPress={onPress} disabled={disabled}
     style={({ pressed }) => [studioStyles.iconButton, background && { backgroundColor: background }, (disabled || pressed) && studioStyles.quiet]}>
     <Ionicons name={icon} size={20} color={color ?? studioColors.green} />
   </Pressable>;

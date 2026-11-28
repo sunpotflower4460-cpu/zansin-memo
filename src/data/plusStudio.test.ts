@@ -4,7 +4,7 @@ import { buildSeed } from '../domain/gardenCommands';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
 import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioPreferences } from '../domain/plus/studio';
-import { constellationGraph, radialGraph } from '../domain/plus/studioGraph';
+import { constellationGraph, constellationGroups, radialGraph } from '../domain/plus/studioGraph';
 import { buildPlusTextExport } from '../utils/plusExport';
 import { connectionId } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
@@ -62,6 +62,27 @@ test('constellation draws only present connections and leaves all undisplayed no
     assert.ok(node.x - node.width / 2 >= 0 && node.x + node.width / 2 <= 321);
     assert.ok(node.y - node.height / 2 >= 0 && node.y + node.height / 2 <= 275);
   }
+});
+
+test('constellation groups account for undisplayed members and radial emphasis keeps a recorded relation visible', () => {
+  const { seeds, connections } = buildStudioExample(new Date(today));
+  const index = indexMap(seeds, connections);
+  const groups = constellationGroups(index);
+  assert.equal(new Set(groups.flatMap(({ seedIds }) => seedIds)).size, seeds.length);
+  const first = groups.find(({ seedIds }) => seedIds.includes('example-0'));
+  assert.equal(first?.linked, true);
+  assert.ok(first?.seedIds.includes('example-14'));
+  assert.equal(groups.find(({ seedIds }) => seedIds.includes('example-9'))?.linked, false);
+  const focus = index.byId.get('example-0')!;
+  const peer = index.byId.get('example-8')!;
+  const graph = radialGraph(index, focus, { width: 307, height: 250 }, [], true, peer.id);
+  assert.ok(graph.nodes.some(({ seed }) => seed.id === peer.id));
+  assert.equal(graph.lines.find(({ id }) => id === connectionId(focus.id, peer.id))?.suggested, false);
+  const days = recordDays({ ...emptyStoreV3(), seeds, connections }, index.byId);
+  const event = [...days.values()].flat().find((item) => item.id === `edge-${connectionId(focus.id, peer.id)}`);
+  assert.ok(event?.kind === 'connection');
+  assert.deepEqual(event.pair, [focus.id, peer.id]);
+  assert.equal(event.note, '歩いた場所を残す');
 });
 
 test('Studio preferences and reflections round-trip without requiring new fields in old gardens', () => {

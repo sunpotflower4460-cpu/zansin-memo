@@ -26,7 +26,11 @@ export function saveReflection(day: string, body: string, previous: string | und
   } };
 }
 
-export type RecordEvent = { id: string; at: string; label: string; kind: 'memo' | 'connection' | 'work' | 'reflection'; seedId?: string };
+export type RecordEvent = { id: string; at: string; label: string } & (
+  | { kind: 'memo'; seedId: string }
+  | { kind: 'connection'; pair: [string, string]; note?: string }
+  | { kind: 'work' | 'reflection' }
+);
 
 export function recordDays(store: GardenStoreV3, seeds: ReadonlyMap<string, Seed>) {
   const days = new Map<string, RecordEvent[]>();
@@ -40,7 +44,8 @@ export function recordDays(store: GardenStoreV3, seeds: ReadonlyMap<string, Seed
     const from = seeds.get(edge.aSeedId);
     const to = seeds.get(edge.bSeedId);
     if (!from || !to || !edge.createdAt) continue;
-    add({ id: `edge-${edge.id}`, at: edge.createdAt, label: `${toSeedSnippet(from, 27)} ↔ ${toSeedSnippet(to, 27)}`, kind: 'connection', seedId: from.id });
+    add({ id: `edge-${edge.id}`, at: edge.createdAt, label: `${toSeedSnippet(from, 27)} ↔ ${toSeedSnippet(to, 27)}`,
+      kind: 'connection', pair: [from.id, to.id], note: edge.note });
   }
   const works = new Map(store.collectionRevisions.map((work) => [work.id, work]));
   for (const item of store.collectionItems) {
