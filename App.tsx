@@ -44,7 +44,7 @@ import { showConfirm } from './src/utils/confirm';
 import { motion } from './src/utils/motion';
 import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
-import { exportGarden } from './src/utils/exportUtils';
+import { clearTemporaryExports, exportGarden } from './src/utils/exportUtils';
 import { createId } from './src/utils/ids';
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import { buildTransformOutput, getLocalDateKey, pickTodaySeed, syncResurfacedSeed } from './src/utils/seedUtils';
@@ -85,7 +85,7 @@ const BLOCKED_MESSAGE = '保存データを読み込めないため、変更を�
 const SAVE_FAILED_MESSAGE = '保存できませんでした。入力は残っています。もう一度お試しください。';
 const CLEAR_ALL_DATA_ALERT_TITLE = 'すべてのデータを削除しますか？';
 const CLEAR_ALL_DATA_ALERT_MESSAGE =
-  '保存されたすべてのメモ・つながり・芽・下書きと、復元用のコピーが端末から削除されます。この操作は元に戻せません。';
+  '保存されたメモ・つながり・芽・下書き、復元用のコピー、アプリ内の一時書き出しファイルが削除されます。この操作は元に戻せません。';
 const DRAFT_SAVE_FAILED_MESSAGE = '書きかけを端末に保存できていません。入力は残っています。アプリを閉じずに、もう一度試してください。';
 const EXPORT_JSON_ALERT_TITLE = 'JSONで全データを書き出します';
 const EXPORT_JSON_ALERT_MESSAGE =
@@ -589,6 +589,10 @@ function CoreApp() {
             const result = retry ? await garden.retryDeleteAll() : await garden.deleteAll();
             if (!result.ok) {
               setPersistentError('削除を完了できませんでした。もう一度「すべてのデータを削除」を押してください。アプリを開き直すと、削除の続きから再開します。');
+              return;
+            }
+            if (!clearTemporaryExports()) {
+              setPersistentError('一時書き出しファイルを消去できませんでした。もう一度「すべてのデータを削除」を押してください。');
               return;
             }
             triggerWarningFeedback();

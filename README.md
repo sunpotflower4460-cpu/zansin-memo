@@ -147,7 +147,7 @@ npm run ios
 - 課金（Phase 11.5で実装予定。販売条件は未確定）
 - クラウド同期（未定）
 - 通知（未定）
-- App Store提出の実作業（Apple Developer アカウントでの申請。準備は完了、手順は docs/app-store-submission.md）
+- Apple Developer の配布署名、App Store Connect の登録・提出。現状と手順は [公開準備の記録](docs/app-store-readiness.md) を参照
 
 ## 重要方針
 - 認証・課金・クラウド同期は未実装

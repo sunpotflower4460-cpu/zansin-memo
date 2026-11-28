@@ -16,6 +16,11 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.sunpotflower4460.kizashinotes",
       "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ja",
+        "CFBundleLocalizations": ["ja"],
+        "RCTAsyncStorageExcludeFromBackup": true
+      },
       "config": {
         "usesNonExemptEncryption": false
       },

@@ -14,7 +14,6 @@ export function IOSChip({ label, accessibilityLabel, selected, onPress }: IOSChi
     <AnimatedPressable
       onPress={onPress}
       haptic="light"
-      hitSlop={{ top: 4, bottom: 4 }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected: selected ?? false }}
@@ -34,7 +33,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.chipBg,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    minHeight: 40,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
   },
   chipPressed: {

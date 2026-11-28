@@ -1,12 +1,15 @@
 {
   "cli": {
-    "version": ">= 16.0.0",
-    "appVersionSource": "local"
+    "version": "27.11.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "production": {
       "distribution": "store",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      }
     },
     "preview": {
       "distribution": "internal"

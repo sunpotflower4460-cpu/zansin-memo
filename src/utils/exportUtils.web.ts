@@ -5,6 +5,9 @@ import type { ExportResult } from './exportUtils';
 export type { ExportFormat } from './exportFormat';
 export type { ExportResult } from './exportUtils';
 
+// Web版はダウンロード先をブラウザが管理する。
+export const clearTemporaryExports = (): boolean => true;
+
 /** Web版の書き出し。expo-file-system は Web に対応しないため、ブラウザのダウンロードとして保存する。 */
 export const exportGarden = async (store: GardenStoreV2, format: ExportFormat): Promise<ExportResult> => {
   const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

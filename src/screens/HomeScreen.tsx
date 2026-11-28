@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     paddingHorizontal: 12,
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
     borderRadius: theme.radius.full,
     backgroundColor: theme.colors.leaf,

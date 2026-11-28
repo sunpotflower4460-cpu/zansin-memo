@@ -1,168 +1,111 @@
 # App Store 提出パッケージ
 
-App Store Connect にそのまま貼り付けられる文面・設定値と、提出までの手順をまとめたドキュメントです。
-アプリ側の準備（アイコン・スプラッシュ・プライバシーマニフェスト・暗号化申告・ビルド設定）は完了しています。**Apple Developer アカウントが必要な作業**は「4. あなたが行う作業」に分けています。
+初回の iPhone 向け無料版（1.0.0）用です。この版では「書く・つなげる・見渡す・芽を書く」の体験を公開します。Plus は開発プレビューのため、掲載文・スクリーンショット・審査手順は通常の Release ビルドに合わせています。実施結果は [公開準備の記録](app-store-readiness.md) を参照してください。
 
----
-
-## 1. アプリ情報（App Store Connect 入力値）
+## App Store Connect 入力値
 
 | 項目 | 値 |
 |---|---|
-| アプリ名（30文字以内） | Kizashi Notes - きざしノート |
-| サブタイトル（30文字以内） | ひとことを置いて、育てるノート |
+| プラットフォーム | iOS |
+| アプリ名 | Kizashi Notes - きざしノート |
+| サブタイトル | ひとことを置いて、育てるノート |
+| プライマリ言語 | 日本語（ja） |
 | プライマリカテゴリ | 仕事効率化（Productivity） |
 | セカンダリカテゴリ | ライフスタイル（Lifestyle） |
-| 言語 | 日本語（プライマリ） |
-| Bundle ID | `com.sunpotflower4460.kizashinotes`（提出前に最終確定。変更する場合は `app.json` の `ios.bundleIdentifier` も更新） |
-| バージョン / ビルド | 1.0.0 / 1（EAS が提出ごとに自動で加算） |
-| 対応デバイス | iPhone のみ（`supportsTablet: false`）、縦向き |
-| 価格 | 無料（アプリ内課金なし） |
-| サポートURL | https://github.com/sunpotflower4460-cpu/zansin-memo/issues/new |
+| Bundle ID | `com.sunpotflower4460.kizashinotes` |
+| SKU | `kizashi-notes-ios`（新規登録時。既存レコードがあればその SKU を使用） |
+| バージョン | 1.0.0。ビルド番号はアップロードする EAS ビルドで確認 |
+| 対応 | iOS 15.1以降の iPhone、縦向き |
+| 価格 | 無料。アプリ内課金なし |
+| サポートURL | 公開できる実連絡先を掲載したサポートページのURL |
 | プライバシーポリシーURL | https://github.com/sunpotflower4460-cpu/zansin-memo/blob/main/docs/privacy-policy.md |
-| 著作権 | 2026 （あなたの名前または屋号） |
 
-> URLの注意: GitHub のURLを使う場合、リポジトリが **Public** である必要があります（Private だとAppleの審査担当者が開けず、リジェクトされます）。Private のままにする場合は、静的ページ（GitHub Pages、Cloudflare 等）に `docs/privacy-policy.md` の内容を公開し、アプリ内の `src/config/appInfo.ts` のURLと App Store Connect のURLを同じものに揃えてください。
-> サポートURLは問い合わせ窓口（メールフォーム等）の方が一般ユーザーに親切です。用意できたら差し替えてください。
+著作権者の正式表記、審査連絡先、配信国・地域、配信開始方法はアカウント担当者が確定します。現行のアプリは、ログインなしで閲覧できる GitHub Issues を開きます。投稿には GitHub アカウントが必要です。Apple のサポートURLには、利用者が連絡できる実際のメールアドレスなどを掲載したページが必要です。公開用の連絡先を [ポリシーのお問い合わせ欄](privacy-policy.md#7-お問い合わせ) または別のサポートページに掲載し、そのURLをストア情報と `src/config/appInfo.ts` に反映してください。 [App Store Connect の入力項目](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information)
 
-### プロモーションテキスト（170文字以内・いつでも変更可）
-思いつき・直感・違和感を、メモではなく「種」として置いておく。きれいにまとめなくても大丈夫。数日後、今日の種としてそっと再会できます。ログインも広告もなく、データは端末の中だけ。
+### プロモーションテキスト
+
+```text
+思いつきや小さな違和感を、ひとことから。メモをつないで関係を見渡し、「こうできそう」を自分の言葉で残せます。ログインも広告もありません。
+```
 
 ### 説明文
-```
-Kizashi Notes（きざしノート）は、思いつき・直感・小さな違和感を「メモ」ではなく「種」として保存し、あとで再会し、ゆっくり育てるためのノートです。
 
-■ はじめてでも迷わない
-空のホームの「例で使い方を見る」で、つなげる・つながりを見る・芽を書くを、実際のメモに入れずに試せます。
+```text
+Kizashi Notes（きざしノート）は、思いつきや、まだ言葉にしきれない気づきを「種」として残すノートです。あとで見返し、関係がありそうなメモをつなぎ、自分の考えを少しずつ育てられます。
 
-■ 低圧で書ける
-タイトルも分類も必須ではありません。ひとことだけで、数秒で保存できます。気分・大切度・カテゴリは、添えたいときだけ。書きかけは自動で残るので、途中でアプリを閉じても大丈夫です。
+■ ひとことから書ける
+タイトルや分類を決めなくても、本文ひとことから保存できます。気分・大切度・カテゴリは必要なときに。書きかけは下書きから再開できます。
 
-■ 今日の種と再会できる
-しばらく見返していない種や、大切にしている種が、「今日の種」としてやさしく浮かび上がります。通知で急かすことはありません。
+■ つながりを見渡す
+新しいメモを足したり、すでにあるメモを選んでつないだりできます。つながりは地図でもリストでも確認できます。それぞれの元のメモはそのまま残ります。
 
-■ 同じ話の続きを、つなげておく
-「続きを書く」で書いた種は、自動で元の種とつながり、時系列の「話のながれ」になります。関係のありそうな種は、共通のカテゴリや言葉から提案します（つなぐかどうかは自由です）。つながった種は、庭で根のように結ばれた「まとまり」として並びます。
+■ 「こうできそう」を芽にする
+元のメモや参考にしたメモを読みながら、見えてきた可能性を自分の言葉で書きます。できたことや形になったことは「花」として残せます。
 
-■ 種を育てる
-種は「種 → 芽 → 木」と育てられます。必要なときに、問い・小さな行動・記事案・プロジェクト案の候補として形を変えられます（すべて端末内で作成されます）。
+■ 日々のメモに再会する
+ホームの「今日の種」から、以前に書いたメモを見返せます。本文やカテゴリを検索でき、庭では種・芽・花やつながりのあるメモを辿れます。
 
-■ 畑のように見渡す
-書いた種が、土の上の種・芽・木として並びます。光と水と土のやさしい世界で、育ちの流れとカテゴリのまとまりを静かに見渡せます。
+■ 自分のメモを入れる前に試せる
+「例で使い方を見る」では、架空のメモで接続や芽の作り方を試せます。練習での操作は自分のメモには反映されません。
 
-■ 探しやすい
-本文・タイトル・カテゴリでの検索、状態やカテゴリでの絞り込み、並び替えに対応。削除した種は「最近削除した種」から復元できます。
-
-■ 和紙のようなやさしい見た目
-生成り色の紙と墨色の文字、明朝体の見出しで、静かに書ける場所をつくりました。
-
-■ プライバシーを大切に
-・ログイン不要
-・広告・トラッキングなし
-・データはお使いの端末の中だけに保存
-・JSON／テキストでのバックアップ書き出しに対応
-
-これは、タスク管理アプリではありません。「まだ種のままでいい」と思えるための、静かな場所です。
+ログイン、広告、トラッキングはありません。メモは端末内に保存されます。設定から JSON・テキストで書き出したり、アプリ内のデータを削除したりできます。
 ```
 
-### キーワード（100文字以内、カンマ区切り・スペースなし）
-```
-メモ,ノート,アイデア,思いつき,発想,記録,ひとこと,振り返り,日記,種,育てる,シンプル,オフライン
-```
+### キーワード
 
-### このバージョンの最新情報
-```
-はじめてのリリースです。ひとことを置いて、あとでゆっくり育てるためのノートです。
+```text
+アイデア,思いつき,振り返り,オフライン,つながり,日々の記録
 ```
 
----
+## App Privacy・年齢制限・審査情報
 
-## 2. App Privacy（プライバシー栄養ラベル）
+- **App Privacy の回答案は「データの収集なし」**。ログイン、広告、解析 SDK、トラッキング、クラウド同期、外部 AI 送信はありません。ユーザーが書き出すと、iOS の共有シートで自分で選んだ宛先にファイルを渡せます。アプリから開発者へ本文が送信される処理はありません。 [Apple のデータ収集の定義](https://developer.apple.com/app-store/app-privacy-details/)
+- プライバシーポリシーは App Store Connect と、アプリのホーム →「設定・バックアップ」→「プライバシーポリシー」からアクセスできます。公開されるソースと文面を揃え、登録前にログインしない状態で両URLを開いて確認します。 [App Review ガイドライン 5.1.1](https://developer.apple.com/app-store/review/guidelines/#privacy)
+- 端末内の保存と書き出しに使う Required Reason API は `app.json` から生成されるマニフェストと依存 SDK のマニフェストに記載します。アップロード時は同梱マニフェストに関する Apple の処理結果も確認します。 [Apple の Required Reason API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)
+- 年齢制限は現行の質問票に沿って回答します。メモは端末内の個人用で、アプリ内で他ユーザーに配信されません。メッセージ・チャット、広告、制限なしのアプリ内ウェブ閲覧、共有位置情報、出会い機能もありません。年齢区分は App Store Connect が計算します。子ども向けカテゴリには登録しません。 [年齢制限の設定](https://developer.apple.com/help/app-store-connect/manage-app-information/set-an-app-age-rating/)・[質問票の更新](https://developer.apple.com/help/app-store-connect/release-notes/)
+- 暗号化申告は `ITSAppUsesNonExemptEncryption = false`。アプリには独自の暗号化通信や暗号化された書き出しを組み込んでいません。コンテンツ権利は配布する素材の実際の権利関係に沿って回答します。 [Apple の配布準備](https://developer.apple.com/documentation/xcode/preparing-your-app-for-distribution)
+- サインイン情報は不要です。審査担当者が連絡できる氏名、電話番号、メールアドレスは App Store Connect の審査情報に入力します。アクセシビリティのストア表示は対象操作を実機で検証した項目を申告します。 [アクセシビリティの表示](https://developer.apple.com/help/app-store-connect/manage-app-accessibility/overview-of-accessibility-nutrition-labels/)
 
-- 「データを収集していますか？」→ **いいえ（Data Not Collected）**
-- 理由: 解析SDK・広告SDK・外部送信がなく、データは端末内のみ。開発者側に送信されない。
-- トラッキング: なし（`NSPrivacyTracking: false`）。App Tracking Transparency の許可ダイアログは不要。
-- アプリ内の `PrivacyInfo.xcprivacy` は `app.json` の `ios.privacyManifests` から生成されます（Required Reason API: UserDefaults / FileTimestamp / SystemBootTime / DiskSpace を、Expo 標準の理由コードで宣言）。
-  - 初回アップロード後に Apple から Required Reason API のメールが届いた場合は、メールに記載のカテゴリを `app.json` に追記して再ビルドしてください。
+### 審査メモ
 
-## 3. 年齢制限・審査情報
+```text
+ログインや審査用アカウントは不要です。メモの作成・検索・接続と芽の保存はオフラインで使えます。アプリ内課金はありません。
 
-- 年齢制限（レーティング）: すべての質問に「なし」で回答 → **4+**
-- 暗号化: `usesNonExemptEncryption: false` を設定済み（標準のHTTPS/OS暗号化のみ使用）。輸出コンプライアンスの質問は自動でスキップされます。
-- コンテンツ権利: 第三者コンテンツなし。アイコンはオリジナル（`assets/`）。
-- 広告ID（IDFA）: 使用しない。
-- サインイン情報: 不要（審査用アカウント欄は「サインインは不要です」でOK）。
+1. 初回はホームの「例で使い方を見る」で、架空のメモをつないで地図を見たり、芽を書く操作を試したりできます。練習内容は実際のメモに入りません。
+2. 「書く」タブで本文を入力して「保存する」を押します。「続けて書く」で2件目を作成できます。
+3. 「種一覧」タブで「選ぶ」を開いて2件のメモを選び「2つをつなげる」を押すと、詳細で地図とリストを切り替えられます。
+4. 詳細の「ここに書いて芽にする」から、「こうできそう」を入力し「芽として保存」を押します。元のメモはそのままです。
+5. ホーム下部の「設定・バックアップ」で、ポリシー、サポート、JSON・テキストの書き出しとデータの全削除を確認できます。
 
-### 審査メモ（App Review Information → Notes）
-```
-本アプリはログイン不要で、すべてのデータは端末内にのみ保存されます。ネットワーク通信は行いません
-（「プライバシーポリシー」「サポート」を開いたときに端末のブラウザが起動するのみ）。
-
-動作確認の流れ:
-0. 初回は、空のホームに「メモを書く」と「例で使い方を見る」が表示されます（例は実際のメモには入りません）。
-1. 「書く」タブで文章を入力し「種をまく」をタップ。
-2. 「ホーム」の「今日の種」、「種一覧」、「庭」に反映されます。
-3. 種の詳細で「この種を育てる」の候補ボタンを押すと、端末内のテンプレートから候補が作られます。
-4. ホーム下部の「設定・バックアップ」から、データの書き出しと「すべてのデータを削除」ができます。
-
-AI機能・課金・アカウント機能・通知はありません。
+No sign-in or purchase is required. Tap the 「書く」 tab to write a memo and tap 「保存する」 to save it. Add a second memo, then open 「種一覧」 and use 「選ぶ」 to connect the two. The detail screen shows the connection as a map or list. Tap 「ここに書いて芽にする」 to record an idea alongside the original memo. Export, deletion, and privacy controls are under 「設定・バックアップ」 on the Home screen.
 ```
 
----
+## スクリーンショット
 
-## 4. あなたが行う作業（Apple アカウントが必要）
+[提出用 PNG](store-screenshots/) を表の順で使います。通常の iOS Release アプリを iPhone 17 Pro シミュレータ（1206×2622 px、縦向き）で撮影した、日本語用の画像です。メモは架空です。App Store Connect の「iPhone with Dynamic Island（medium display）」の枠に登録します。 [Apple のスクリーンショット仕様](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications)
 
-1. **Apple Developer Program に加入**（年額）し、App Store Connect にログインできる状態にする。
-2. **Bundle ID を確定**（既定: `com.sunpotflower4460.kizashinotes`）。変更するなら `app.json` を更新。
-3. App Store Connect →「マイApp」→「＋」→ 新規App を作成（上の表の値を入力）。
-4. EAS にログインしてビルド・提出:
-   ```bash
-   npm install
-   npm run check            # 型チェック・Lint・テストがすべて通ることを確認
-   npx eas-cli login
-   npx eas-cli build:configure   # 初回のみ（eas.json は設定済み）
-   npm run build:ios        # 本番ビルド（証明書・プロビジョニングは EAS が自動管理）
-   npm run submit:ios       # App Store Connect へアップロード（初回は ascAppId を聞かれます）
+| ファイル | 画面 |
+|---|---|
+| `01-home.png` | 今日の種とホーム |
+| `02-write.png` | ひとことを書く |
+| `03-seeds.png` | 種の一覧と検索 |
+| `04-detail.png` | 元のメモと本人が書いた芽 |
+| `05-garden.png` | 庭で育ち方を見渡す |
+| `06-links.png` | 実際につながったメモの地図 |
+
+## 署名から審査まで
+
+1. Apple Developer Program の利用資格と契約を確認します。Apple Developer で Bundle ID を確認または登録し、App Store Connect に同じ ID のアプリレコードを用意します。すでにある場合はそれを使います。 [アプリレコードの作成](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/)
+2. Expo にログインし、正しい Expo アカウント・プロジェクトに紐づけます。既存アップロードがある場合は、App Store Connect の最新ビルド番号を確認して EAS のリモート番号を設定します。 `production` は Xcode 26.2 を使い、ビルド番号をリモートで管理します。 [Expo のビルド番号管理](https://docs.expo.dev/build-reference/app-versions/)・[ビルド環境](https://docs.expo.dev/build-reference/infrastructure/)
+3. Apple Distribution の証明書と App Store 用のプロビジョニングをチームで設定し、署名済みのビルドを作ります。配布ビルドを確認してから、同じアプリレコードへアップロードします。
+   ```sh
+   npm ci
+   npm run check
+   npx --yes eas-cli@27.11.0 login
+   npx --yes eas-cli@27.11.0 init
+   npm run build:ios
+   npm run submit:ios
    ```
-   2回目以降は `eas.json` の `submit.production.ios.ascAppId` に App Store Connect の App ID（数字）を入れておくと対話が不要になります。
-5. App Store Connect で、ビルドを選択 → スクリーンショット・説明文・URL・App Privacy・年齢制限を入力 → 「審査へ提出」。
-6. 任意だが推奨: **TestFlight** で自分の実機にインストールして、下記「5. 実機チェックリスト」を確認してから提出。
-
-## 5. 実機チェックリスト（提出前）
-
-- [ ] 初回起動 → スプラッシュ → ホームの空状態（「最初の種を書く」）が表示される
-- [ ] 「書く」: 開くとキーボードが出て、すぐ入力できる。保存後ホームに戻り「種を追加しました」が出る
-- [ ] キーボード表示中でも保存ボタンが隠れない / キーボードを下にスワイプで閉じられる
-- [ ] ホームのタブバー下、書く画面の保存ボタン下に不自然な余白がない（ホームインジケータ付き機種）
-- [ ] 種一覧: 検索・絞り込み・並び替え・削除済みからの復元
-- [ ] 詳細: 編集して保存せず「戻る」→ 確認ダイアログが出る / 変換候補を押しても編集中の文章が消えない
-- [ ] 設定・バックアップ: JSON/テキストの書き出し（共有シート）、すべてのデータを削除
-- [ ] アプリを完全終了して再起動してもデータが残っている
-- [ ] 機内モードでも全機能が動く
-- [ ] VoiceOver: タブ・ボタン・種のカードが読み上げられる
-- [ ] 文字サイズ「大」（設定 > アクセシビリティ）でも崩れない
-- [ ] iPhone SE（小画面）と Pro Max（大画面）で表示確認
-
-## 6. スクリーンショット
-
-> **注意（2026-11-26）**: `docs/store-screenshots/` は Phase 10（つながり・芽・初回導線の刷新）より前のUIです。公開前に、Phase 10 の画面で撮り直してください。
-
-- 置き場所: `docs/store-screenshots/`（1290×2796 px、iPhone 6.9インチ用）
-  0. `00-onboarding-1.png` はじめてでも、迷わない
-  1. `01-home.png` 毎日、種とやさしく再会する
-  2. `02-write.png` きれいにまとめなくても大丈夫
-  3. `03-seeds.png` 書いた種を、いつでも見返せる
-  4. `04-detail.png` 種を育てる候補を、やさしく提案
-  5. `05-garden.png` つながって、畑のように育つ
-  6. `06-links.png` 同じ話の続きを、つなげておく
-- 注意: これらは実アプリのWeb版を、サンプルデータで描画した画像です（ステータスバーやホームインジケータは含まれません）。App Store の6.9インチ枠に登録すれば、小さい画面サイズには自動で縮小適用されます。より実機らしくしたい場合は、Xcode シミュレータ（iPhone 16 Pro Max）で同じ流れを撮り直してください。
-- サンプルデータはすべて架空の文章です。
-
-## 7. 実施済みの準備
-
-- アプリアイコン（1024×1024・透過なし。和紙の地に墨絵風の芽と朱の一点）、スプラッシュ、Android adaptive icon、favicon をオリジナルに差し替え
-- 和紙テーマ（配色・明朝見出し・紙の質感）、書きかけの自動退避、詳細画面の自動保存など使い勝手の改善
-- `app.json`: 暗号化申告、プライバシーマニフェスト、スプラッシュ色をテーマに統一
-- `eas.json`: 本番ビルドの buildNumber 自動加算、submit 設定の雛形
-- プライバシーポリシー更新、すべてのデータ削除で内部の復元用コピーも消去
-- UI/UX の最終調整は README の「最終ブラッシュアップ」を参照
+   すでに EAS プロジェクトに紐づいている場合は `init` を省略できます。過去のアップロード番号の取り込みには `npx --yes eas-cli@27.11.0 build:version:set --platform ios --profile production` を使います。アップロード時は対象の EAS ビルドを選択します。App Store Connect の数字の App ID が確定したら `submit.production.ios.ascAppId` に指定できます。ビルドのアップロード後は Apple の処理結果を確認し、内部 TestFlight に追加できます。 [EAS の iOS アップロード](https://docs.expo.dev/submit/ios/)
+4. TestFlight の配布ビルドで [実機・初見利用の確認項目](core-growth-verification.md) を埋めます。掲載文、スクリーンショット、URL、App Privacy、年齢制限、審査連絡先を登録して、同じビルドを選択します。配信先の地域に応じた申告（EU の事業者情報など）をアカウント担当者が確定します。
+5. レビュー提出前に [公開準備の記録](app-store-readiness.md) と残項目を確認します。現在のアップロード下限は Xcode 26 / iOS 26 SDK です。2027年4月以降にアップロードする場合は、Xcode・SDK とスクリーンショットの要件をその時点で再確認します。 [Apple の提出要件](https://developer.apple.com/news/upcoming-requirements/)・[提出の最新情報](https://developer.apple.com/app-store/submitting/)
