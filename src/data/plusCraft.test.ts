@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adoptCraft, createAtelier, saveAtelierText, trackPin } from '../domain/plus/atelier';
+import { adoptCraft, createAtelier, readCraftEvidence, saveAtelierText, trackPin } from '../domain/plus/atelier';
 import { composeCraft, craftExcerpts, craftPart, craftRecipes, defaultCraftExcerpt } from '../domain/plus/craft';
 import { requirePlusAccess } from '../domain/plus/entitlements';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
@@ -45,11 +45,13 @@ test('the suggested excerpt skips a repeated title and retains its exact source 
 test('each craft recipe uses its roles, never invents permission to take photos and accepts unrelated materials', () => {
   const recipes = craftRecipes.map(({ id }) => composeCraft(parts, id)!);
   assert.equal(new Set(recipes.map((item) => item.body)).size, 3);
+  assert.equal(new Set(recipes.map((item) => item.summary)).size, 3);
   assert.equal(recipes[0].title, '一枚から始まる日記');
   for (const item of recipes) {
     assert.ok(item.body.includes(parts[2].quote));
     assert.deepEqual(item.parts, parts);
     assert.equal(item.generator, 'recipe');
+    assert.equal(item.uses?.length, 3);
   }
   const restricted = makeSeed('restricted', { body: 'ここでは写真を撮れない。' });
   const other = craftPart(restricted, craftExcerpts(restricted.body)[0]);
@@ -60,6 +62,34 @@ test('each craft recipe uses its roles, never invents permission to take photos 
   assert.equal(composeCraft([parts[0], parts[0]], 'letter'), undefined);
   assert.equal(composeCraft([parts[0]], 'letter'), undefined);
   assert.notEqual(composeCraft([other, parts[0]], 'experience')!.title, cards.title);
+});
+
+test('an entrance and a gesture make a repeatable interaction with a different first trial', () => {
+  const opening = makeSeed('entrance', { body: '説明なしで参加できる入口を作りたい。' });
+  const gesture = makeSeed('gesture', { body: '動きをまねる遊びなら入りやすかった。' });
+  const ingredients = [opening, gesture].map((seed) => craftPart(seed, defaultCraftExcerpt(seed)!));
+  const play = composeCraft(ingredients, 'experience')!;
+  const trial = composeCraft(ingredients, 'experiment')!;
+  assert.equal(play.title, 'まねから始まる遊び');
+  assert.match(play.body, /変化を次の人がまねする/);
+  assert.ok(play.uses?.[1].includes('動き'));
+  assert.match(trial.body, /一回目は説明を一文/);
+  assert.ok(trial.uses?.[1].includes('二回目'));
+});
+
+test('sound and photography have specific roles only when drawn from different notes', () => {
+  const sound = makeSeed('sound', { body: '路地で雨音を聞いた。' });
+  const one = makeSeed('both', { body: '写真を選び、路地の雨音も書いた。' });
+  const other = makeSeed('unrelated', { body: '靴紐を結び直す。' });
+  const from = (seed: typeof sound) => craftPart(seed, defaultCraftExcerpt(seed)!);
+  const photos = [from(sound), parts[1]];
+  assert.equal(composeCraft(photos, 'experience')?.title, '耳でめくる写真帖');
+  assert.equal(composeCraft(photos, 'letter')?.title, '音のあとに写真が届く便り');
+  assert.equal(composeCraft(photos, 'experiment')?.title, '音を足すと景色はどう変わる？');
+  assert.match(composeCraft([...photos].reverse(), 'experience')!.uses![0], /写真を選び/);
+  const combined = composeCraft([from(one), from(other)], 'experience')!;
+  assert.notEqual(combined.title, '耳でめくる写真帖');
+  assert.ok(combined.body.includes(other.body));
 });
 
 test('changing the clue changes how a reader can try the same opening excerpt', () => {
@@ -93,7 +123,7 @@ test('adoption saves all ingredients and a work source atomically and can be ret
   assert.equal(saved.atelierRevisions[0].text, candidate.body);
   assert.equal(saved.atelierProjects.length, 1);
   assert.deepEqual(saved.atelierSuggestions[0].evidence.map((item) => item.quote), parts.map((part) => part.quote));
-  assert.deepEqual(saved.atelierSuggestions[0].craft, { title: candidate.title, recipe: 'experience', generator: 'recipe' });
+  assert.deepEqual(saved.atelierSuggestions[0].craft, { title: candidate.title, recipe: 'experience', generator: 'recipe', uses: candidate.uses });
   assert.deepEqual(saved.atelierRevisions[0].insertedSuggestionIds, ['craft']);
   assert.equal(saved.aiRequestReceipts.length, 0);
   assert.deepEqual(command.apply(saved), saved);
@@ -111,6 +141,24 @@ test('edited, deleted, stale or misquoted material rejects the whole craft, incl
   assert.ok('rejected' in requirePlusAccess(command, () => false).apply(store));
   const bad = { ...candidate, parts: [parts[0], { ...parts[1], quote: '別の一節' }] };
   assert.ok('rejected' in adoptCraft({ ...args, candidate: bad }).apply(store));
+  assert.ok('rejected' in adoptCraft({ ...args, candidate: { ...candidate, uses: ['一行だけ'] } }).apply(store));
+});
+
+test('a work can show an exact historical craft excerpt and hides lost or deleted sources', () => {
+  const saved = adoptCraft(args).apply(store);
+  assert.ok(!('rejected' in saved));
+  const [evidence] = saved.atelierSuggestions[0].evidence;
+  assert.equal(readCraftEvidence(saved, evidence)?.quote, parts[0].quote);
+  assert.equal(readCraftEvidence(saved, { ...evidence, quote: '別の一節' }), undefined);
+  const changed = { ...saved, seeds: saved.seeds.map((seed) => seed.id === 'walk' ? { ...seed, body: '新しい原文。' } : seed) };
+  const historical = readCraftEvidence(changed, evidence);
+  assert.equal(historical?.state, 'changed');
+  assert.equal(historical?.quote, parts[0].quote);
+  assert.equal(readCraftEvidence({ ...changed, seeds: changed.seeds.map((seed) => seed.id === 'walk' ? { ...seed, deletedAt: at } : seed) }, evidence), undefined);
+  assert.equal(readCraftEvidence({ ...changed, sourceSnapshots: [] }, evidence), undefined);
+  const older = { ...saved, atelierSuggestions: saved.atelierSuggestions.map((entry) => ({ ...entry,
+    craft: { ...entry.craft!, uses: undefined } })) };
+  assert.equal(parseStoreV3(serializeStoreV3(older)).ok, true);
 });
 
 test('an existing branch keeps its text and pins and rejects adoption after a competing edit', async () => {
@@ -127,6 +175,7 @@ test('an existing branch keeps its text and pins and rejects adoption after a co
   assert.equal(saved.atelierDrafts[0].text, before.text + '\n\n' + ai.title + '\n' + ai.body);
   assert.deepEqual(saved.atelierDrafts[0].pinnedExcerpts, before.pinnedExcerpts);
   assert.equal(saved.atelierSuggestions[0].craft?.generator, 'on_device');
+  assert.equal(saved.atelierSuggestions[0].craft?.uses, undefined);
   assert.equal(saved.atelierRevisions.length, 0);
 });
 

@@ -5,14 +5,13 @@ import type { GardenV3Writer, PlusCommand } from '../data/gardenV3Writer';
 import { activeDraft, adoptAtelierRevision, atelierExampleCurrent, changedRange, chooseAtelierBranch, forkAtelier, insertAtelierExample, materialState, movePins,
   reviseMaterial, saveAtelierExample, saveAtelierRevision, saveAtelierText, trackPin } from '../domain/plus/atelier';
 import type { AtelierDraft, AtelierProject, AtelierRevision, GardenStoreV3, MapReturnContext } from '../domain/plus/contracts';
-import { craftRecipes, craftRoles } from '../domain/plus/craft';
 import { requirePlusAccess } from '../domain/plus/entitlements';
-import { sameSourceRef } from '../domain/plus/sources';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { Actions, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
 import type { CraftStart } from './StudioCraftBench';
+import { StudioCraftSources } from './StudioCraftSources';
 import { useBufferedText } from './useBufferedText';
 
 const now = () => new Date().toISOString();
@@ -67,29 +66,6 @@ export function AtelierLibrary({ store, notice, hasAccess, backLabel, onBack, on
     })}
     {!!notice && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>{notice}</Text>}
   </ScrollView>;
-}
-
-function CraftSources({ store, ids }: { store: GardenStoreV3; ids: string[] }) {
-  const [open, setOpen] = React.useState(false);
-  const suggestions = store.atelierSuggestions.filter((entry) => entry.craft && ids.includes(entry.id));
-  if (!suggestions.length) return null;
-  return <View style={editorStyles.material}>
-    <StudioAction label="作業台で使った一節" icon="construct-outline" expanded={open} onPress={() => setOpen(!open)} />
-    {open && suggestions.map((entry) => <View key={entry.id} style={studioStyles.card}>
-      <Text style={studioStyles.subtitle}>{entry.craft!.title}</Text>
-      <Text style={studioStyles.muted}>{craftRecipes.find((item) => item.id === entry.craft!.recipe)?.label} · {entry.craft!.generator === 'on_device' ? '端末内AIの案' : 'レシピで組んだ案'}</Text>
-      {entry.evidence.map((item, i) => {
-        const snapshot = store.sourceSnapshots.find((s) => sameSourceRef(s.source.ref, item.source.ref) &&
-          s.source.textDigest === item.source.textDigest && s.source.updatedAt === item.source.updatedAt);
-        const state = materialState(store.seeds, snapshot);
-        if (!snapshot || state === 'deleted' || state === 'missing') return <Text key={i} style={studioStyles.muted}>{craftRoles[i]} · 原文を確認できません</Text>;
-        return <View key={i}>
-          <Text style={studioStyles.muted}>{craftRoles[i]} · {snapshot.title || '題名のないメモ'}{state === 'changed' ? ' · 選んだ当時の一節' : ''}</Text>
-          <Text selectable style={studioStyles.text}>「{item.quote}」</Text>
-        </View>;
-      })}
-    </View>)}
-  </View>;
 }
 
 function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, onOriginMap, advanced, canUseAdvanced, comparison, onCraft }: Props & {
@@ -191,7 +167,7 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
     {(!comparison || panel === 'materials') && <SectionCard>
       {!comparison && <Heading>材料棚</Heading>}
       {advanced && onCraft && <StudioAction label="材料を作業台で組み合わせる" icon="construct-outline" onPress={openBench} disabled={locked} />}
-      <CraftSources store={store} ids={draft.insertedSuggestionIds} />
+      <StudioCraftSources store={store} ids={draft.insertedSuggestionIds} />
       {comparison && !draft.materials.length && !picker && <Text style={studioStyles.muted}>下書きの横に置きたいメモを選べます。</Text>}
       {draft.materials.map(({ snapshotId, versionMode }) => {
         const snapshot = store.sourceSnapshots.find(({ id }) => id === snapshotId);
@@ -277,7 +253,7 @@ function AtelierEditor({ writer, project, draft, store, onBack, onCreateWork, on
         onPress={() => { setChosen(entry.id); setAdoption(undefined); }} />)}</Actions>}
       {selected && <>
         <Text selectable style={plusStyles.original}>{selected.text}</Text>
-        <CraftSources key={selected.id} store={store} ids={selected.insertedSuggestionIds} />
+        <StudioCraftSources key={selected.id} store={store} ids={selected.insertedSuggestionIds} />
         <Actions>
           {advanced && <PlusButton label="作業中の文と比べる" selected={compare} onPress={() => setCompare(!compare)} />}
           {advanced && <PlusButton label="この版から考え直す" disabled={locked} onPress={() => commitAdvanced(() => forkAtelier(project.id, createId(), now(), selected.id))} />}

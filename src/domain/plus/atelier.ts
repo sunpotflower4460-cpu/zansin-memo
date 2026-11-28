@@ -20,6 +20,14 @@ export function materialState(seeds: readonly Seed[], snapshot: SourceSnapshot |
   return textDigest(current.text) === snapshot.source.textDigest ? 'current' : 'changed';
 }
 
+export function readCraftEvidence(store: Pick<GardenStoreV3, 'seeds' | 'sourceSnapshots'>, entry: AtelierSuggestion['evidence'][number]) {
+  const snapshot = store.sourceSnapshots.find((item) => sameSourceRef(item.source.ref, entry.source.ref) &&
+    item.source.textDigest === entry.source.textDigest && item.source.updatedAt === entry.source.updatedAt);
+  if (!snapshot || !validTextRange(snapshot.text, entry.start, entry.end) || snapshot.text.slice(entry.start, entry.end) !== entry.quote) return undefined;
+  const state = materialState(store.seeds, snapshot);
+  return state === 'current' || state === 'changed' ? { snapshot, state, quote: entry.quote } : undefined;
+}
+
 export function captureMaterial(store: GardenStoreV3, ref: SourceRef, id: string, at: string) {
   const snapshot = snapshotSource(store.seeds, ref, id, at);
   if (!snapshot) return undefined;
@@ -271,6 +279,10 @@ export function adoptCraft(args: { id: string; target: DraftTarget; create: bool
     const { parts, title, body, recipe, generator } = candidate;
     if (!title.trim() || !body.trim() || parts.length < 2 || parts.length > 3 ||
         new Set(parts.map((part) => part.source.ref.seedId)).size !== parts.length) return { rejected: '異なるメモを2〜3枚選んでください' };
+    const uses = generator === 'recipe' ? candidate.uses : undefined;
+    if (uses && (uses.length !== parts.length || uses.some((text) => !text.trim() || text.length > 200))) {
+      return { rejected: '素材の使い道を確認できません。この案を開き直してください。' };
+    }
     let working = store;
     if (args.create) {
       if (store.atelierProjects.some((project) => project.id === target.projectId)) return { rejected: '作業中の下書きを確認してください' };
@@ -305,7 +317,7 @@ export function adoptCraft(args: { id: string; target: DraftTarget; create: bool
     const insertion = draft.text ? `\n\n${title}\n${body}` : body;
     const suggestion: AtelierSuggestion = { id, requestId: `local-craft:${id}`, resultId: id, projectId: draft.projectId, branchId: draft.branchId,
       baseEditRevision: draft.editRevision, baseTextDigest: textDigest(draft.text), kind: 'outline', content: body,
-      craft: { recipe, generator, title }, evidence, processingRootSeedIds: roots.rootSeedIds, permissionEpochs: {},
+      craft: { recipe, generator, title, uses }, evidence, processingRootSeedIds: roots.rootSeedIds, permissionEpochs: {},
       decision: 'inserted', availability: 'ready', createdAt: at, insertedAt: at };
     const next = { ...draft, materials, text: draft.text + insertion, lineage: mergeLineage(draft.lineage, roots),
       insertedSuggestionIds: [...draft.insertedSuggestionIds, id], editRevision: draft.editRevision + 1, updatedAt: at };

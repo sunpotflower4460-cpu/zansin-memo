@@ -12,6 +12,7 @@ import { theme } from '../styles/theme';
 import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { PlusInput, buttonSelectionProps } from './PlusUI';
+import { StudioCraftIngredient } from './StudioCraftSources';
 import { generateLocalCraft, localCraftAvailability } from './studioLanguage';
 import { StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
 
@@ -59,7 +60,11 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
     return seed && seed.title === part.title && textDigest(seed.body) === part.source.textDigest ? seed : undefined;
   }), [parts, index]);
   const stale = current.some((seed) => !seed);
-  const base = React.useMemo(() => stale ? undefined : composeCraft(parts, recipe), [parts, recipe, stale]);
+  const choices = React.useMemo(() => stale ? [] : craftRecipes.flatMap((option) => {
+    const idea = composeCraft(parts, option.id);
+    return idea ? [{ ...option, idea }] : [];
+  }), [parts, stale]);
+  const base = choices.find(({ id }) => id === recipe)?.idea;
   const alternative = ai?.base === base ? ai?.result : undefined;
   const candidate = showAI && alternative ? alternative : base;
   const source = slot === undefined ? undefined : current[slot];
@@ -89,7 +94,7 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
       const aim = craftRecipes.find((entry) => entry.id === recipe)!.aim;
       const result = await generateLocalCraft(aim, base.parts.map((part) => part.quote));
       if (run.current !== generation || !canUse() || !canUseAI()) return;
-      if (result) { setAi({ base, result: { ...base, ...result, generator: 'on_device' } }); setShowAI(true); }
+      if (result) { setAi({ base, result: { ...result, recipe: base.recipe, parts: base.parts, generator: 'on_device' } }); setShowAI(true); }
       else setNotice('AIの案を作れませんでした。レシピの案を使うか、もう一度試せます。');
     } catch {
       if (run.current === generation) setNotice('AIの案を作れませんでした。レシピの案は下に残っています。');
@@ -167,24 +172,40 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
     {stale && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>素材に更新があります。「選び直す」から現在のメモを確認してください。</Text>}
     {!advanced && <Text style={studioStyles.muted}>新しい案の取り込みにはPlusの利用権が必要です。</Text>}
     {base && candidate && <>
-      <StudioSegments label="作業台のレシピ" items={craftRecipes} value={recipe} onChange={(next) => {
-        if (recipe === next || busy) return;
-        cancelGeneration(); setRecipe(next); setShowAI(false); setNotice('');
-      }} />
+      <View style={styles.recipeSection}>
+        <Text accessibilityRole="header" style={studioStyles.subtitle}>この素材からできる案</Text>
+        <View testID="studio-craft-choices" style={styles.recipeList}>
+          {choices.map(({ id, label, idea }) => {
+            const active = id === recipe;
+            return <Pressable key={id} accessibilityRole="button" accessibilityLabel={`${label}。${idea.title}`} accessibilityHint={idea.summary}
+              {...buttonSelectionProps(active)} disabled={busy} onPress={() => {
+                if (active) return;
+                cancelGeneration(); setRecipe(id); setShowAI(false); setNotice('');
+              }} style={({ pressed }) => [styles.recipe, active && styles.onRecipe, pressed && studioStyles.quiet]}>
+              <View style={studioStyles.grow}>
+                <Text style={styles.role}>{label}</Text>
+                <Text style={styles.recipeTitle}>{idea.title}</Text>
+                <Text style={studioStyles.muted}>{idea.summary}</Text>
+              </View>
+              <Ionicons name={active ? 'checkmark-circle' : 'chevron-forward'} size={18} color={active ? studioColors.green : studioColors.muted} />
+            </Pressable>;
+          })}
+        </View>
+      </View>
+      {alternative && <StudioSegments label="案の種類" items={[{ id: 'recipe', label: 'レシピの案' }, { id: 'model', label: 'AIの別案' }]}
+        value={showAI ? 'model' : 'recipe'} onChange={(next) => { if (!busy) setShowAI(next === 'model'); }} />}
       <View style={[studioStyles.card, styles.paper]}>
         <Text style={styles.resultLabel}>{candidate.generator === 'recipe' ? 'レシピで組んだ案' : '端末内AIの案'} · 未保存</Text>
         <Text accessibilityRole="header" style={styles.resultTitle}>{candidate.title}</Text>
         <Text selectable style={studioStyles.text}>{candidate.body}</Text>
-        <StudioAction label={`この案に使った${parts.length}枚の一節`} plain icon="book-outline" expanded={showQuotes} onPress={() => setShowQuotes(!showQuotes)} />
-        {showQuotes && parts.map((part, i) => <View key={part.source.ref.seedId}>
-          <Text style={styles.role}>{craftRoles[i]} · {part.title || '題名のないメモ'}</Text>
-          <Text selectable style={studioStyles.text}>「{part.quote}」</Text>
-        </View>)}
+        <StudioAction label={candidate.generator === 'recipe' ? '素材がどう活きたか' : 'AIに渡した一節'}
+          plain icon="book-outline" expanded={showQuotes} onPress={() => setShowQuotes(!showQuotes)} />
+        {showQuotes && parts.map((part, i) => <StudioCraftIngredient key={part.source.ref.seedId} role={craftRoles[i]}
+          title={part.title} quote={part.quote} use={candidate.uses?.[i]} />)}
       </View>
       {aiReady && canUseAI() && advanced && <View style={studioStyles.card}>
         <Text style={studioStyles.muted}>選んだ一節と組み方を使い、この端末で別案を作ります。</Text>
         <View style={studioStyles.wrap}>
-          {alternative && <StudioAction label={showAI ? 'レシピの案と見比べる' : 'AIの案と見比べる'} disabled={busy} onPress={() => setShowAI(!showAI)} />}
           {thinking ? <StudioAction label="AIの案を待つのをやめる" onPress={cancelGeneration} /> :
             <StudioAction label="端末内AIで別案をつくる" icon="sparkles-outline" disabled={busy} onPress={() => void generate()} />}
         </View>
@@ -209,6 +230,12 @@ const styles = StyleSheet.create({
   filled: { backgroundColor: '#fffdf6', borderStyle: 'solid', borderColor: '#abbda4' },
   role: { fontSize: 12, lineHeight: 17, fontWeight: '700', color: studioColors.green },
   slotText: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: studioColors.text }, slotHint: { fontSize: 12, color: studioColors.muted, textAlign: 'center' },
+  recipeSection: { gap: 6 },
+  recipeList: { borderWidth: 1, borderColor: studioColors.rule, borderRadius: 13, overflow: 'hidden', backgroundColor: studioColors.surface },
+  recipe: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 60, paddingHorizontal: 11, paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: studioColors.rule },
+  onRecipe: { backgroundColor: studioColors.soft },
+  recipeTitle: { color: studioColors.text, fontSize: 15, lineHeight: 21, fontWeight: '700' },
   paper: { borderLeftWidth: 4, borderLeftColor: '#ab7d48', padding: 16, backgroundColor: '#fffbf1' },
   resultLabel: { fontSize: 12, fontWeight: '700', color: '#78552f' },
   resultTitle: { fontSize: 21, lineHeight: 29, fontFamily: theme.fonts.serif, color: studioColors.text, fontWeight: '600' },
