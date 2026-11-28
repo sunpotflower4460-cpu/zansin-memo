@@ -6,7 +6,7 @@ import { indexMap } from '../domain/plus/map';
 import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioPreferences } from '../domain/plus/studio';
 import { constellationGraph, constellationGroups, radialGraph } from '../domain/plus/studioGraph';
 import { buildPlusTextExport } from '../utils/plusExport';
-import { connectionId } from './gardenModel';
+import { connectionId, makeConnection } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
 import { buildStudioExample } from './plusExample';
 
@@ -83,6 +83,37 @@ test('constellation groups account for undisplayed members and radial emphasis k
   assert.ok(event?.kind === 'connection');
   assert.deepEqual(event.pair, [focus.id, peer.id]);
   assert.equal(event.note, '歩いた場所を残す');
+});
+
+test('a small radial map reveals an omitted second-hop note beside its actual intermediary', () => {
+  const seeds = Array.from({ length: 10 }, (_, i) => buildSeed(`note-${i}`, { body: `メモ${i}` }, today));
+  const connections = [[0, 1], [0, 2], [0, 3], [0, 4], [1, 5], [1, 6], [1, 7], [2, 8], [4, 9]]
+    .map(([a, b]) => makeConnection(seeds[a].id, seeds[b].id, 'manual', today));
+  const index = indexMap(seeds, connections);
+  const frame = { width: 294, height: 218 };
+  const initial = radialGraph(index, seeds[0], frame, [], true);
+  const find = (graph: typeof initial, id: string) => graph.nodes.find(({ seed }) => seed.id === id);
+  const onMap = find(initial, 'note-5');
+  assert.ok(onMap && onMap.via === 'note-1');
+  assert.deepEqual(radialGraph(index, seeds[0], frame, [], true, undefined, 'note-5'), initial);
+  assert.equal(find(initial, 'note-9'), undefined);
+
+  const revealed = radialGraph(index, seeds[0], frame, [], true, undefined, 'note-9');
+  const chosen = find(revealed, 'note-9');
+  const intermediary = find(revealed, 'note-4');
+  assert.ok(chosen && intermediary && chosen.via === intermediary.seed.id);
+  assert.equal(chosen.group, intermediary.group);
+  assert.equal(revealed.hidden + revealed.nodes.length, seeds.length);
+  assert.ok(revealed.lines.some(({ id }) => id === connectionId('note-4', 'note-9')));
+  assert.ok(revealed.lines.some(({ id }) => id === connectionId('note-0', 'note-4')));
+  assert.ok(!revealed.lines.some(({ id }) => id === connectionId('note-0', 'note-9')));
+  for (const [i, node] of revealed.nodes.entries()) {
+    assert.ok(node.width >= 44 && node.height >= 44);
+    for (const peer of revealed.nodes.slice(i + 1)) {
+      assert.ok(Math.abs(node.x - peer.x) >= (node.width + peer.width) / 2 ||
+        Math.abs(node.y - peer.y) >= (node.height + peer.height) / 2);
+    }
+  }
 });
 
 test('Studio preferences and reflections round-trip without requiring new fields in old gardens', () => {

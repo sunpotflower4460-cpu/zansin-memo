@@ -5,11 +5,12 @@ import Svg, { Circle, Defs, Path, Pattern, RadialGradient, Rect, Stop } from 're
 import type { StudioPreferences } from '../domain/plus/contracts';
 import type { Suggestion } from '../domain/plus/insights';
 import type { MapIndex } from '../domain/plus/map';
-import { constellationGraph, radialGraph, type ConstellationGroup, type StudioGraph } from '../domain/plus/studioGraph';
+import { constellationGraph, radialGraph, type ConstellationGroup, type RadialNeighborhood, type StudioGraph } from '../domain/plus/studioGraph';
 import type { Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { toSeedSnippet } from '../utils/seedText';
 import { IconButton } from './StudioUI';
+import { buttonSelectionProps } from './PlusUI';
 
 export const mapPalettes = {
   paper: { label: '和紙', art: '#e5e9d9', light: '#faf5e5', pattern: '#617c60', node: '#fffcf1', ink: '#263e31', border: '#a7b49a',
@@ -56,13 +57,17 @@ function pathFor({ a, b }: StudioGraph['lines'][number], radial: boolean) {
   return `M ${start.x} ${start.y} C ${mid} ${start.y}, ${mid} ${end.y}, ${end.x} ${end.y}`;
 }
 
-export function StudioMapCanvas({ index, center, selected, emphasisId, mode, palette, height, suggestions, expanded, groups, immersive, viewKey, onSelect }: {
-  index: MapIndex; center: Seed; selected: string; emphasisId?: string; mode: 'radial' | 'constellation'; palette: StudioPreferences['palette']; height: number;
-  suggestions: readonly Suggestion[]; expanded: boolean; groups?: ConstellationGroup[]; immersive: boolean; viewKey: string; onSelect: (id: string) => void;
+export function StudioMapCanvas({ index, center, selected, emphasisId, mode, palette, suggestions, expanded, neighborhood, groups, viewKey,
+  back, onDepth, onMore, onGroups, onSelect, fitRequest }: {
+  index: MapIndex; center: Seed; selected: string; emphasisId?: string; mode: 'radial' | 'constellation'; palette: StudioPreferences['palette'];
+  suggestions: readonly Suggestion[]; expanded: boolean; neighborhood?: RadialNeighborhood; groups?: ConstellationGroup[]; viewKey: string;
+  back?: { title: string; onPress: () => void }; onDepth?: () => void; onMore: (visibleIds: string[]) => void; onGroups?: () => void;
+  onSelect: (id: string) => void; fitRequest: number;
 }) {
-  const [width, setWidth] = React.useState(0);
+  const [{ width, height }, setSize] = React.useState({ width: 0, height: 0 });
   const [camera, setCamera] = React.useState(initialCamera);
   const live = React.useRef(initialCamera);
+  const lastFit = React.useRef(fitRequest);
   const trail = React.useRef(new Map<string, Camera>());
   const dragged = React.useRef(false);
   const position = React.useRef({ x: 0, y: 0 });
@@ -72,8 +77,10 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
   const cameraKey = JSON.stringify([mode, viewKey, center.id]);
   const graph = React.useMemo(() => {
     const size = { width, height };
-    return width ? (radial ? radialGraph(index, center, size, suggestions, expanded, emphasisId) : constellationGraph(index, center, size, groups)) : undefined;
-  }, [center, emphasisId, expanded, groups, height, index, radial, suggestions, width]);
+    if (!width || !height) return undefined;
+    return radial ? radialGraph(index, center, size, suggestions, expanded, emphasisId, selected, neighborhood)
+      : constellationGraph(index, center, size, groups);
+  }, [center, emphasisId, expanded, groups, height, index, neighborhood, radial, selected, suggestions, width]);
   const set = React.useCallback((value: Camera) => {
     const scale = limit(value.scale, 1, maxScale);
     const x = width * (scale - 1) / 2 + 26;
@@ -85,15 +92,18 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
     saved.set(cameraKey, next);
     setCamera(next);
   }, [cameraKey, height, width]);
-  React.useLayoutEffect(() => { set(trail.current.get(cameraKey) ?? initialCamera); }, [cameraKey, set]);
+  React.useLayoutEffect(() => {
+    const fit = lastFit.current !== fitRequest;
+    lastFit.current = fitRequest;
+    set(fit ? initialCamera : trail.current.get(cameraKey) ?? initialCamera);
+  }, [cameraKey, fitRequest, set]);
 
   const gestures = React.useMemo(() => {
     let origin = live.current;
     let pinch = undefined as undefined | { center: Camera; x: number; y: number; distance: number };
     let panOffset = { x: 0, y: 0 };
     return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, move) => move.numberActiveTouches > 1 ||
-        (Math.abs(move.dx) + Math.abs(move.dy) > 8 && (immersive || live.current.scale > 1 || Math.abs(move.dx) > Math.abs(move.dy))),
+      onMoveShouldSetPanResponderCapture: (_, move) => move.numberActiveTouches > 1 || Math.abs(move.dx) + Math.abs(move.dy) > 8,
       onPanResponderGrant: (_event, move) => {
         dragged.current = true;
         origin = live.current; pinch = undefined; panOffset = { x: move.dx, y: move.dy };
@@ -118,7 +128,7 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
       },
       onPanResponderTerminationRequest: () => false,
     });
-  }, [height, immersive, set, width]);
+  }, [height, set, width]);
 
   function zoom(delta: number) {
     const original = live.current;
@@ -130,12 +140,20 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
   }
 
   const patternId = React.useId().replace(/[^\w-]/g, '');
-  const highlighted = selected !== center.id && graph?.lines.some((line) => [line.a.seed.id, line.b.seed.id].includes(selected) &&
-    [line.a.seed.id, line.b.seed.id].includes(center.id));
+  const selectedNode = graph?.nodes.find(({ seed }) => seed.id === selected);
+  const via = selectedNode?.via;
+  const highlighted = selected !== center.id && graph?.lines.some(({ a, b }) =>
+    (a.seed.id === selected && b.seed.id === (via ?? center.id)) || (b.seed.id === selected && a.seed.id === (via ?? center.id)));
+  const shown = Math.max(0, (graph?.nodes.length ?? 0) - Number(radial));
+  const hasCandidates = suggestions.length > 0 && radial;
+  const label = radial && !hasCandidates ? `${expanded ? '周辺' : '直接'} ${shown}件` : `表示 ${shown} / ${graph?.scope ?? 0}件`;
+  const hidden = graph?.hidden ?? 0;
   return <View ref={surface} testID="studio-map-canvas" onLayout={({ nativeEvent }) => {
-    if (nativeEvent.layout.width > 0) setWidth(nativeEvent.layout.width);
+    const { width: nextWidth, height: nextHeight } = nativeEvent.layout;
+    if (nextWidth > 0 && nextHeight > 0) setSize((before) => before.width === nextWidth && before.height === nextHeight
+      ? before : { width: nextWidth, height: nextHeight });
   }}
-    style={[styles.canvas, { height, backgroundColor: colors.art, borderColor: colors.border }]}>
+    style={[styles.canvas, { backgroundColor: colors.art, borderColor: colors.border }]}>
     {!!width && <View pointerEvents="none" aria-hidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height}>
         <Defs>
@@ -156,29 +174,33 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
         <View style={[StyleSheet.absoluteFill, { transform: [{ scale: camera.scale }] }]}>
           <View pointerEvents="none" aria-hidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
             <Svg height={height} width={width}>
-              {radial && [0.2, 0.295, 0.38].map((radius) => <Circle key={radius} cx={width / 2} cy={(height - 20) / 2} r={Math.min(height, width) * radius}
+              {radial && [0.19, 0.29, 0.39].map((radius) => <Circle key={radius} cx={width / 2} cy={(height - 4) / 2} r={Math.min(height, width) * radius}
                 fill="none" stroke={colors.line} opacity={0.19} strokeWidth={1} strokeDasharray={palette === 'night' ? '2 5' : undefined} />)}
               {graph.islands.map((island) => <Rect key={island.group} x={island.x - island.width / 2} y={island.y - island.height / 2} width={island.width}
                 height={island.height} rx={19} fill={colors.motifs[island.group % colors.motifs.length]} stroke={colors.border} strokeOpacity={0.45} />)}
               {graph.lines.map((line) => {
                 const ids = [line.a.seed.id, line.b.seed.id];
-                const active = ids.includes(selected) && (!highlighted || ids.includes(center.id));
+                const active = highlighted ? (ids.includes(selected) && ids.includes(via ?? center.id)) ||
+                  (!!via && ids.includes(center.id) && ids.includes(via)) : ids.includes(selected);
                 const path = pathFor(line, radial);
                 const ink = line.suggested ? colors.candidate : active ? colors.highlight : colors.line;
+                const branch = ids.includes(center.id) || line.a.via === line.b.seed.id || line.b.via === line.a.seed.id;
                 return <React.Fragment key={line.id}>
                   {active && !line.suggested && <Path d={path} fill="none" stroke={ink} opacity={0.15} strokeWidth={7} strokeLinecap="round" />}
-                  <Path d={path} fill="none" stroke={ink} strokeWidth={active ? 2.6 : 1.5} strokeLinecap="round"
-                    strokeDasharray={line.suggested ? '4.5 4.5' : undefined} opacity={active ? 1 : 0.86} />
+                  <Path d={path} fill="none" stroke={ink} strokeWidth={active ? 2.6 : !radial || branch ? 1.5 : 1.15} strokeLinecap="round"
+                    strokeDasharray={line.suggested ? '4.5 4.5' : undefined} opacity={active || line.suggested ? 1 : 0.89} />
                 </React.Fragment>;
               })}
             </Svg>
           </View>
-          {graph.nodes.map(({ seed, x, y, width: nodeWidth, height: nodeHeight, isCenter, suggested }) => {
+          {graph.nodes.map(({ seed, x, y, width: nodeWidth, height: nodeHeight, isCenter, suggested, via: parent }) => {
             const active = seed.id === selected;
             const filled = isCenter && radial;
             const ink = filled ? colors.onCenter : colors.ink;
-            return <Pressable key={seed.id} accessibilityRole="button" accessibilityLabel={`${toSeedSnippet(seed, 55)}${suggested ? '、AIの候補' : ''}`}
-              accessibilityHint={suggested ? '理由と原文を確認できます' : undefined}
+            const title = toSeedSnippet(seed, 55);
+            return <Pressable key={seed.id} testID={`studio-map-node-${seed.id}`} accessibilityRole="button"
+              accessibilityLabel={`${title}${suggested ? '、AIの候補' : ''}`}
+              accessibilityHint={suggested ? '理由と原文を確認できます' : filled ? '地図の中心のメモ' : parent ? '中心から2つ先のメモ' : undefined}
               accessibilityState={{ selected: active }} onPressIn={() => { dragged.current = false; }}
               onPress={() => {
                 if (!dragged.current) onSelect(seed.id);
@@ -188,22 +210,48 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
                 backgroundColor: filled ? colors.center : colors.node, borderColor: suggested ? colors.candidate : active ? colors.highlight : colors.border,
                 borderWidth: active || suggested ? 2 : 1, borderStyle: suggested ? 'dashed' : 'solid', opacity: pressed ? 0.78 : 1 },
               filled && styles.centerNode]}>
-              {filled && <Ionicons name="leaf-outline" color={ink} size={16} style={styles.leaf} />}
+              {filled && <View aria-hidden style={styles.centerMarker}>
+                <Ionicons name="leaf-outline" color={ink} size={12} />
+                <Text maxFontSizeMultiplier={1.1} style={[styles.centerLabel, { color: ink }]}>中心</Text>
+              </View>}
               <Text maxFontSizeMultiplier={1.28} numberOfLines={2} style={[styles.nodeText, { color: ink }, filled && styles.centerText,
-                !radial && styles.clusterText]}>{toSeedSnippet(seed, filled ? 27 : 20)}</Text>
+                (!radial || parent) && styles.clusterText]}>{title}</Text>
             </Pressable>;
           })}
         </View>
       </View>}
     </View>
-    <View pointerEvents="none" style={styles.corner}>
-      <Text style={[styles.caption, { color: colors.ink, backgroundColor: colors.node }]}>{graph
-        ? graph.hidden ? `${graph.scope}件中 ${graph.nodes.length}件を表示` : `${graph.nodes.length}件` : ''}</Text>
+    <View pointerEvents="box-none" style={styles.top}>
+      <View pointerEvents="box-none" style={styles.topLeading}>
+        {back && <Pressable accessibilityRole="button" accessibilityLabel="前の中心へ戻る" accessibilityHint={back.title} onPress={back.onPress}
+          style={({ pressed }) => [styles.mapButton, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
+          <Ionicons name="chevron-back" size={15} color={colors.ink} />
+          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>戻る</Text>
+        </Pressable>}
+        {radial && graph && hidden > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={`表示していない ${hidden}件を一覧で見る`}
+          onPress={() => onMore(graph.nodes.map(({ seed }) => seed.id))}
+          style={({ pressed }) => [styles.mapButton, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
+          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>ほか{hidden}件</Text>
+          <Ionicons name="chevron-forward" size={12} color={colors.ink} />
+        </Pressable> : graph && <Text pointerEvents="none" style={[styles.caption, { color: colors.ink, backgroundColor: colors.node }]}>{label}</Text>}
+      </View>
+      {onDepth && <Pressable accessibilityRole="button" {...buttonSelectionProps(expanded)}
+        accessibilityLabel={expanded ? '直接のつながりに戻す' : '2つ先まで見る'} onPress={onDepth}
+        style={({ pressed }) => [styles.mapButton, { backgroundColor: expanded ? colors.center : colors.node, borderColor: expanded ? colors.center : colors.border },
+          pressed && styles.pressed]}>
+        <Ionicons name="git-branch-outline" size={15} color={expanded ? colors.onCenter : colors.ink} />
+        <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: expanded ? colors.onCenter : colors.ink }]}>2つ先まで</Text>
+      </Pressable>}
+      {onGroups && <Pressable accessibilityRole="button" accessibilityLabel="まとまりを探す" onPress={onGroups}
+        style={({ pressed }) => [styles.mapButton, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
+        <Ionicons name="layers-outline" size={15} color={colors.ink} />
+        <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>まとまり</Text>
+      </Pressable>}
     </View>
     <View pointerEvents="box-none" style={styles.bottom}>
       <View pointerEvents="none" style={styles.legend}>
         <View style={styles.key}><View style={[styles.keyLine, { borderTopColor: colors.line }]} /><Text style={[styles.keyText, { color: colors.ink }]}>つながり</Text></View>
-        {!!suggestions.length && radial && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
+        {hasCandidates && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
           <Text style={[styles.keyText, { color: colors.ink }]}>AIの候補</Text></View>}
       </View>
       <View style={[styles.controls, { backgroundColor: colors.node, borderColor: colors.border }]}>
@@ -216,15 +264,20 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
 }
 
 const styles = StyleSheet.create({
-  canvas: { overflow: 'hidden', position: 'relative', borderRadius: 21, borderWidth: 1 },
+  canvas: { flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', borderRadius: 21, borderWidth: 1, userSelect: 'none' },
   node: { position: 'absolute', paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center', borderRadius: 12,
     boxShadow: '0px 2px 5px rgba(23, 37, 25, 0.14)' },
   centerNode: { borderRadius: 15, boxShadow: '0px 4px 9px rgba(23, 37, 25, 0.22)' },
-  leaf: { marginBottom: 2 },
-  nodeText: { userSelect: 'none', fontSize: 12, lineHeight: 16, fontWeight: '600', textAlign: 'center' },
-  centerText: { fontSize: 16, lineHeight: 21, fontFamily: theme.fonts.serif },
-  clusterText: { fontSize: 11, lineHeight: 14 },
-  corner: { position: 'absolute', top: 9, left: 9, alignItems: 'flex-start' },
+  centerMarker: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 3 },
+  centerLabel: { fontSize: 10, fontWeight: '700', lineHeight: 13 },
+  nodeText: { fontSize: 13, lineHeight: 17, fontWeight: '700', textAlign: 'center' },
+  centerText: { fontSize: 17, lineHeight: 21, fontFamily: theme.fonts.serif },
+  clusterText: { fontSize: 12, lineHeight: 15 },
+  top: { position: 'absolute', top: 6, left: 7, right: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
+  topLeading: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mapButton: { minHeight: 44, borderRadius: 11, borderWidth: 1, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  buttonText: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
+  pressed: { opacity: 0.7 },
   bottom: { position: 'absolute', bottom: 7, left: 12, right: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 5 },
   caption: { fontSize: 11, lineHeight: 15, fontWeight: '700', borderRadius: 8, overflow: 'hidden', paddingVertical: 3, paddingHorizontal: 7 },
   legend: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: 8, rowGap: 2, paddingBottom: 4 },

@@ -10,6 +10,7 @@ import { permissionFor } from '../domain/plus/proposalPrivacy';
 import { restoreProposalPair, updateSeedPermission } from '../domain/plus/proposals';
 import { initialStudioPreferences, saveStudioPreferences } from '../domain/plus/studio';
 import { createId } from '../utils/ids';
+import { toSeedSnippet } from '../utils/seedText';
 import { InsightCard, StudioInsights } from './StudioInsights';
 import { StudioMapPanel, StudioNoteList } from './StudioMapPanel';
 import { StudioRecords } from './StudioRecords';
@@ -57,6 +58,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
 
   if (!focus || !center || !selected) return null;
   const focusId = focus.id;
+  const previousCenter = index.byId.get(trail.at(-1) ?? '');
   const skipped = store.proposalSuppressions.filter(({ pair }) => pair.includes(focusId))
     .flatMap(({ pair }) => index.byId.get(pair[0] === focusId ? pair[1] : pair[0]) ?? []);
 
@@ -125,7 +127,8 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         preview={preview && { kind: preview.kind, label: notice ?? (preview.kind === 'suggestions' ? '候補のつながり' : '記録から開いたつながり'),
           emphasisId: preview.emphasisId, onClose: closePreview }}
         immersive={immersive} onImmersive={() => setImmersive(!immersive)}
-        back={!preview && trail.length ? previous : undefined} onSearch={() => setPick('map')} onSettings={(patch) => void changeMap(patch)}
+        back={!preview && previousCenter ? { title: toSeedSnippet(previousCenter, 50), onPress: previous } : undefined}
+        onSearch={() => setPick('map')} onSettings={(patch) => void changeMap(patch)}
         onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }} onWrite={onWrite} />
     </View>
     <View style={[studioStyles.root, (tab !== 'ai' || pick || review) && styles.hidden]}>

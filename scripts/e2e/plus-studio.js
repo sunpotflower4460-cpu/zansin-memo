@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const path = require('node:path');
+const { emptyStoreV3 } = require('../../src/data/gardenV3Model.ts');
+const { buildPlusExample } = require('../../src/data/plusExample.ts');
 
 const url = process.env.COMPARISON_URL || 'http://127.0.0.1:8104/';
 const storeKey = 'kizashi-plus-preview:kizashi-notes:garden:v3';
@@ -51,6 +53,23 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     await button('地図を画面に合わせる').click();
     assert.ok(Math.abs((await mapNote.boundingBox()).x - originalCenter.x) < 3);
 
+    await button('2つ先まで見る').click();
+    const photo = canvas.getByRole('button', { name: '写真を一枚選ぶ', exact: true });
+    await photo.click();
+    await page.getByTestId('studio-map-selection').getByText('「雨の日の音」を経由', { exact: true }).waitFor();
+    await shot('11-two-hops');
+    await button('ここを中心にする').click();
+    await photo.getByText('中心', { exact: true }).waitFor();
+    await button('前の中心へ戻る').click();
+    await photo.waitFor();
+    await button('直接のつながりに戻す').click();
+    await photo.waitFor({ state: 'detached' });
+    await button('このメモのつながり').click();
+    await heading('メモのつながり').waitFor();
+    await page.getByText('思い出を呼び戻す手がかり', { exact: true }).filter({ visible: true }).waitFor();
+    await shot('12-connections');
+    await button('地図の操作画面を閉じる').click();
+
     await canvas.getByRole('button', { name: '雨の日の音', exact: true }).click();
     await page.getByText('思い出を呼び戻す手がかり', { exact: true }).filter({ visible: true }).waitFor();
     await button('ここを中心にする').click();
@@ -77,6 +96,8 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     await button('表示スタイル').click();
     await button('月夜').click();
     await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key)).studioPreferences.palette === 'night', storeKey);
+    await canvas.getByRole('button', { name: '散歩の記録', exact: true }).waitFor();
+    await shot('13-live-styles');
     await button('表示スタイルを閉じる').click();
     await canvas.getByRole('button', { name: '散歩の記録', exact: true }).click();
     await shot('03-map-night');
@@ -161,7 +182,8 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     assert.equal((await store()).studioPreferences.palette, 'night');
     assert.equal((await store()).reflections[0].body, reflection);
     assert.deepEqual(errors, []);
-    console.log('PASS map camera and full screen; constellation drill-down; in-map candidate approval and recorded links; plan and layout persistence');
+    await checkDenseSmallMap(browser);
+    console.log('PASS fixed map actions, two-hop and hidden notes, live palettes, camera and full screen, candidate and record routes, plan persistence');
   } finally {
     await browser.close();
   }
@@ -169,3 +191,52 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
   console.error(error);
   process.exitCode = 1;
 });
+
+async function checkDenseSmallMap(browser) {
+  const page = await browser.newPage({ viewport: { width: 320, height: 568 }, hasTouch: true, locale: 'ja-JP' });
+  const canvas = page.getByTestId('studio-map-canvas');
+  const dock = page.getByTestId('studio-map-selection');
+  const button = (name) => page.getByRole('button', { name, exact: true });
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    const { seeds, connections } = buildPlusExample(64);
+    await page.addInitScript(({ key, example }) => localStorage.setItem(key, JSON.stringify(example)), {
+      key: storeKey, example: { ...emptyStoreV3(), seeds, connections },
+    });
+    await page.goto(url);
+    await button('無料と Plus を比較').tap();
+    await page.getByRole('switch', { name: 'Plus を試す' }).tap();
+    await canvas.getByTestId('studio-map-node-example-0').getByText('中心', { exact: true }).waitFor();
+    await button('2つ先まで見る').tap();
+    await canvas.getByTestId('studio-map-node-example-2').tap();
+    await dock.getByText('「雨の日の音」を経由', { exact: true }).waitFor();
+    const main = await canvas.boundingBox();
+    const actions = await dock.boundingBox();
+    assert.ok(main && actions && main.y + main.height <= actions.y && actions.y + actions.height <= 568);
+    for (const control of await dock.getByRole('button').all()) {
+      const box = await control.boundingBox();
+      assert.ok(box && box.width >= 44 && box.height >= 44, 'each dock action has a 44px touch target');
+    }
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, '14-small-dense.png'), animations: 'disabled' });
+
+    await button('地図を拡大').tap();
+    await button(/^表示していない \d+件を一覧で見る$/).tap();
+    await page.getByRole('heading', { name: '地図の続き', exact: true }).waitFor();
+    assert.equal(await button('雨の日の音、つながり2件').count(), 0, 'the drawer contains only omitted notes');
+    await page.getByLabel('地図のメモを探す').fill('メモ 37');
+    const result = button('帰り道のメモ 37、つながり1件');
+    await result.waitFor();
+    await result.getByText('散歩で見つけたもの', { exact: true }).waitFor();
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, '15-search-overflow.png'), animations: 'disabled' });
+    await result.tap();
+    await dock.getByRole('heading', { name: '帰り道のメモ 37', exact: true }).waitFor();
+    const chosen = await canvas.getByTestId('studio-map-node-example-44').boundingBox();
+    assert.ok(chosen && chosen.x >= main.x && chosen.x + chosen.width <= main.x + main.width &&
+      chosen.y >= main.y && chosen.y + chosen.height <= main.y + main.height, 'the revealed note fits on the map');
+    await canvas.getByTestId('studio-map-node-example-0').getByText('中心', { exact: true }).waitFor();
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+}
