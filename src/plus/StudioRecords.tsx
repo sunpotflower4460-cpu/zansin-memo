@@ -7,9 +7,9 @@ import { adjacentMonth, calendarDate, monthDays, recordDays, saveReflection, typ
 import { createId } from '../utils/ids';
 import { getLocalDateKey } from '../utils/seedUtils';
 import { PlusInput, buttonSelectionProps } from './PlusUI';
-import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
+import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
-const modes = [{ id: 'calendar', label: 'カレンダー' }, { id: 'timeline', label: '足あと' }] as const;
+const modes = [{ id: 'calendar', label: 'カレンダー', icon: 'calendar-outline' }, { id: 'timeline', label: '足あと', icon: 'time-outline' }] as const;
 const filters = [{ id: 'all', label: 'すべて' }, { id: 'memo', label: 'メモ' }, { id: 'connection', label: 'つながり' }, { id: 'reflection', label: '振り返り' }] as const;
 const weekdayNames = ['月', '火', '水', '木', '金', '土', '日'];
 const eventTypes = {
@@ -32,13 +32,11 @@ function EventRows({ events, onRead, onWork, onRelation, onReflect }: {
         : event.kind === 'work' ? onWork : onReflect;
     const content = <>
       <View style={styles.eventIcon}><Ionicons name={eventTypes[event.kind].icon} color={studioColors.green} size={17} /></View>
-      <View style={studioStyles.grow}><Text style={studioStyles.muted}>{eventTypes[event.kind].label}</Text>
-        <Text style={studioStyles.text} numberOfLines={2}>{event.label}</Text>
-        {event.kind === 'connection' && event.note && <Text style={studioStyles.muted} numberOfLines={2}>{event.note}</Text>}</View>
+      <View style={studioStyles.grow}><Text style={studioStyles.text} numberOfLines={2}>{event.label}</Text></View>
       {onPress && <Ionicons name="chevron-forward" size={15} color={studioColors.muted} />}
     </>;
     return onPress ? <Pressable key={event.id} accessibilityRole="button" accessibilityLabel={event.kind === 'connection'
-      ? `${event.label}を地図で見る` : undefined} onPress={onPress} style={({ pressed }) => [styles.event, pressed && studioStyles.quiet]}>{content}</Pressable>
+      ? `${event.label}を地図で見る` : `${eventTypes[event.kind].label}、${event.label}`} onPress={onPress} style={({ pressed }) => [styles.event, pressed && studioStyles.quiet]}>{content}</Pressable>
       : <View key={event.id} style={styles.event}>{content}</View>;
   });
 }
@@ -62,6 +60,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   const [drafts, setDrafts] = React.useState<Record<string, { body: string; base?: string }>>({});
   const [notice, setNotice] = React.useState<{ text: string; error: boolean }>();
   const [busy, setBusy] = React.useState(false);
+  const [editorOpen, setEditorOpen] = React.useState(false);
   const working = React.useRef(false);
   const scroll = React.useRef<ScrollView>(null);
   const editorTop = React.useRef(0);
@@ -83,7 +82,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   }), [days, filter, sortedDays]);
 
   function pick(next: string) {
-    setDay(next); setMonth(next.slice(0, 7)); setLimit(basePageSize); setNotice(undefined);
+    setDay(next); setMonth(next.slice(0, 7)); setLimit(basePageSize); setNotice(undefined); setEditorOpen(false);
   }
 
   function shiftMonth(offset: number) {
@@ -93,10 +92,11 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
   }
 
   function openEditor(next = day) {
-    if (mode !== 'calendar' || next !== day) {
+    if (!editorOpen || mode !== 'calendar' || next !== day) {
       revealEditor.current = true;
-      pick(next);
+      if (next !== day) pick(next);
       setMode('calendar');
+      setEditorOpen(true);
     } else scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false });
   }
 
@@ -122,7 +122,7 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
 
   return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={studioStyles.content}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
-    <StudioTitle title="記録" subtitle="メモと、そこから生まれたつながり">
+    <StudioTitle title="記録">
       {canEdit && <IconButton label="この日の振り返りへ" icon="book-outline" onPress={() => openEditor()} />}
       <IconButton label="メモを書く" icon="create-outline" onPress={onWrite} />
     </StudioTitle>
@@ -184,11 +184,16 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
       {(store.reflections ?? []).slice().sort((a, b) => b.day.localeCompare(a.day)).map((item) =>
         <StudioAction key={item.day} label={dateLabel(item.day)} onPress={() => pick(item.day)} />)}
     </View>}
-    {canEdit && (mode === 'calendar' || !advanced) && <View style={studioStyles.card} onLayout={({ nativeEvent }) => {
+    {advanced && mode === 'calendar' && !editorOpen && Boolean(reflection || draft) && <StudioRow title={draft ? '振り返りの続きを書く' : '保存した振り返り'}
+      detail={body.replace(/\s+/gu, ' ').slice(0, 42)} icon="book-outline" onPress={() => openEditor()} />}
+    {canEdit && ((mode === 'calendar' && editorOpen) || !advanced) && <View style={studioStyles.card} onLayout={({ nativeEvent }) => {
       editorTop.current = nativeEvent.layout.y;
       if (revealEditor.current) { revealEditor.current = false; scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false }); }
     }}>
-      <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}の振り返り</Text>
+      <View style={studioStyles.row}>
+        <Text accessibilityRole="header" style={[studioStyles.subtitle, studioStyles.grow]}>{dateLabel(day)}の振り返り</Text>
+        {advanced && <IconButton label="振り返りを閉じる" icon="close" disabled={busy} onPress={() => { Keyboard.dismiss(); setEditorOpen(false); }} />}
+      </View>
       <PlusInput multiline accessibilityLabel="この日の振り返り" placeholder="気づいたことを、ひとこと" style={styles.editor} value={body}
         editable={!busy} onFocus={() => {
           if (Platform.OS === 'ios') scroll.current?.scrollTo({ y: Math.max(0, editorTop.current - 10), animated: false });
@@ -200,8 +205,8 @@ export function StudioRecords({ writer, index, advanced, canCreateReflection, on
       {notice && <Text accessibilityLiveRegion="polite" style={notice.error ? studioStyles.error : studioStyles.status}>{notice.text}</Text>}
     </View>}
     {advanced && mode === 'calendar' && <View style={studioStyles.card}>
-      <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}の記録</Text>
-      {events.length ? <EventRows events={events.slice(0, limit)} onRead={onRead} onWork={onWork} onRelation={onRelation} /> : <Text style={studioStyles.muted}>この日のメモやつながりはありません。</Text>}
+      <Text accessibilityRole="header" style={studioStyles.subtitle}>{dateLabel(day)}</Text>
+      {events.length ? <EventRows events={events.slice(0, limit)} onRead={onRead} onWork={onWork} onRelation={onRelation} /> : <Text style={studioStyles.muted}>この日の記録はありません。</Text>}
       {events.length > limit && <StudioAction label="この日の記録をさらに表示" onPress={() => setLimit(limit + basePageSize)} />}
     </View>}
   </ScrollView>;

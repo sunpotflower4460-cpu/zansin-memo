@@ -38,12 +38,12 @@ export function StudioCapture({ writer, center, onClose, onSaved }: {
 
   return <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={studioStyles.root}>
     <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content} keyboardShouldPersistTaps="handled">
-      <StudioTitle title="メモを書く" subtitle={center ? `「${center.label}」につなげる` : '比較用の庭に保存'}>
+      <StudioTitle title="メモを書く" subtitle={center ? `「${center.label}」につなげる` : undefined}>
         <IconButton label="メモの入力を閉じる" icon="close" disabled={busy} onPress={close} />
       </StudioTitle>
       <PlusInput accessibilityLabel="比較メモの題名" placeholder="題名（任意）" value={title} onChangeText={setTitle} editable={!busy} />
       <PlusInput accessibilityLabel="比較メモの本文" placeholder="気づいたことを、ひとこと" multiline value={body} onChangeText={setBody} editable={!busy} />
-      <PlusInput accessibilityLabel="比較メモのカテゴリ" placeholder="カテゴリ（任意・読点で区切る）" value={tags} onChangeText={setTags} editable={!busy} />
+      <PlusInput accessibilityLabel="比較メモのカテゴリ" placeholder="カテゴリ（任意）" value={tags} onChangeText={setTags} editable={!busy} />
       <View style={studioStyles.wrap}><StudioAction primary label={center ? '保存してつなぐ' : 'メモを保存'} icon="checkmark" disabled={busy || !body.trim()}
         onPress={() => void save()} /></View>
       {notice !== '' && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>{notice}</Text>}

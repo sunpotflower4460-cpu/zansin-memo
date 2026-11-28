@@ -31,6 +31,9 @@ export const soilMapStyles = StyleSheet.create({
   pressed: { backgroundColor: soilMapColors.pressed },
   ring: { position: 'absolute', top: 3, left: 3, right: 3, bottom: 3, borderWidth: 1, borderColor: '#b29263', borderRadius: 42 },
   texture: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', opacity: 0.34 },
+  paper: { backgroundColor: '#e9eddf', borderColor: '#afbea6', borderRadius: 20 },
+  paperCard: { borderRadius: 15, backgroundColor: '#fffdf3', borderColor: '#b5c1a9', shadowColor: '#304c37', shadowOpacity: 0.13 },
+  paperSelected: { backgroundColor: '#eef3e4', borderColor: '#385d46' },
 });
 
 export function PlusMapSoil() {

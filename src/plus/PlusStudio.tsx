@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { GardenV3Writer, PlusCommand } from '../data/gardenV3Writer';
 import type { StudioPreferences } from '../domain/plus/contracts';
 import { requirePlusAccess } from '../domain/plus/entitlements';
@@ -8,14 +8,15 @@ import { settleInsight, type Suggestion } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
 import { permissionFor } from '../domain/plus/proposalPrivacy';
 import { restoreProposalPair, updateSeedPermission } from '../domain/plus/proposals';
-import { initialStudioPreferences, saveStudioPreferences } from '../domain/plus/studio';
+import { initialStudioPreferences, saveStudioArrangement, saveStudioPreferences } from '../domain/plus/studio';
 import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
 import { InsightCard, StudioInsights } from './StudioInsights';
 import { StudioMapPanel } from './StudioMapPanel';
+import { StudioMore } from './StudioMore';
 import { StudioNoteList } from './StudioNoteList';
 import { StudioRecords } from './StudioRecords';
-import { IconButton, StudioAction, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
+import { IconButton, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 import { useStudioSuggestions } from './studioSuggestionState';
 
 const nav = [
@@ -32,12 +33,14 @@ const noSuggestions: readonly Suggestion[] = [];
 
 type StudioProps = {
   writer: GardenV3Writer; canArrange: () => boolean; canSuggest: () => boolean;
-  onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onWrite: (centerId?: string) => void; onAtelier?: () => void; onCollection?: () => void;
+  onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onWrite: (centerId?: string) => void;
+  onAtelier?: () => void; onAtelierFromMemo?: (id: string) => void; onCollection?: (from: 'more' | 'records') => void;
   onData: () => void; onPurchase?: () => void; onManualMap: () => void;
 };
 
-export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onCollection, onData, onPurchase, onManualMap }: StudioProps) {
+export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, onData, onPurchase, onManualMap }: StudioProps) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
+  const { width, height, fontScale } = useWindowDimensions();
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.connections, store.seeds]);
   const first = index.byId.get('example-0') ?? index.live[0];
   const [tab, setTab] = React.useState<Tab>('map');
@@ -47,6 +50,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
   const [preview, setPreview] = React.useState<MapPreview>();
   const [review, setReview] = React.useState<Suggestion>();
   const [immersive, setImmersive] = React.useState(false);
+  const [editRequest, setEditRequest] = React.useState(0);
   const [notice, setNotice] = React.useState<string>();
   const [mapNotice, setMapNotice] = React.useState<string>();
   const [pending, setPending] = React.useState(false);
@@ -154,10 +158,16 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         hints={preview?.kind === 'suggestions' && focusId === center.id ? state.suggestions : noSuggestions}
         preview={preview && { kind: preview.kind, label: notice ?? (preview.kind === 'suggestions' ? '候補のつながり' : '記録から開いたつながり'),
           emphasisId: preview.emphasisId, onClose: closePreview }}
-        immersive={immersive} onImmersive={() => setImmersive(!immersive)}
+        immersive={immersive} onImmersive={setImmersive} editRequest={editRequest} canArrange={canArrange()}
+        placement={!preview ? store.studioArrangements?.find((item) => item.centerId === center.id)?.placements : undefined}
+        onSavePlacement={async (id, next, expected) => {
+          const result = await writer.run(requirePlusAccess(saveStudioArrangement(id, next, expected, createId()), canArrange));
+          return result.ok ? undefined : result.detail ?? '配置を保存できませんでした。';
+        }}
         back={!preview && previous ? { title: toSeedSnippet(previous.seed, 50), onPress: () => restoreVisit(previous.position) } : undefined}
         onSearch={(onReturn) => { returnFromPick.current = onReturn; setPick('map'); }} onSettings={(patch) => void changeMap(patch)}
-        onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }} onWrite={onWrite} />
+        onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }}
+        onWrite={onWrite} onAtelier={onAtelierFromMemo} />
     </View>
     <View style={[studioStyles.root, (tab !== 'ai' || pick || review) && styles.hidden]}>
       {canSuggest() ? <StudioInsights focus={focus} state={state} notice={notice} pending={pending} skipped={skipped}
@@ -178,20 +188,13 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
           setPreview({ kind: 'connection', center: from, selected: to, emphasisId: to, returnTo: 'records' });
           setNotice(undefined); setTab('map');
         }}
-        onWork={onCollection ?? (() => undefined)} onWrite={() => onWrite()} />
+        onWork={() => onCollection?.('records')} onWrite={() => onWrite()} />
     </View>
-    {tab === 'more' && !pick && <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
-      <StudioTitle title="その他" />
-      <View style={studioStyles.card}>
-        {onAtelier && <StudioAction label="アトリエを開く" icon="create-outline" onPress={onAtelier} />}
-        {onCollection && <StudioAction label="作品集を開く" icon="albums-outline" onPress={onCollection} />}
-        <StudioAction label="地図の範囲・配置を編集" icon="options-outline" onPress={onManualMap} />
-      </View>
-      <View style={studioStyles.card}>
-        {onPurchase && <StudioAction label="購入と復元を試す" onPress={onPurchase} />}
-        <StudioAction label="データを書き出す・削除する" onPress={onData} />
-      </View>
-    </ScrollView>}
+    {tab === 'more' && !pick && <StudioMore drafts={store.atelierProjects.length} works={store.collectionItems.length}
+      onAtelier={onAtelier} onCollection={onCollection ? () => onCollection('more') : undefined}
+      onArrange={canArrange() && height >= 520 && fontScale <= (width <= 350 || height < 620 ? 1.3 : 1.45) ? () => {
+        changeTab('map'); setEditRequest((request) => request + 1);
+      } : undefined} onSavedMaps={onManualMap} onPurchase={onPurchase} onData={onData} />}
     {pick && <ScrollView accessibilityViewIsModal onAccessibilityEscape={closePick} style={studioStyles.root}
       contentContainerStyle={studioStyles.content} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <StudioTitle title={pick === 'ai' ? '起点のメモを選ぶ' : 'メモを探す'}>

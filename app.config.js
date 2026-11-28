@@ -8,7 +8,7 @@ module.exports = ({ config }) => {
     ios: {
       ...config.ios,
       bundleIdentifier: `${config.ios.bundleIdentifier}.comparison`,
-      buildNumber: '5',
+      buildNumber: '6',
       infoPlist: { ...config.ios.infoPlist, CFBundleDisplayName: 'きざし比較' },
     },
     android: {

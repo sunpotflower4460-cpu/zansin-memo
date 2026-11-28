@@ -148,8 +148,12 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     await button('星座').click();
     await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key)).studioPreferences.layout === 'constellation', storeKey);
     await tab('AIの提案').click();
-    if (!await heading('五分だけ書く').isVisible()) await button('五分だけ書くの候補を確認').click();
+    if (!await heading('五分だけ書く').isVisible()) {
+      await button('候補を一覧で見る').click();
+      await button('五分だけ書くの候補を確認').click();
+    }
     await heading('五分だけ書く').waitFor();
+    await button('理由と引用を見る').click();
     await page.getByText('「就寝前に今日の出来事を一言だけ書いてみた。」', { exact: true }).waitFor();
     await shot('04-insights');
     await button('候補を地図で見る').click();

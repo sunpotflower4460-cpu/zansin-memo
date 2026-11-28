@@ -15,7 +15,7 @@ import { indexMap } from '../domain/plus/map';
 import { createId } from '../utils/ids';
 import { theme } from '../styles/theme';
 import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
-import { PlusAtelierScreen } from './PlusAtelierScreen';
+import { AtelierLibrary, PlusAtelierScreen } from './PlusAtelierScreen';
 import { PlusCollectionScreen } from './PlusCollectionScreen';
 import { PlusComparisonMap } from './PlusComparisonMap';
 import { PlusDataScreen } from './PlusDataScreen';
@@ -25,7 +25,7 @@ import { PlusStudio } from './PlusStudio';
 import { Actions, focusControl, Heading, PlusButton, plusStyles } from './PlusUI';
 import { StudioCapture } from './StudioCapture';
 import { StudioRecords } from './StudioRecords';
-import { IconButton, StudioAction, studioColors } from './StudioUI';
+import { IconButton, StudioAction, StudioRow, StudioTitle, studioColors, studioStyles } from './StudioUI';
 import { clearWorkFileCache } from './workFiles';
 
 const exampleGroups = buildPlusExample(8).displayGroups;
@@ -59,10 +59,11 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
   const [origin, setOrigin] = React.useState<MapReturnContext>();
   const [atelier, setAtelier] = React.useState<string>();
   const [atelierList, setAtelierList] = React.useState(false);
-  const [collection, setCollection] = React.useState<{ source?: AtelierRevision }>();
+  const [collection, setCollection] = React.useState<{ source?: AtelierRevision; backLabel?: string }>();
+  const atelierReturn = React.useRef<typeof collection>(undefined);
   const [purchase, setPurchase] = React.useState(false);
   const [data, setData] = React.useState(false);
-  const [manualMap, setManualMap] = React.useState(false);
+  const [manualMap, setManualMap] = React.useState<false | 'more' | 'origin'>(false);
   const [reflectionPage, setReflectionPage] = React.useState(false);
   const [capture, setCapture] = React.useState<{ centerId?: string }>();
   const [purchaseModel] = React.useState(() => createPurchasePreview(comparison ? 'free' : 'active'));
@@ -126,7 +127,8 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     setReadingBack(back); returnFocus.current = onReturn; setReading(id);
   }
 
-  const detailedMap = <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups}
+  const detailedMap = <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} comparison={comparison}
+    onBack={manualMap ? () => setManualMap(false) : undefined}
     onOpenSeed={openReading}
     onOpenCandidates={enabled.proposals ? (seedId, scope, origin) => setAi({ seedId, scope, origin }) : undefined}
     restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
@@ -168,20 +170,18 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
         <View style={[plusStyles.full, manualMap && { display: 'none' }]}>
           <PlusStudio writer={writer} canArrange={canArrange} canSuggest={canRequest} onRead={openReading}
             onWrite={(centerId) => setCapture({ centerId })} onAtelier={enabled.atelier ? () => setAtelierList(true) : undefined}
-            onCollection={enabled.collection ? () => setCollection({}) : undefined} onData={() => setData(true)}
-            onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap(true)} />
+            onAtelierFromMemo={enabled.atelier ? (id) => void openAtelier(id, [id]) : undefined}
+            onCollection={enabled.collection ? (from) => setCollection({ backLabel: from === 'records' ? '記録に戻る' : 'その他に戻る' }) : undefined}
+            onData={() => setData(true)} onPurchase={enabled.commerce ? () => setPurchase(true) : undefined} onManualMap={() => setManualMap('more')} />
         </View>
-        {manualMap && <View style={plusStyles.full}><View style={styles.tools}>
-          <StudioAction label="考えの地図に戻る" icon="arrow-back-outline" onPress={() => setManualMap(false)} />
-        </View>{detailedMap}</View>}
+        {manualMap && <View style={plusStyles.full}>{detailedMap}</View>}
       </> : detailedMap}
-    </View> : !overlay && <ScrollView contentContainerStyle={plusStyles.page}>
-      <Heading title>{comparison ? '例の庭' : '考えの地図'}</Heading>
-      <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
-        <PlusButton label="例の庭を開く" primary disabled={status.pending > 0} onPress={() => void startExample()} />
-        {comparison && <PlusButton label="自分でメモを書いて試す" onPress={() => setCapture({})} />}
-        {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
-      </SectionCard>
+    </View> : !overlay && <ScrollView contentContainerStyle={studioStyles.content}>
+      <StudioTitle title={comparison ? '比較用の庭' : '考えの地図'} />
+      <StudioRow title="例の地図を開く" label="例の庭を開く" icon="git-network-outline" detail="つながったメモで試す"
+        disabled={status.pending > 0} onPress={() => void startExample()} />
+      {comparison && <StudioRow title="最初のメモを書く" label="自分でメモを書いて試す" icon="create-outline" onPress={() => setCapture({})} />}
+      {!!notice && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>{notice}</Text>}
       {comparison && <Actions>
         {Boolean(store.reflections?.length) && <StudioAction label="保存した振り返り" onPress={() => setReflectionPage(true)} />}
         {enabled.commerce && <StudioAction label="購入と復元を試す" onPress={() => setPurchase(true)} />}
@@ -205,21 +205,25 @@ function PreviewGarden({ writer, onClose }: { writer: GardenV3Writer; onClose?: 
     </ScrollView>}
     {ai && !atelier && <PlusAiScreen writer={writer} centerId={ai.seedId} scope={ai.scope} onBack={() => setAi(undefined)} allowRequest={rights.requestFixtureAi} canRequest={canRequest}
       onMaterial={enabled.atelier && rights.atelierAdvanced ? (seedIds) => { void openAtelier(ai.seedId, seedIds, ai.origin); } : undefined} />}
-    {atelierList && !atelier && <ScrollView contentContainerStyle={plusStyles.page}>
-      <PlusButton label="地図に戻る" onPress={() => setAtelierList(false)} />
-      <Heading title>アトリエ</Heading>
-      {enabled.atelier && rights.atelierAdvanced && <PlusButton label="新しいアトリエ" onPress={() => void openAtelier()} />}
-      {store.atelierProjects.map((project, i) => <PlusButton key={project.id} label={`${project.title ?? `アトリエ ${i + 1}`}を再開`} onPress={() => setAtelier(project.id)} />)}
-    </ScrollView>}
-    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={enabled.atelier && rights.atelierAdvanced}
+    {atelierList && !atelier && !collection && <AtelierLibrary store={store} notice={notice} hasAccess={enabled.atelier && rights.atelierAdvanced}
+      backLabel={atelierReturn.current ? '作品集に戻る' : comparison && !showFreeMap ? 'その他に戻る' : '地図に戻る'}
+      onBack={() => {
+        if (atelierReturn.current) setCollection(atelierReturn.current);
+        atelierReturn.current = undefined; setAtelierList(false); setNotice('');
+      }}
+      onNew={() => void openAtelier()} onResume={setAtelier} />}
+    {atelier && <View style={[plusStyles.full, collection && { display: 'none' }]}><PlusAtelierScreen writer={writer} projectId={atelier} advanced={enabled.atelier && rights.atelierAdvanced} comparison={comparison}
       canUseAdvanced={canUseAtelier} onBack={() => setAtelier(undefined)}
       onCreateWork={enabled.collection && rights.composeWork ? (source) => { if (canCompose()) setCollection({ source }); } : undefined}
-      onOriginMap={(context) => { setOrigin({ ...context }); setAtelier(undefined); setAtelierList(false); setAi(undefined);
-        if (comparison && !showFreeMap) setManualMap(true); }} /></View>}
+      onOriginMap={(context) => { setOrigin({ ...context }); setAtelier(undefined); setAtelierList(false); setAi(undefined); atelierReturn.current = undefined;
+        if (comparison && !showFreeMap) setManualMap('origin'); }} /></View>}
     {collection && <PlusCollectionScreen writer={writer} source={collection.source} canCompose={enabled.collection && rights.composeWork}
+      comparison={comparison} backLabel={collection.backLabel} onStartDraft={enabled.atelier && rights.atelierAdvanced ? () => {
+        atelierReturn.current = collection; setCollection(undefined); setAtelierList(true);
+      } : undefined}
       canComposeNow={canCompose} onBack={() => setCollection(undefined)} />}
     </View>
-    {purchase && <PlusPurchasePreview model={purchaseModel} onBack={() => setPurchase(false)} />}
+    {purchase && <PlusPurchasePreview model={purchaseModel} comparison={comparison} onBack={() => setPurchase(false)} />}
     {data && <PlusDataScreen comparison={comparison} writer={writer} onBack={() => setData(false)}
       onReset={() => { setData(false); setOrigin(undefined); setNotice(''); setManualMap(false); }} />}
   </View>;

@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { ScrollView, Text } from 'react-native';
-import { SectionCard } from '../components/SectionCard';
+import { Ionicons } from '@expo/vector-icons';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { currentEntitlement, PurchaseFlow, type EntitlementStatus, type PurchaseAdapter, type PurchaseResult, type VerifiedEntitlement } from '../domain/plus/entitlements';
-import { Actions, Heading, PlusButton, plusStyles } from './PlusUI';
+import { PlusButton } from './PlusUI';
+import { StudioAction, StudioRow, StudioTitle, studioStyles } from './StudioUI';
 
 const product = { id: 'fixture-only', displayPrice: 'fixture', displayPeriod: 'fixture' };
 export const statusNames: Record<EntitlementStatus, string> = {
@@ -47,29 +48,49 @@ const messages = {
   restoring: '復元を確認中', nothing_to_restore: '復元できる購入は見つかりませんでした',
 };
 
-export function PlusPurchasePreview({ model, onBack }: { model: ReturnType<typeof createPurchasePreview>; onBack: () => void }) {
+export function PlusPurchasePreview({ model, onBack, comparison }: {
+  model: ReturnType<typeof createPurchasePreview>; onBack: () => void; comparison?: boolean;
+}) {
   const state = React.useSyncExternalStore(model.flow.subscribe, model.flow.snapshot);
+  const [showTests, setShowTests] = React.useState(false);
   const status = currentEntitlement(state.evidence, Date.now(), true);
   const checking = state.phase === 'pending' || state.phase === 'checking';
-  return <ScrollView contentContainerStyle={plusStyles.page}>
-    <PlusButton label="確認画面を閉じる" onPress={onBack} />
-    <Heading title>利用権の動作確認</Heading>
-    <Text style={plusStyles.meta}>開発用の模擬状態です。ストアへの接続や料金の請求はありません。</Text>
-    <SectionCard><Heading>現在の試験状態 · {statusNames[status]}</Heading>
-      <Actions>{(['free', 'trial_active', 'active', 'grace', 'expired', 'revoked'] as const).map((value) =>
-        <PlusButton key={value} label={`${statusNames[value]}を表示`} selected={status === value} onPress={() => model.setStatus(value)} />)}</Actions>
-    </SectionCard>
-    <SectionCard><Heading>購入と復元の操作</Heading>
-      <Actions><PlusButton label="購入成功を試す" onPress={() => void model.purchase('success')} disabled={checking} />
-        <PlusButton label="承認待ちを試す" onPress={() => void model.purchase('pending')} disabled={checking} />
-        <PlusButton label="キャンセルを試す" onPress={() => void model.purchase('cancelled')} disabled={checking} />
-        <PlusButton label="購入失敗を試す" onPress={() => void model.purchase('failed')} disabled={checking} />
-        <PlusButton label="未検証の応答を試す" onPress={() => void model.purchase('unverified')} disabled={checking} />
-        <PlusButton label="購入の復元を試す" onPress={() => void model.flow.restore()} disabled={checking} />
-        {checking && <PlusButton label="確認済みの取引を届ける" onPress={() => void model.approve()} />}
-      </Actions>
-      <Text accessibilityLiveRegion="polite" style={plusStyles.meta}>{messages[state.phase]}</Text>
-      <Text style={plusStyles.meta}>復元の対象は利用権です。この端末のメモや作品は端末に保存されています。</Text>
-    </SectionCard>
+  const busy = checking || ['loading', 'purchasing', 'restoring'].includes(state.phase);
+  return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
+    <StudioTitle title="Plus の利用状態" back={{ label: '確認画面を閉じる', onPress: onBack }} />
+    <View style={styles.hero}>
+      <View style={styles.symbol} aria-hidden><Ionicons name="sparkles-outline" size={28} color="#f6e6bd" /></View>
+      <View style={studioStyles.grow}>
+        <Text style={styles.caption}>比較用 · 請求なし</Text>
+        <Text accessibilityRole="header" accessibilityLabel={'現在の試験状態 · ' + statusNames[status]} style={styles.state}>
+          {status === 'free' ? '無料版' : 'Plus · ' + statusNames[status]}
+        </Text>
+      </View>
+    </View>
+    <StudioRow title="購入を試す" label="購入成功を試す" icon="bag-check-outline" disabled={busy} onPress={() => void model.purchase('success')} />
+    <StudioRow title="購入を復元する" label="購入の復元を試す" detail="Plus の利用状態を確認" icon="refresh-outline" disabled={busy}
+      onPress={() => void model.flow.restore()} />
+    {!!messages[state.phase] && <Text accessibilityLiveRegion="polite" style={studioStyles.status}>{messages[state.phase]}</Text>}
+    {checking && <StudioAction label="確認済みの取引を届ける" icon="checkmark" onPress={() => void model.approve()} />}
+    {comparison && <StudioAction label={showTests ? '試験条件を閉じる' : '試験条件を変える'} icon="options-outline" onPress={() => setShowTests(!showTests)} />}
+    {(!comparison || showTests) && <View style={studioStyles.card}>
+      <Text accessibilityRole="header" style={studioStyles.subtitle}>表示する状態</Text>
+      <View style={studioStyles.wrap}>{(['free', 'trial_active', 'active', 'grace', 'expired', 'revoked'] as const).map((value) =>
+        <PlusButton key={value} label={statusNames[value] + 'を表示'} selected={status === value} onPress={() => model.setStatus(value)} />)}</View>
+      <Text accessibilityRole="header" style={studioStyles.subtitle}>購入時の応答</Text>
+      <View style={studioStyles.wrap}>
+        <StudioAction label="承認待ちを試す" onPress={() => void model.purchase('pending')} disabled={busy} />
+        <StudioAction label="キャンセルを試す" onPress={() => void model.purchase('cancelled')} disabled={busy} />
+        <StudioAction label="購入失敗を試す" onPress={() => void model.purchase('failed')} disabled={busy} />
+        <StudioAction label="未検証の応答を試す" onPress={() => void model.purchase('unverified')} disabled={busy} />
+      </View>
+    </View>}
   </ScrollView>;
 }
+
+const styles = StyleSheet.create({
+  hero: { borderRadius: 18, padding: 14, gap: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#264d3c' },
+  symbol: { width: 54, height: 54, borderRadius: 15, borderWidth: 1, borderColor: '#77917a', backgroundColor: '#365b47', alignItems: 'center', justifyContent: 'center' },
+  caption: { color: '#e2e9d6', fontSize: 13, lineHeight: 20 },
+  state: { color: '#fffdf0', fontSize: 23, lineHeight: 32, fontWeight: '700' },
+});

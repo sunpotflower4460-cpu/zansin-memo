@@ -3,14 +3,51 @@ import test from 'node:test';
 import { buildSeed } from '../domain/gardenCommands';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
-import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioPreferences } from '../domain/plus/studio';
-import { constellationGraph, constellationGroups, radialGraph, studioMapLabel } from '../domain/plus/studioGraph';
+import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioArrangement, saveStudioPreferences } from '../domain/plus/studio';
+import { canPlaceStudioNode, constellationGraph, constellationGroups, placeStudioNodes, radialGraph, studioMapLabel } from '../domain/plus/studioGraph';
 import { buildPlusTextExport } from '../utils/plusExport';
 import { connectionId, makeConnection } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
 import { buildStudioExample } from './plusExample';
 
 const today = '2026-11-28T03:00:00.000Z';
+
+test('hand placement preserves connections and falls back to reachable cards in a smaller view', () => {
+  const { seeds, connections } = buildStudioExample(new Date(today));
+  const index = indexMap(seeds, connections);
+  const frame = { width: 350, height: 440 };
+  const automatic = radialGraph(index, seeds[0], frame, [], false);
+  const note = automatic.nodes.find(({ seed }) => seed.id === seeds[1].id)!;
+  assert.equal(canPlaceStudioNode(automatic, note, automatic.nodes[0]), false);
+  const placements = [{ seedId: note.seed.id, x: 0.11, y: -0.09 }];
+  const placed = placeStudioNodes(automatic, frame, placements);
+  assert.ok(placed.nodes.find(({ seed }) => seed.id === note.seed.id)!.x > note.x + 30);
+  assert.deepEqual(placed.lines.map(({ id }) => id), automatic.lines.map(({ id }) => id));
+  const small = { width: 294, height: 209 };
+  const resized = placeStudioNodes(radialGraph(index, seeds[0], small, [], false), small, placements);
+  for (const [i, node] of resized.nodes.entries()) {
+    assert.ok(node.x - node.width / 2 >= 0 && node.x + node.width / 2 <= small.width);
+    for (const peer of resized.nodes.slice(i + 1)) {
+      assert.ok(Math.abs(node.x - peer.x) >= (node.width + peer.width) / 2 ||
+        Math.abs(node.y - peer.y) >= (node.height + peer.height) / 2);
+    }
+  }
+});
+
+test('saved hand placements round-trip independently of the notes and reject stale edits', () => {
+  const initial = { ...emptyStoreV3(), ...buildStudioExample(new Date(today)) };
+  const placements = [{ seedId: 'example-1', x: 0.1, y: -0.08 }];
+  const next = saveStudioArrangement('example-0', placements, [], 'arrange').apply(initial);
+  assert.ok(!('rejected' in next));
+  assert.deepEqual(next.seeds, initial.seeds);
+  assert.deepEqual(next.connections, initial.connections);
+  assert.equal(parseStoreV3(serializeStoreV3(next)).ok, true);
+  assert.ok('rejected' in saveStudioArrangement('example-0', [], [], 'stale').apply(next));
+  assert.ok('rejected' in saveStudioArrangement('example-0', [{ seedId: 'example-1', x: NaN, y: 0 }], placements, 'invalid').apply(next));
+  const reset = saveStudioArrangement('example-0', [], placements, 'reset').apply(next);
+  assert.ok(!('rejected' in reset));
+  assert.deepEqual(reset.studioArrangements, []);
+});
 
 test('Studio suggests real excerpts, distinguishes pending and accepted edges, and honors suppression', () => {
   const initial = { ...emptyStoreV3(), ...buildStudioExample(new Date(today)) };

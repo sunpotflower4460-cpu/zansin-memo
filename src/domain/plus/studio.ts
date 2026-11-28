@@ -2,7 +2,7 @@ import type { PlusCommand } from '../../data/gardenV3Writer';
 import { toSeedSnippet } from '../../utils/seedText';
 import { getLocalDateKey } from '../../utils/seedUtils';
 import type { Seed } from '../types';
-import type { GardenStoreV3, StudioPreferences } from './contracts';
+import type { GardenStoreV3, StudioPlacement, StudioPreferences } from './contracts';
 
 export const initialStudioPreferences: StudioPreferences = { layout: 'radial', palette: 'paper' };
 
@@ -11,6 +11,24 @@ export function saveStudioPreferences(patch: Partial<StudioPreferences>, id: str
     const before = store.studioPreferences ?? initialStudioPreferences;
     const next = { ...before, ...patch };
     return next.layout === before.layout && next.palette === before.palette ? store : { ...store, studioPreferences: next };
+  } };
+}
+
+export function saveStudioArrangement(centerId: string, placements: StudioPlacement[], expected: readonly StudioPlacement[], id: string): PlusCommand {
+  return { id, apply: (store) => {
+    const arrangements = store.studioArrangements ?? [];
+    const existing = arrangements.find((item) => item.centerId === centerId)?.placements ?? [];
+    if (JSON.stringify(existing) !== JSON.stringify(expected)) return { rejected: '配置が更新されました。地図を開き直してください。' };
+    if (new Set(placements.map(({ seedId }) => seedId)).size !== placements.length ||
+      placements.some(({ x, y }) => !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1 || Math.abs(y) > 1)) {
+      return { rejected: 'カードの位置を確認できませんでした。' };
+    }
+    const live = new Set(store.seeds.filter(({ deletedAt }) => !deletedAt).map(({ id }) => id));
+    if (!live.has(centerId)) return { rejected: '中心のメモを確認できませんでした。' };
+    const next = placements.filter(({ seedId, x, y }) => live.has(seedId) && (x !== 0 || y !== 0));
+    if (JSON.stringify(next) === JSON.stringify(existing)) return store;
+    const others = arrangements.filter((item) => item.centerId !== centerId);
+    return { ...store, studioArrangements: next.length ? [...others, { centerId, placements: next }] : others };
   } };
 }
 

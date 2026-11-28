@@ -13,8 +13,8 @@ const gapY = 26;
 const baseCardHeight = 110;
 const stagger = 14;
 
-export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup }: {
-  groups: MapGroup[]; edges: readonly SeedConnection[]; diagram: boolean; expandedId?: string; onGroup: (group: MapGroup) => void;
+export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup, paper }: {
+  groups: MapGroup[]; edges: readonly SeedConnection[]; diagram: boolean; expandedId?: string; onGroup: (group: MapGroup) => void; paper?: boolean;
 }) {
   const [width, setWidth] = React.useState(0);
   const { fontScale } = useWindowDimensions();
@@ -45,9 +45,9 @@ export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup }:
   return <View style={plusStyles.row}>
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       accessibilityLabel={diagram ? 'まとまりの地図' : undefined}
-      style={draw ? [soilMapStyles.board, { height }] : styles.compact}>
-      {draw && <PlusMapSoil />}
-      {draw && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={expandedId} />}
+      style={draw ? [soilMapStyles.board, paper && soilMapStyles.paper, { height }] : styles.compact}>
+      {draw && !paper && <PlusMapSoil />}
+      {draw && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={expandedId} paper={paper} />}
       {groups.map((group) => {
         const box = points.get(group.id)!;
         const manual = group.kind === 'manual';
@@ -56,16 +56,17 @@ export function PlusMapOverview({ groups, edges, diagram, expandedId, onGroup }:
           accessibilityLabel={`${group.label} · ${group.seedIds.length}件${manual ? ' · 自分のまとまり' : ''}`}
           onPress={() => onGroup(group)} style={({ pressed, focused }: MapCardPressState) => draw ? [styles.group, soilMapStyles.seed, styles.pod,
             { left: box.x - box.width / 2, top: box.y - box.height / 2, width: box.width, height: box.height },
-            manual && styles.manualPod, selected && soilMapStyles.selected, focused && soilMapStyles.focused, pressed && soilMapStyles.pressed]
+            manual && styles.manualPod, selected && soilMapStyles.selected, paper && soilMapStyles.paperCard, paper && selected && soilMapStyles.paperSelected,
+            focused && soilMapStyles.focused, pressed && styles.pressed]
             : [styles.group, manual && styles.manual, selected && styles.selected, pressed && styles.pressed]}>
-          {draw && selected && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
-          {draw && manual && <Text numberOfLines={1} style={styles.owner}>自分のまとまり</Text>}
+          {draw && selected && !paper && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
+          {draw && manual && !paper && <Text numberOfLines={1} style={styles.owner}>自分のまとまり</Text>}
           <Text numberOfLines={draw ? 2 : undefined} style={draw ? styles.label : styles.shortLabel}>{group.label}</Text>
-          <Text style={[styles.count, draw && styles.countSeal]}>{group.seedIds.length}件</Text>
+          <Text style={[styles.count, draw && !paper && styles.countSeal]}>{group.seedIds.length}件</Text>
         </Pressable>;
       })}
     </View>
-    {visibleLinks.length > 0 && <PlusMapLegend>実線はまとまりをまたぐ確定接続{visibleLinks.length > 1 ? ` · ${visibleLinks.length}組` : ` · ${visibleLinks[0].edges.length}件`}</PlusMapLegend>}
+    {visibleLinks.length > 0 && <PlusMapLegend paper={paper}>{paper ? 'まとまりをまたぐつながり' : '実線はまとまりをまたぐ確定接続'}{visibleLinks.length > 1 ? ` · ${visibleLinks.length}組` : ` · ${visibleLinks[0].edges.length}件`}</PlusMapLegend>}
   </View>;
 }
 

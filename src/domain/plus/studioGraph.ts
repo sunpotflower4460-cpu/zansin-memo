@@ -1,18 +1,71 @@
 import { connectionId } from '../../data/gardenModel';
 import { toSeedSnippet } from '../../utils/seedText';
 import type { Seed } from '../types';
+import type { StudioPlacement } from './contracts';
 import type { Suggestion } from './insights';
 import { mapGroups, type MapIndex } from './map';
 
 type Size = { width: number; height: number };
 type Cell = { x: number; y: number; width: number; height: number };
-type Node = Cell & { seed: Seed; group: number; isCenter: boolean; suggested: boolean; via?: string };
+export type StudioNode = Cell & { seed: Seed; group: number; isCenter: boolean; suggested: boolean; via?: string };
+type Node = StudioNode;
 type Line = { id: string; a: Node; b: Node; suggested: boolean };
 type Island = Cell & { group: number };
 export type StudioGraph = { nodes: Node[]; lines: Line[]; islands: Island[]; hidden: number; scope: number };
 export type ConstellationGroup = { id: string; label: string; seedIds: string[]; linked: boolean };
 export type RadialNeighbor = { id: string; via?: string };
 export type RadialNeighborhood = { direct: string[]; second: RadialNeighbor[] };
+
+type Point = Pick<Cell, 'x' | 'y'>;
+
+export function clampStudioPosition(node: StudioNode, { width, height }: Size, { x, y }: Point): Point {
+  const marginX = Math.min(width / 2, 8 + node.width / 2);
+  const marginY = Math.min(height / 2, 55 + node.height / 2);
+  return {
+    x: Math.max(marginX, Math.min(width - marginX, x)),
+    y: Math.max(marginY, Math.min(height - marginY, y)),
+  };
+}
+
+function overlaps(a: Cell, b: Cell, clearance = 0) {
+  return Math.abs(a.x - b.x) < (a.width + b.width) / 2 + clearance &&
+    Math.abs(a.y - b.y) < (a.height + b.height) / 2 + clearance;
+}
+
+export function canPlaceStudioNode(graph: StudioGraph, node: StudioNode, point: Point) {
+  const candidate = { ...node, ...point };
+  return !graph.nodes.some((peer) => peer.seed.id !== node.seed.id && overlaps(peer, candidate, 4));
+}
+
+export function withStudioNodes(graph: StudioGraph, nodes: StudioNode[]): StudioGraph {
+  const lookup = new Map(nodes.map((node) => [node.seed.id, node]));
+  return { ...graph, nodes, lines: graph.lines.map((line) => ({
+    ...line, a: lookup.get(line.a.seed.id)!, b: lookup.get(line.b.seed.id)!,
+  })) };
+}
+
+export function placeStudioNodes(graph: StudioGraph, frame: Size, placements: readonly StudioPlacement[]): StudioGraph {
+  if (!placements.length) return graph;
+  const offsets = new Map(placements.map((point) => [point.seedId, point]));
+  const nodes = graph.nodes.map((node) => {
+    const delta = offsets.get(node.seed.id);
+    return delta ? { ...node, ...clampStudioPosition(node, frame, { x: node.x + delta.x * frame.width, y: node.y + delta.y * frame.height }) } : node;
+  });
+  // The same arrangement can be opened with less room. Keep every card reachable
+  // by restoring the automatic position of displaced cards that would overlap.
+  let conflict = true;
+  while (conflict) {
+    conflict = false;
+    nodes.forEach((node, i) => {
+      if (node === graph.nodes[i]) return;
+      if (nodes.some((other, j) => j !== i && overlaps(node, other))) {
+        nodes[i] = graph.nodes[i];
+        conflict = true;
+      }
+    });
+  }
+  return withStudioNodes(graph, nodes);
+}
 
 export function studioMapLabel(title: string, columns: number): string {
   if (columns < 2 || !/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}々ー]+$/u.test(title)) return title;

@@ -5,7 +5,7 @@ import { buildTextExport } from './exportFormat';
 export function buildPlusJsonExport(store: GardenStoreV3, exportedAt = new Date().toISOString()): string {
   return JSON.stringify({
     exportFormat: 'kizashi-notes', exportVersion: 3, exportedAt,
-    includes: ['deletedSeeds', 'connections', 'syntheses', 'drafts', 'mapViews', 'atelier', 'collection', 'sources', 'permissions', 'proposalHistory', 'reflections'],
+    includes: ['deletedSeeds', 'connections', 'syntheses', 'drafts', 'mapViews', 'studioArrangements', 'atelier', 'collection', 'sources', 'permissions', 'proposalHistory', 'reflections'],
     ...store,
     outbox: [],
   }, null, 2);

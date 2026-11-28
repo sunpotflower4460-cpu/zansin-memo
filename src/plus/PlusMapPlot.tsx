@@ -35,9 +35,9 @@ function focusAnchor(length: number, cardSize: number, offsets: number[]): numbe
   return (anchor + balanced) / 2;
 }
 
-export function PlusMapPlot({ seeds, connections, candidates, positions, viewport, selectedId, onSelect }: {
+export function PlusMapPlot({ seeds, connections, candidates, positions, viewport, selectedId, onSelect, paper }: {
   seeds: Seed[]; connections: SeedConnection[]; positions: MapView['positions']; viewport: MapView['viewport'];
-  candidates?: Array<{ id: string; pair: [string, string] }>; selectedId?: string; onSelect: (id: string) => void;
+  candidates?: Array<{ id: string; pair: [string, string] }>; selectedId?: string; onSelect: (id: string) => void; paper?: boolean;
 }) {
   const [width, setWidth] = React.useState(0);
   const points = React.useMemo(() => {
@@ -65,31 +65,33 @@ export function PlusMapPlot({ seeds, connections, candidates, positions, viewpor
     ...(candidates ?? []).map(({ id, pair }) => ({ id, from: pair[0], to: pair[1], candidate: true }))], [connections, candidates]);
   const fibers = useRoutedMapEdges(points, lines, width, height);
   return <View style={plusStyles.row}>
-    <View style={[soilMapStyles.board, styles.plot]} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} accessibilityLabel="確定したつながりの図">
-      <PlusMapSoil />
-      {width > 0 && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={selectedId} />}
-      {width > 0 && rendered.length === 0 && <Text style={styles.empty}>この位置に表示できる種はありません。</Text>}
+    <View style={[soilMapStyles.board, paper && soilMapStyles.paper, styles.plot]} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} accessibilityLabel="確定したつながりの図">
+      {!paper && <PlusMapSoil />}
+      {width > 0 && <PlusMapEdges fibers={fibers} width={width} height={height} selectedId={selectedId} paper={paper} />}
+      {width > 0 && rendered.length === 0 && <Text style={[styles.empty, paper && styles.paperEmpty]}>この位置に表示できる種はありません。</Text>}
       {rendered.map(({ seed, x, y, width: cardW, pinned }) => {
         const selected = selectedId === seed.id;
         return <Pressable key={seed.id} onPress={() => onSelect(seed.id)}
           accessibilityRole="button" {...buttonSelectionProps(selected)}
           accessibilityLabel={`${toSeedSnippet(seed, 50)}${pinned ? '。位置を固定しています' : ''}`}
           style={({ pressed, focused }: MapCardPressState) => [soilMapStyles.seed, styles.node, { width: cardW, left: x - cardW / 2, top: y - cardH / 2 },
-            pinned && styles.pinned, selected && soilMapStyles.selected, focused && soilMapStyles.focused, pressed && soilMapStyles.pressed]}>
-          {selected && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
+            pinned && styles.pinned, selected && soilMapStyles.selected, paper && soilMapStyles.paperCard,
+            paper && selected && soilMapStyles.paperSelected, focused && soilMapStyles.focused, pressed && soilMapStyles.pressed]}>
+          {selected && !paper && <View aria-hidden pointerEvents="none" style={soilMapStyles.ring} />}
           <Text style={styles.nodeText} numberOfLines={2}>{toSeedSnippet(seed, 60)}</Text>
           {pinned && <Text style={styles.mark}>位置固定</Text>}
         </Pressable>;
       })}
     </View>
-    <PlusMapLegend>実線は確定したつながり{'\n'}図に{rendered.length}件を表示{offscreen > 0 ? ` · ほか${offscreen}件はリストで` : ''}</PlusMapLegend>
-    {fibers.some(({ edge }) => edge.candidate) && <PlusMapLegend candidate>点線は未採用の例の候補です。</PlusMapLegend>}
+    <PlusMapLegend paper={paper}>{paper ? '' : '実線は確定したつながり\n'}図に{rendered.length}件を表示{offscreen > 0 ? ` · ほか${offscreen}件はリストで` : ''}</PlusMapLegend>
+    {fibers.some(({ edge }) => edge.candidate) && <PlusMapLegend candidate paper={paper}>{paper ? '点線は未採用の候補です。' : '点線は未採用の例の候補です。'}</PlusMapLegend>}
   </View>;
 }
 
 const styles = StyleSheet.create({
   plot: { height },
   empty: { margin: 'auto', color: soilMapColors.selectedConnection, fontSize: 14, padding: 16, textAlign: 'center' },
+  paperEmpty: { color: '#3d5d49' },
   node: { height: cardH, position: 'absolute', justifyContent: 'center', paddingHorizontal: 11, paddingVertical: 3, gap: 3 },
   pinned: { paddingHorizontal: 15 },
   nodeText: { fontSize: 16, lineHeight: 21, color: theme.colors.text, fontFamily: theme.fonts.serif, textAlign: 'center', includeFontPadding: false },
