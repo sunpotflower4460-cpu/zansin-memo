@@ -12,8 +12,8 @@ export function InsightCard({ suggestion, pending, onRead, onSettle, onMap, onCr
   onSettle: (suggestion: Suggestion, action: 'connect' | 'dismiss') => void; onMap?: () => void; onCraft?: (suggestion: Suggestion) => void;
 }) {
   return <View style={[studioStyles.card, styles.insight]}>
-    <View style={studioStyles.row}><View style={styles.kind}><Text style={styles.kindText}>{suggestion.kind}</Text></View></View>
     <Text accessibilityRole="header" style={styles.candidateTitle}>{toSeedSnippet(suggestion.to, 70)}</Text>
+    <Text style={styles.kindText}>{suggestion.kind}</Text>
     <Text style={studioStyles.text}>{suggestion.reason}</Text>
     <View style={styles.quotes}>
       {[suggestion.from, suggestion.to].map((seed, index) => <View key={seed.id} style={styles.quote}>
@@ -21,12 +21,14 @@ export function InsightCard({ suggestion, pending, onRead, onSettle, onMap, onCr
         <Text selectable style={styles.quoteText}>「{suggestion.evidence[index]}」</Text>
       </View>)}
     </View>
-    {onCraft && <StudioAction label="この2枚でアイデアをつくる" icon="construct-outline" disabled={pending} onPress={() => onCraft(suggestion)} />}
     <View style={studioStyles.wrap}>
       <StudioAction label="つながりを保存" primary icon="link-outline" disabled={pending} onPress={() => onSettle(suggestion, 'connect')} />
-      {onMap && <StudioAction label="候補を地図で見る" title="地図で見る" icon="git-network-outline" onPress={onMap} />}
-      <StudioAction label="見送る" disabled={pending} onPress={() => onSettle(suggestion, 'dismiss')} />
-      <StudioAction label="原文を開く" title="原文" icon="document-text-outline" onPress={() => onRead(suggestion.to.id)} />
+      {onCraft && <StudioAction label="この2枚でアイデアをつくる" title="作業台へ" icon="construct-outline" disabled={pending} onPress={() => onCraft(suggestion)} />}
+    </View>
+    <View style={styles.cardLinks}>
+      {onMap && <StudioAction label="候補を地図で見る" title="地図で見る" plain onPress={onMap} />}
+      <StudioAction label="原文を開く" title="原文" plain onPress={() => onRead(suggestion.to.id)} />
+      <StudioAction label="見送る" plain disabled={pending} onPress={() => onSettle(suggestion, 'dismiss')} />
     </View>
   </View>;
 }
@@ -124,8 +126,8 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', gap: 7, alignItems: 'center' },
   insight: { gap: 10, borderColor: '#d4d9c8' },
   candidateTitle: { color: studioColors.text, fontSize: 21, lineHeight: 28, fontWeight: '700' },
-  kind: { borderRadius: 8, backgroundColor: studioColors.apricot, paddingVertical: 4, paddingHorizontal: 8 },
-  kindText: { color: '#7d432d', fontSize: 12, fontWeight: '700' },
+  kindText: { color: '#7d432d', fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  cardLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: studioColors.rule },
   quotes: { gap: 1, borderRadius: 11, overflow: 'hidden', backgroundColor: '#e2e9dd' },
   quote: { gap: 3, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#f0f3ea' },
   quoteLabel: { color: studioColors.green, fontSize: 12, lineHeight: 18, fontWeight: '700' },

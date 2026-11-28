@@ -148,8 +148,6 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
   return <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}>
     <StudioTitle title="アイデアの作業台" back={{ label: '作業台を閉じる', onPress: onBack, disabled: busy }} />
     <View style={styles.board}>
-      <Text style={styles.boardTitle}>素材を置く</Text>
-      <Text style={styles.boardDetail}>メモを2〜3枚選びます。置いた素材をタップすると、使う一節を選べます。</Text>
       <View style={styles.slots}>{craftRoles.map((role, i) => {
         const part = parts[i];
         const note = current[i];
@@ -162,11 +160,11 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
             <><Ionicons name="add" size={22} color={studioColors.green} /><Text style={styles.slotHint}>{i === 2 ? '任意' : 'メモを置く'}</Text></>}
         </Pressable>;
       })}</View>
+      <Text style={styles.boardDetail}>{parts.length > 1 ? '素材をタップして、使う一節を選べます。' : 'メモを2枚置くと、案を読めます。'}</Text>
     </View>
     {stale && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>素材に更新があります。「選び直す」から現在のメモを確認してください。</Text>}
     {!advanced && <Text style={studioStyles.muted}>新しい案の取り込みにはPlusの利用権が必要です。</Text>}
     {base && candidate && <>
-      <Text accessibilityRole="header" style={studioStyles.subtitle}>組み方を選ぶ</Text>
       <StudioSegments label="作業台のレシピ" items={craftRecipes} value={recipe} onChange={(next) => {
         if (recipe === next || busy) return;
         cancelGeneration(); setRecipe(next); setShowAI(false); setNotice('');
@@ -175,7 +173,7 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
         <Text style={styles.resultLabel}>{candidate.generator === 'recipe' ? 'レシピで組んだ案' : '端末内AIの案'} · 未保存</Text>
         <Text accessibilityRole="header" style={styles.resultTitle}>{candidate.title}</Text>
         <Text selectable style={studioStyles.text}>{candidate.body}</Text>
-        <StudioAction label={`この案に使った${parts.length}枚の一節`} icon="book-outline" expanded={showQuotes} onPress={() => setShowQuotes(!showQuotes)} />
+        <StudioAction label={`この案に使った${parts.length}枚の一節`} plain icon="book-outline" expanded={showQuotes} onPress={() => setShowQuotes(!showQuotes)} />
         {showQuotes && parts.map((part, i) => <View key={part.source.ref.seedId}>
           <Text style={styles.role}>{craftRoles[i]} · {part.title || '題名のないメモ'}</Text>
           <Text selectable style={studioStyles.text}>「{part.quote}」</Text>
@@ -190,11 +188,11 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
         </View>
       </View>}
       <View style={studioStyles.wrap}>
-        {canCompose() && <StudioAction label="この案を作品の紙面へ" icon="albums-outline" primary disabled={busy || !advanced} onPress={() => void adopt(true)} />}
-        <StudioAction label={start.target ? 'この案を下書きに加える' : '下書きで書き直す'} icon="create-outline"
+        {canCompose() && <StudioAction label="この案を作品の紙面へ" title="作品の紙面へ" icon="albums-outline" primary disabled={busy || !advanced} onPress={() => void adopt(true)} />}
+        <StudioAction label={start.target ? 'この案を下書きに加える' : '下書きで書き直す'} title={start.target ? '下書きに加える' : '下書きで続ける'} icon="create-outline"
           disabled={busy || !advanced} onPress={() => void adopt(false)} />
       </View>
-      {canCompose() && <Text style={studioStyles.muted}>紙面へ進むと、アトリエにこの版が残ります。作品集に入れる前に題名や紙面を整えられます。</Text>}
+      {canCompose() && <Text style={studioStyles.muted}>紙面に進むと、アトリエにこの版を保存します。</Text>}
       {!aiReady && canUseAI() && <Text style={studioStyles.muted}>レシピは通信せずに使えます。対応するiPhoneではApple Intelligenceで別案も作れます。</Text>}
     </>}
     {!!notice && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>{notice}</Text>}
@@ -203,11 +201,10 @@ export function StudioCraftBench({ start, writer, advanced, canUse, canUseAI, ca
 
 const styles = StyleSheet.create({
   board: { backgroundColor: '#e9ede1', borderColor: '#c8d4c0', borderWidth: 1, borderRadius: 18, padding: 12, gap: 8 },
-  boardTitle: { fontFamily: theme.fonts.serif, fontSize: 19, fontWeight: '600', color: studioColors.text },
   boardDetail: { fontSize: 13, lineHeight: 20, color: studioColors.muted }, slots: { flexDirection: 'row', gap: 6 },
   slot: { flex: 1, minWidth: 0, minHeight: 99, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: '#8c9b86',
     backgroundColor: '#f4f5ec', padding: 7, gap: 5, alignItems: 'center', justifyContent: 'center' },
-  filled: { backgroundColor: '#fffdf6', borderStyle: 'solid', borderBottomWidth: 3, borderColor: '#abbda4' },
+  filled: { backgroundColor: '#fffdf6', borderStyle: 'solid', borderColor: '#abbda4' },
   role: { fontSize: 12, lineHeight: 17, fontWeight: '700', color: studioColors.green },
   slotText: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: studioColors.text }, slotHint: { fontSize: 12, color: studioColors.muted },
   paper: { borderLeftWidth: 4, borderLeftColor: '#ab7d48', padding: 16, backgroundColor: '#fffbf1' },

@@ -132,7 +132,7 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     await button('星座').click();
     await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key)).studioPreferences.layout === 'constellation', storageKey);
     const arrange = button('マインドマップの配置を編集');
-    await arrange.getByText('マップの配置', { exact: true }).waitFor();
+    await button('地図の表示設定').click();
     await arrange.click();
     await heading('配置を編集').waitFor();
     assert.equal(await tab('その他').count(), 0);
@@ -163,6 +163,7 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     assert.equal(saved[0].centerId, 'example-0');
     assert.equal(saved[0].placements[0].seedId, 'example-1');
     assert.equal((await read()).connections.length, 11);
+    await button('地図の表示設定').click();
     await arrange.click();
     await heading('配置を編集').waitFor();
     assert.ok(centerOf(await card.boundingBox()).y < before.y - 20);
@@ -194,6 +195,7 @@ const centerOf = ({ x, y, width, height }) => ({ x: x + width / 2, y: y + height
     assert.equal(await button('カレンダー').getAttribute('aria-pressed'), 'true');
     await page.reload();
     await start();
+    await button('地図の表示設定').click();
     await arrange.click();
     assert.ok(centerOf(await card.boundingBox()).y < before.y - 20, 'saved arrangement reopens after reload');
     assert.deepEqual(errors, []);

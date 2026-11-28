@@ -1,121 +1,220 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { connectionId } from '../data/gardenModel';
-import { distanceBand, distanceBands, studioAtlas, studioRoute, type DistanceBand } from '../domain/plus/studioAtlas';
 import type { MapIndex } from '../domain/plus/map';
-import { toSeedSnippet } from '../utils/seedText';
+import { studioAtlas, studioGroupPreview, studioRoute, type AtlasGroup } from '../domain/plus/studioAtlas';
+import { buildMatchExcerpt, toSeedSnippet } from '../utils/seedText';
+import { focusControl } from './PlusUI';
 import { StudioNoteList } from './StudioNoteList';
-import { StudioAction, studioColors, studioStyles } from './StudioUI';
+import { IconButton, StudioAction, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
-function GardenDiagram({ index, center, atlas, route, selected, onPick }: {
-  index: MapIndex; center: string; atlas: ReturnType<typeof studioAtlas>; route: string[]; selected?: string; onPick: (id: string) => void;
+const batch = 8;
+const groupIcons: Record<AtlasGroup['kind'], StudioIcon> = {
+  branch: 'git-branch-outline', reason: 'link-outline', category: 'pricetag-outline', word: 'text-outline',
+  direct: 'link-outline', component: 'git-network-outline', isolated: 'document-text-outline',
+};
+
+function GroupRow({ group, index, atlas, onPress }: {
+  group: AtlasGroup; index: MapIndex; atlas: ReturnType<typeof studioAtlas>; onPress: () => void;
 }) {
-  const points = React.useMemo(() => {
-    const positions = new Map<string, { x: number; y: number }>();
-    const divided = atlas.bands.apart.length > 0;
-    const x = divided ? 108 : 160;
-    positions.set(center, { x, y: 92 });
-    const rings = ['direct', 'second', 'far'] as const;
-    const occupied = rings.filter((band) => atlas.bands[band].length);
-    function ring(ids: string[], cx: number, cy: number, rx: number, ry: number) {
-      ids.forEach((id, i) => {
-        const angle = -Math.PI / 2 + (2 * Math.PI * i) / ids.length;
-        positions.set(id, { x: cx + Math.cos(angle) * rx, y: cy + Math.sin(angle) * ry });
-      });
-    }
-    let assigned = 0;
-    occupied.forEach((band, i) => {
-      assigned += atlas.bands[band].length;
-      const fraction = (i + 1) / occupied.length * 0.55 + Math.sqrt(assigned / (atlas.depth.size - 1)) * 0.45;
-      ring(atlas.bands[band], x, 92, fraction * (divided ? 93 : 142), fraction * 76);
-    });
-    if (divided) ring(atlas.bands.apart, 264, 92, 43, 63);
-    return positions;
-  }, [atlas, center]);
-  const path = new Set(route.slice(1).map((id, i) => connectionId(route[i], id)));
-  const divided = atlas.bands.apart.length > 0;
-  const dots = [...points];
-  return <View style={styles.diagram} testID="studio-atlas-diagram" aria-hidden importantForAccessibility="no-hide-descendants">
-    <Svg width="100%" height={146} viewBox="0 0 320 184">
-      {divided && <Line x1={210} x2={210} y1={9} y2={175} stroke="#abbaa8" strokeDasharray="2 5" />}
-      {[...index.edges].sort((a, b) => Number(path.has(a.id)) - Number(path.has(b.id))).map((edge) => {
-        const a = points.get(edge.aSeedId)!; const b = points.get(edge.bSeedId)!;
-        return <Line key={edge.id} x1={a.x} x2={b.x} y1={a.y} y2={b.y} stroke={path.has(edge.id) ? '#99562e' : '#78937a'}
-          strokeWidth={path.has(edge.id) ? 2.6 : 1} opacity={path.has(edge.id) ? 1 : 0.65} />;
-      })}
-      {dots.map(([id, { x, y }]) => <Rect key={id} x={x - 10} y={y - 10} width={20} height={20} fill="transparent" onPress={() => onPick(id)} />)}
-      {dots.map(([id, point]) => <Circle key={id} cx={point.x} cy={point.y} r={id === center || id === selected ? 5 : 2.7}
-        fill={id === selected ? '#a35429' : id === center ? '#1f553b' : '#66816a'} stroke="#f6f8ed" strokeWidth={1} onPress={() => onPick(id)} />)}
-    </Svg>
-    <Text style={styles.diagramLegend}>{divided ? `中心からたどれる ${atlas.depth.size}件  ｜  別のまとまり ${atlas.bands.apart.length}件` : '点はメモ、線は保存したつながり'}</Text>
-  </View>;
+  const route = group.furthestId ? studioRoute(atlas, group.furthestId) : [];
+  const noteTitle = (id: string) => toSeedSnippet(index.byId.get(id)!, 21);
+  const path = route.length > 4 ? [noteTitle(route[2]), '…', noteTitle(route.at(-1)!)] : route.slice(2).map(noteTitle);
+  const subtitle = group.kind === 'reason' ? 'つながりに添えた理由が同じ'
+    : group.kind === 'category' ? '直接つながる、同じカテゴリのメモ'
+      : group.kind === 'word' ? '本文に共通の言葉があるメモ'
+        : group.kind === 'branch' ? `このメモを経由 · 最長 ${route.length - 1}つ先` : undefined;
+  const preview = path.length ? path.join(' → ') : studioGroupPreview(index, group.seedIds, group.title);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`「${group.title}」のまとまりを開く`}
+    accessibilityHint={[`${group.seedIds.length}件`, subtitle, preview].filter(Boolean).join('。')} onPress={onPress}
+    style={({ pressed }) => [styles.group, pressed && styles.pressed]}>
+    <View style={styles.groupLead}>
+      <Ionicons name={groupIcons[group.kind]} size={17} color={studioColors.green} />
+    </View>
+    <View style={studioStyles.grow}>
+      <Text numberOfLines={2} style={styles.groupTitle}>{group.title}</Text>
+      {subtitle && <Text style={styles.groupLabel}>{subtitle}</Text>}
+      {preview && <Text numberOfLines={2} style={styles.groupPreview}>{preview}</Text>}
+    </View>
+    <Text style={styles.count}>{group.seedIds.length}件</Text>
+    <Ionicons name="chevron-forward" size={14} color={studioColors.muted} />
+  </Pressable>;
 }
 
 export function StudioAtlas({ index, centerId, onFocus, onRead }: {
-  index: MapIndex; centerId: string; onFocus: (id: string) => void; onRead: (id: string) => void;
+  index: MapIndex; centerId: string; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void) => void;
 }) {
   const atlas = React.useMemo(() => studioAtlas(index, centerId), [index, centerId]);
-  const [band, setBand] = React.useState<DistanceBand>();
+  const [scope, setScope] = React.useState<'all' | 'apart' | AtlasGroup>();
   const [picked, setPicked] = React.useState<string>();
+  const [limit, setLimit] = React.useState(batch);
   const [routeLimit, setRouteLimit] = React.useState(8);
+  const scroll = React.useRef<ScrollView>(null);
+  const back = React.useRef<View>(null);
+  const read = React.useRef<View>(null);
   const center = index.byId.get(centerId)!;
   const selected = picked && index.byId.get(picked);
+  const group = typeof scope === 'object' ? atlas.nearby.find(({ id }) => id === scope.id) ?? atlas.apart.find(({ id }) => id === scope.id) : undefined;
+  const otherCount = index.live.length - atlas.depth.size;
   const route = selected ? studioRoute(atlas, selected.id) : [];
-  const showDots = index.live.length <= 180 && index.edges.length <= 480;
-  const details = React.useMemo(() => new Map((band ? atlas.bands[band] : []).map((id) => {
-    const distance = atlas.depth.get(id);
-    const via = atlas.parent.get(id);
-    const tail = via && via !== centerId ? ` · 「${toSeedSnippet(index.byId.get(via)!, 30)}」を経由` : '';
-    return [id, distance ? `${distance}つ先${tail}` : 'この中心から続く線はありません'];
-  })), [atlas, band, centerId, index]);
-  return <View style={styles.stack}>
-    <View style={[studioStyles.card, styles.origin]}>
-      <Text style={styles.kicker}>中心のメモ</Text>
-      <Text accessibilityRole="header" style={studioStyles.subtitle}>{toSeedSnippet(center, 48)}</Text>
-      <Text style={studioStyles.muted}>庭のメモ {index.live.length}件 · 保存したつながり {index.edges.length}本</Text>
-    </View>
-    {showDots ? <GardenDiagram atlas={atlas} index={index} center={centerId} route={route} selected={picked} onPick={(id) => {
-      setBand(id === centerId ? undefined : distanceBand(atlas.depth.get(id)));
-      setPicked(id === centerId ? undefined : id); setRouteLimit(8);
-    }} /> : <Text style={studioStyles.muted}>距離ごとにまとめて全件を表示しています。</Text>}
-    {band ? <>
-      <StudioAction label="距離別の全体図へ戻る" icon="arrow-back" onPress={() => { setBand(undefined); setPicked(undefined); }} />
-      <Text style={studioStyles.subtitle}>{distanceBands.find((item) => item.id === band)?.label} · {atlas.bands[band].length}件</Text>
-      {selected ? <View style={studioStyles.card}>
-        <Text accessibilityRole="header" style={studioStyles.subtitle}>{toSeedSnippet(selected, 60)}</Text>
-        <Text style={styles.kicker}>{route.length ? `保存した線をたどる経路 · ${route.length - 1}つ先` : '別のまとまり・単独のメモ'}</Text>
-        {route.length > 0 && <Text selectable style={studioStyles.text}>{route.slice(0, routeLimit).map((id) => toSeedSnippet(index.byId.get(id)!, 40)).join(' → ')}
-          {route.length > routeLimit && ` → … → ${toSeedSnippet(selected, 40)}`}</Text>}
-        {route.length > routeLimit && <StudioAction label="経路の続きを表示" onPress={() => setRouteLimit(routeLimit + 20)} />}
-        <View style={studioStyles.wrap}><StudioAction label="この場所を中心に開く" icon="locate-outline" primary onPress={() => onFocus(selected.id)} />
-          <StudioAction label="この場所の原文を読む" icon="document-text-outline" onPress={() => onRead(selected.id)} />
-          <StudioAction label="別のメモを選ぶ" onPress={() => setPicked(undefined)} /></View>
-      </View> : <StudioNoteList key={band} index={index} selected="" scope={atlas.bands[band]} details={details}
-        onPick={(id) => { setRouteLimit(8); setPicked(id); }} hint="中心からの距離と経路を確認します" mapLabel="場所を見る" />}
-    </> : <>
-      <Text style={studioStyles.muted}>{showDots ? '点をタップするか、下の距離からメモを選べます。' : '中心からの距離を選ぶと、画面の外のメモまでたどれます。'}</Text>
-      {distanceBands.map(({ id, label }) => {
-        const ids = atlas.bands[id];
-        const sample = ids.slice(0, 2).map((key) => toSeedSnippet(index.byId.get(key)!, 22)).join('、');
-        return <Pressable key={id} accessibilityRole="button" accessibilityLabel={`${label} ${ids.length}件`}
-          accessibilityState={{ disabled: !ids.length }} disabled={!ids.length} onPress={() => setBand(id)}
-          style={({ pressed }) => [studioStyles.card, styles.band, pressed && studioStyles.quiet]}>
-          <View style={studioStyles.row}><Text style={[studioStyles.text, studioStyles.grow]}>{label}</Text>
-            <Text style={styles.count}>{ids.length}件</Text><Ionicons name="chevron-forward" size={16} color={studioColors.green} /></View>
-          {!!ids.length && <><View style={styles.track} aria-hidden><View style={[styles.bar, { width: `${100 * ids.length / Math.max(1, index.live.length - 1)}%` }]} /></View>
-            <Text numberOfLines={1} style={studioStyles.muted}>{sample}</Text></>}
-        </Pressable>;
-      })}
+  const ids = group?.seedIds;
+  const details = React.useMemo(() => {
+    const descriptions = new Map<string, string>();
+    for (const id of group?.seedIds ?? []) {
+      const via = atlas.parent.get(id);
+      if (!via) continue;
+      const reason = atlas.edgeNotes.get(connectionId(via, id));
+      if (via !== centerId) {
+        descriptions.set(id, `${atlas.depth.get(id)}つ先 · 「${toSeedSnippet(index.byId.get(via)!, 25)}」を経由`);
+      } else if (group?.kind === 'word') {
+        const excerpt = buildMatchExcerpt(index.byId.get(id)!, group.title);
+        if (excerpt?.field === 'body') descriptions.set(id, excerpt.text);
+      } else if (reason && group?.kind !== 'reason') {
+        descriptions.set(id, reason);
+      }
+    }
+    return descriptions;
+  }, [atlas, centerId, group, index]);
+  const root = scope !== 'all' && scope !== 'apart' && !group && !selected;
+  const fromApart = group?.kind === 'component' || group?.kind === 'isolated';
+  const groups = scope === 'apart' ? atlas.apart : atlas.nearby;
+  const jump = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!jump.current) return;
+    jump.current = false;
+    scroll.current?.scrollTo({ y: 0, animated: false });
+    if (!root) {
+      const frame = requestAnimationFrame(() => focusControl(back.current));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [group, picked, root, scope]);
+
+  function open(next: typeof scope) {
+    jump.current = true;
+    setScope(next); setPicked(undefined); setLimit(batch);
+  }
+
+  function pick(id: string) {
+    jump.current = true;
+    setRouteLimit(8); setPicked(id);
+  }
+
+  function goBack() {
+    if (selected) {
+      jump.current = true; setPicked(undefined);
+      return;
+    }
+    open(fromApart ? 'apart' : undefined);
+  }
+
+  return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={styles.content}
+    automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+    {root ? <View style={styles.origin}>
+      <View style={styles.originMark}><Ionicons name="locate-outline" size={22} color="#e0eadc" /></View>
+      <View style={studioStyles.grow}>
+        <Text style={styles.originLabel}>中心のメモ</Text>
+        <Text accessibilityRole="header" style={styles.originTitle}>{toSeedSnippet(center, 64)}</Text>
+        <Text style={styles.originLabel}>庭のメモ {index.live.length}件</Text>
+      </View>
+      <IconButton label="全体図からメモを探す" icon="search-outline" background="#416352" color="#fffdf7" onPress={() => open('all')} />
+    </View> : <Pressable ref={back} accessibilityRole="button" accessibilityLabel={selected ? 'メモを選び直す' : fromApart ? '別のまとまりへ戻る' : '全体図のはじめへ戻る'}
+      onPress={goBack} style={({ pressed }) => [styles.back, pressed && styles.pressed]}>
+      <Ionicons name="arrow-back" size={17} color={studioColors.green} />
+      <Text style={styles.backText}>{selected ? group ? group.title : 'メモを探す' : fromApart ? '別のまとまり' : '全体図'}</Text>
+    </Pressable>}
+    {!selected && (root || scope === 'apart') && <>
+      <View style={styles.section}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>{root ? '中心からたどれるメモ' : '別のまとまり'}</Text>
+        <Text style={styles.sectionCount}>{root ? Math.max(0, atlas.depth.size - 1) : otherCount}件</Text>
+      </View>
+      {root && !groups.length && <Text style={studioStyles.muted}>保存したつながりがここに並びます。</Text>}
+      <View style={root ? styles.branches : styles.rows} testID={root ? 'studio-atlas-branches' : undefined}>
+        {groups.slice(0, limit).map((entry) => <View key={entry.id} style={root && styles.branch}>
+          {root && <View aria-hidden style={styles.branchLine} />}
+          <GroupRow group={entry} index={index} atlas={atlas} onPress={() => open(entry)} />
+        </View>)}
+      </View>
+      {groups.length > limit && <StudioAction label="ほかのまとまりを表示" onPress={() => setLimit(limit + batch)} />}
+      {root && otherCount > 0 && <Pressable accessibilityRole="button" accessibilityLabel={`別のまとまり ${otherCount}件を見る`}
+        onPress={() => open('apart')} style={({ pressed }) => [styles.apart, pressed && styles.pressed]}>
+        <Ionicons name="albums-outline" size={21} color={studioColors.green} />
+        <View style={studioStyles.grow}>
+          <Text style={styles.groupTitle}>別のまとまり</Text>
+          <Text style={styles.groupPreview}>中心から線が続いていないメモ</Text>
+        </View>
+        <Text style={styles.count}>{otherCount}件</Text><Ionicons name="chevron-forward" size={14} color={studioColors.muted} />
+      </Pressable>}
     </>}
-  </View>;
+    {(group || scope === 'all') && <View style={[styles.rows, selected && styles.hidden]}>
+      <View style={styles.section}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>{group?.title ?? '庭のメモを探す'}</Text>
+        <Text style={styles.sectionCount}>{ids?.length ?? index.live.length}件</Text>
+      </View>
+      {group?.furthestId && group.seedIds.length > 12 && <StudioAction
+        label={`「${toSeedSnippet(index.byId.get(group.furthestId)!, 30)}」までの経路を見る`} icon="git-branch-outline"
+        onPress={() => pick(group.furthestId!)} />}
+      <StudioNoteList key={group?.id ?? 'all'} index={index} selected={picked ?? ''} scope={ids} details={details} onPick={pick}
+        hint={fromApart ? 'メモの内容を確認します' : 'メモの内容と経路を確認します'} mapLabel="メモを開く" />
+    </View>}
+    {selected && <>
+      <View style={styles.selection}>
+        <Text accessibilityRole="header" style={styles.noteTitle}>{toSeedSnippet(selected, 64)}</Text>
+        <Text style={studioStyles.muted}>{route.length === 1 ? '中心のメモ' : route.length > 1 ? `中心から ${route.length - 1}つ先` : '別のまとまりのメモ'}</Text>
+        {selected.title && <Text numberOfLines={2} style={studioStyles.text}>{selected.body}</Text>}
+        <View style={studioStyles.wrap}>
+          <StudioAction label="この場所を中心に開く" title="中心にする" icon="locate-outline" primary onPress={() => onFocus(selected.id)} />
+          <StudioAction label="この場所の原文を読む" title="原文を読む" icon="document-text-outline" focusRef={read}
+            onPress={() => onRead(selected.id, () => focusControl(read.current))} />
+        </View>
+      </View>
+      {route.length > 1 && <View style={styles.route} testID="studio-atlas-route">
+        <Text accessibilityRole="header" style={styles.sectionTitle}>保存したつながりをたどる</Text>
+        {route.slice(0, routeLimit).map((id, position) => {
+          const reason = position ? atlas.edgeNotes.get(connectionId(route[position - 1], id)) : undefined;
+          return <View key={id} style={styles.step}>
+            {position > 0 && <Text style={styles.stepReason}>{reason || '保存したつながり'}</Text>}
+            <Text style={[styles.stepTitle, id === picked && styles.stepEnd]}>{toSeedSnippet(index.byId.get(id)!, 60)}</Text>
+          </View>;
+        })}
+        {route.length > routeLimit && <StudioAction label="経路の続きを表示" onPress={() => setRouteLimit(routeLimit + 20)} />}
+      </View>}
+    </>}
+  </ScrollView>;
 }
+
 const styles = StyleSheet.create({
-  diagram: { backgroundColor: '#f0f3e8', borderRadius: 14, paddingBottom: 6 },
-  diagramLegend: { color: studioColors.green, fontSize: 12, textAlign: 'center' },
-  stack: { gap: 9 }, origin: { backgroundColor: '#e8efe3' }, kicker: { fontWeight: '700', fontSize: 12, color: studioColors.green },
-  band: { minHeight: 48, gap: 5 }, count: { fontSize: 16, fontWeight: '700', color: studioColors.green },
-  track: { height: 4, borderRadius: 2, backgroundColor: '#e2e9dc' },
-  bar: { minWidth: 3, height: 4, borderRadius: 2, backgroundColor: '#65876b' },
+  content: { paddingHorizontal: 14, paddingBottom: 18, gap: 12 },
+  hidden: { display: 'none' },
+  origin: { flexDirection: 'row', gap: 10, alignItems: 'center', borderRadius: 16, padding: 14, backgroundColor: '#254936' },
+  originMark: { alignItems: 'center', justifyContent: 'center', height: 36, width: 36, borderRadius: 18, backgroundColor: '#416352' },
+  originTitle: { color: '#fffdf7', fontSize: 20, fontWeight: '700' },
+  originLabel: { color: '#d3e1d4', fontSize: 12, lineHeight: 18, fontWeight: '600' },
+  section: { flexDirection: 'row', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 2 },
+  sectionTitle: { flexShrink: 1, color: studioColors.text, fontSize: 16, lineHeight: 23, fontWeight: '700' },
+  sectionCount: { color: studioColors.muted, fontSize: 13 },
+  branches: { marginLeft: 12, borderLeftWidth: 2, borderLeftColor: '#b5c7b5', paddingLeft: 14, gap: 7 },
+  branch: { position: 'relative' },
+  branchLine: { position: 'absolute', left: -14, top: 24, width: 14, height: 2, backgroundColor: '#b5c7b5' },
+  rows: { gap: 7 },
+  group: { flexDirection: 'row', gap: 7, alignItems: 'flex-start', padding: 10, minHeight: 54,
+    borderRadius: 12, borderWidth: 1, borderColor: '#dce1d4', backgroundColor: studioColors.surface },
+  groupLead: { paddingTop: 2 },
+  groupTitle: { color: studioColors.text, fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  groupLabel: { color: studioColors.green, fontSize: 12, lineHeight: 18 },
+  groupPreview: { color: studioColors.muted, fontSize: 13, lineHeight: 19 },
+  count: { color: studioColors.green, fontSize: 13, lineHeight: 21, fontWeight: '700' },
+  pressed: { backgroundColor: studioColors.soft },
+  apart: { flexDirection: 'row', gap: 9, alignItems: 'center', padding: 12, minHeight: 59,
+    borderRadius: 12, backgroundColor: '#edf0e6' },
+  back: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 8, borderRadius: 9 },
+  backText: { flexShrink: 1, color: studioColors.green, fontSize: 14, fontWeight: '600' },
+  selection: { padding: 14, borderRadius: 14, backgroundColor: '#edf0e6', gap: 5 },
+  noteTitle: { color: studioColors.text, fontSize: 22, lineHeight: 29, fontWeight: '700' },
+  route: { gap: 5, padding: 14, borderColor: studioColors.rule, borderWidth: 1, borderRadius: 14, backgroundColor: studioColors.surface },
+  step: { borderLeftWidth: 2, borderLeftColor: '#b5c7b5', paddingLeft: 13, gap: 4, marginLeft: 4 },
+  stepTitle: { color: studioColors.text, fontSize: 15, fontWeight: '600', lineHeight: 21, paddingVertical: 4 },
+  stepEnd: { color: studioColors.green },
+  stepReason: { color: studioColors.muted, fontSize: 13, lineHeight: 19 },
 });

@@ -151,13 +151,33 @@ test('the whole-garden atlas covers distant and isolated notes and returns a sav
   const links = notes.slice(1, -1).map((seed, i) => makeConnection(notes[i].id, seed.id, 'manual', at));
   links.push(makeConnection('1', '3', 'manual', at));
   const atlas = studioAtlas(indexMap(notes, links), '0');
-  assert.deepEqual(atlas.bands.direct, ['1']);
-  assert.deepEqual(atlas.bands.second, ['2', '3']);
-  assert.deepEqual(atlas.bands.apart, ['4999']);
-  assert.equal(atlas.bands.far.length, 4995);
+  assert.deepEqual(atlas.nearby.map(({ kind, seedIds }) => [kind, seedIds.length]), [['branch', 4998]]);
+  assert.deepEqual(atlas.apart.map(({ kind, seedIds }) => [kind, seedIds]), [['isolated', ['4999']]]);
+  assert.equal(atlas.depth.get('2'), 2);
+  assert.equal(atlas.depth.get('3'), 2);
   assert.deepEqual(studioRoute(atlas, '4'), ['0', '1', '3', '4']);
   assert.equal(studioRoute(atlas, '4998').length, 4998);
   assert.deepEqual(studioRoute(atlas, '4999'), []);
+});
+
+test('the atlas groups direct notes by saved reason, category or common words while keeping each route distinct', () => {
+  const notes = ['center', 'branch', 'deep', 'a', 'b', 'c', 'd', 'e', 'f', 'other', 'peer', 'solo']
+    .map((id) => makeSeed(id, { title: id, tags: id === 'c' || id === 'd' || id === 'deep' ? ['散歩'] : [],
+      body: id === 'e' ? '苔玉をつくる' : id === 'f' ? '苔玉にみずをやる' : id }));
+  const pairs = [
+    ['center', 'branch'], ['branch', 'deep'], ['center', 'a', '外で見つけたもの'], ['center', 'b', '外で見つけたもの'],
+    ['center', 'c', '理由1'], ['center', 'd', '理由2'], ['center', 'e'], ['center', 'f'], ['other', 'peer'],
+  ];
+  const edges = pairs.map(([a, b, note]) => makeConnection(a, b, 'manual', at, note));
+  const atlas = studioAtlas(indexMap(notes, edges), 'center');
+  assert.deepEqual(atlas.nearby.map(({ kind, title, seedIds }) => [kind, title, seedIds]), [
+    ['branch', 'branch', ['branch', 'deep']], ['reason', '外で見つけたもの', ['a', 'b']], ['category', '散歩', ['c', 'd']], ['word', '苔玉', ['e', 'f']],
+  ]);
+  assert.deepEqual(atlas.apart.map(({ kind, seedIds }) => [kind, seedIds]), [['component', ['other', 'peer']], ['isolated', ['solo']]]);
+  assert.deepEqual(studioRoute(atlas, 'deep'), ['center', 'branch', 'deep']);
+  assert.deepEqual(studioRoute(atlas, 'b'), ['center', 'b']);
+  assert.deepEqual(studioRoute(atlas, 'peer'), []);
+  assert.equal(atlas.edgeNotes.size, 4);
 });
 
 test('a suggestion via a shared neighbor requires both saved links and an included, live bridge at decision time', () => {

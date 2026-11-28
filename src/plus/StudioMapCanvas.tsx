@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
-import Svg, { Circle, Defs, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { connectionId } from '../data/gardenModel';
 import type { StudioPlacement, StudioPreferences } from '../domain/plus/contracts';
 import type { Suggestion } from '../domain/plus/insights';
@@ -15,11 +15,11 @@ import { IconButton } from './StudioUI';
 import { buttonSelectionProps } from './PlusUI';
 
 export const mapPalettes = {
-  paper: { label: '和紙', art: '#e8eadc', light: '#fdf5e0', pattern: '#617c60', node: '#fffcf2', ink: '#253e31', border: '#a9b69e',
+  paper: { label: '和紙', art: '#eef0e6', node: '#fffcf2', ink: '#253e31', border: '#a9b69e',
     center: '#204b38', onCenter: '#fffdf2', line: '#56765f', highlight: '#214e39', candidate: '#854b30' },
-  indigo: { label: '藍', art: '#d9e5ef', light: '#f6f9f8', pattern: '#426482', node: '#f9fcff', ink: '#203a53', border: '#9ab6ca',
+  indigo: { label: '藍', art: '#e6eef3', node: '#f9fcff', ink: '#203a53', border: '#9ab6ca',
     center: '#244b6d', onCenter: '#f6fcff', line: '#4f6e8c', highlight: '#254e70', candidate: '#854928' },
-  night: { label: '月夜', art: '#141d33', light: '#363e61', pattern: '#b2bce1', node: '#2c3956', ink: '#f5f0ff', border: '#6d80a8',
+  night: { label: '月夜', art: '#1c2439', node: '#2c3956', ink: '#f5f0ff', border: '#6d80a8',
     center: '#dac9f4', onCenter: '#20172f', line: '#a1acd2', highlight: '#decaff', candidate: '#fbd0a5' },
 };
 
@@ -212,7 +212,6 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
       y: original.y + stretch * ((anchor?.y ?? height / 2) - height / 2) });
   }
 
-  const patternId = React.useId().replace(/[^\w-]/g, '');
   const selectedNode = graph?.nodes.find(({ seed }) => seed.id === selected);
   const via = selectedNode?.via;
   const lines = React.useMemo(() => {
@@ -227,11 +226,9 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
     })).sort((a, b) => Number(a.active) - Number(b.active));
   }, [center.id, graph, selected, via]);
   const focusRoute = lines.some(({ active }) => active);
-  const shown = Math.max(0, (graph?.nodes.length ?? 0) - 1);
-  const hasCandidates = suggestions.length > 0;
-  const label = hasCandidates ? `表示 ${shown}件` : `${expanded ? '周辺' : '直接'} ${shown}件`;
   const hidden = graph?.hidden ?? 0;
-  const overview = camera.scale === 1 && camera.x === 0 && camera.y === 0 && onAtlas;
+  const hasCandidates = lines.some(({ line }) => line.suggested);
+  const moved = camera.scale !== 1 || camera.x !== 0 || camera.y !== 0;
   return <View ref={surface} testID="studio-map-canvas" onLayout={({ nativeEvent }) => {
     const { width: nextWidth, height: nextHeight } = nativeEvent.layout;
     if (nextWidth > 0 && nextHeight > 0) setSize((before) => before.width === nextWidth && before.height === nextHeight
@@ -239,39 +236,18 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
     measureSurface();
   }}
     style={[styles.canvas, { backgroundColor: colors.art, borderColor: colors.border }]}>
-    {!!width && <View pointerEvents="none" aria-hidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
-      <Svg width={width} height={height}>
-        <Defs>
-          <RadialGradient id={`${patternId}wash`} cx="45%" cy="40%" rx="77%" ry="75%">
-            <Stop offset="0" stopColor={colors.light} /><Stop offset="0.55" stopColor={colors.art} /><Stop offset="1" stopColor={colors.art} />
-          </RadialGradient>
-          <Pattern id={patternId} width={palette === 'night' ? 47 : 23} height={palette === 'night' ? 43 : 23} patternUnits="userSpaceOnUse">
-            {palette === 'indigo' ? <Path d="M0 23 V0 H23" fill="none" stroke={colors.pattern} strokeWidth={0.7} opacity={0.17} /> : <>
-              <Circle cx="3" cy="3" r={palette === 'night' ? 1 : 0.7} fill={colors.pattern} opacity={palette === 'night' ? 0.42 : 0.19} />
-              {palette === 'paper' ? <Path d="M12 15 l3 -1" stroke={colors.pattern} strokeWidth={0.65} opacity={0.14} /> :
-                <Circle cx="29" cy="22" r="0.7" fill={colors.pattern} opacity="0.35" />}
-            </>}
-          </Pattern>
-        </Defs>
-        <Rect width={width} height={height} fill={`url(#${patternId}wash)`} />
-        <Rect width={width} height={height} fill={`url(#${patternId})`} />
-      </Svg>
-    </View>}
     <View style={StyleSheet.absoluteFill} {...gestures.panHandlers}>
       {graph && <View style={[StyleSheet.absoluteFill, { transform: [{ translateX: camera.x }, { translateY: camera.y }] }]}>
         <View style={[StyleSheet.absoluteFill, { transform: [{ scale: camera.scale }] }]}>
           <View pointerEvents="none" aria-hidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
             <Svg height={height} width={width}>
-              {!arrange && [0.23, 0.36].map((radius) => <Circle key={radius} cx={width / 2} cy={(height - 4) / 2} r={Math.min(height, width) * radius}
-                fill="none" stroke={colors.line} opacity={0.15} strokeWidth={1} strokeDasharray={palette === 'night' ? '2 7' : undefined} />)}
               {lines.map(({ line, active, branch }) => {
                 const path = pathFor(line);
                 const ink = line.suggested ? colors.candidate : active ? colors.highlight : colors.line;
                 return <React.Fragment key={line.id}>
-                  {active && !line.suggested && <Path d={path} fill="none" stroke={ink} opacity={0.16} strokeWidth={8} strokeLinecap="round" />}
                   <Path testID={active ? 'studio-map-active-connection' : undefined} d={path} fill="none" stroke={ink}
-                    strokeWidth={active ? 2.8 : branch ? 1.65 : 1.15} strokeLinecap="round" strokeDasharray={line.suggested ? '4.5 4.5' : undefined}
-                    opacity={active || line.suggested ? 1 : focusRoute ? branch ? 0.55 : 0.35 : branch ? 0.9 : 0.68} />
+                    strokeWidth={active ? 2.5 : branch ? 1.5 : 1} strokeLinecap="round" strokeDasharray={line.suggested ? '4.5 4.5' : undefined}
+                    opacity={active || line.suggested ? 1 : focusRoute ? 0.36 : branch ? 0.74 : 0.38} />
                 </React.Fragment>;
               })}
             </Svg>
@@ -335,7 +311,7 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
             <Text maxFontSizeMultiplier={1.1} style={[styles.moreCount, { color: colors.ink }]}>{hidden}件を探す</Text>
           </View>
           <Ionicons name="chevron-forward" size={12} color={colors.ink} />
-        </Pressable> : graph && <Text pointerEvents="none" style={[styles.caption, { color: colors.ink, backgroundColor: colors.node }]}>{label}</Text>}
+        </Pressable> : graph?.scope === 1 && <Text pointerEvents="none" style={[styles.caption, { color: colors.ink }]}>つながりはまだありません</Text>}
       </View>
       {onDepth && <Pressable accessibilityRole="button" {...buttonSelectionProps(expanded)}
         accessibilityLabel={expanded ? '直接のつながりに戻す' : '2つ先まで見る'} onPress={onDepth}
@@ -346,26 +322,21 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
       </Pressable>}
     </View>
     {!arrange && <View pointerEvents="box-none" style={styles.bottom}>
-      <View pointerEvents="none" style={styles.legend}>
-        {graph?.scope === 1 ? <Text style={[styles.keyText, { color: colors.ink }]}>つながりはまだありません</Text>
-          : <View style={styles.key}><View style={[styles.keyLine, { borderTopColor: focusRoute ? colors.highlight : colors.line }]} />
-            <Text style={[styles.keyText, { color: colors.ink }]}>{focusRoute ? '選んだ経路' : 'つながり'}</Text></View>}
-        {hasCandidates && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
-          <Text style={[styles.keyText, { color: colors.ink }]}>未保存の候補</Text></View>}
-      </View>
+      {onAtlas && <Pressable ref={atlasButton} accessibilityRole="button" accessibilityLabel="庭の全体図を開く" onPress={onAtlas}
+        style={({ pressed }) => [styles.mapButton, styles.atlasButton, { backgroundColor: colors.center, borderColor: colors.center }, pressed && styles.pressed]}>
+        <Ionicons name="git-branch-outline" color={colors.onCenter} size={16} />
+        <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.onCenter }]}>全体図</Text>
+      </Pressable>}
+      {hasCandidates && <View pointerEvents="none" style={styles.key}><View style={[styles.keyLine, { borderTopColor: colors.candidate }]} />
+        <Text style={[styles.keyText, { color: colors.ink }]}>未保存の候補</Text>
+      </View>}
       <View style={[styles.controls, { backgroundColor: colors.node, borderColor: colors.border }]}>
         <IconButton label="地図を縮小" icon="remove" color={colors.ink} background="transparent" disabled={camera.scale <= 1} onPress={() => zoom(1 / 1.25)} />
         <IconButton label="地図を拡大" icon="add" color={colors.ink} background="transparent" disabled={camera.scale >= maxScale} onPress={() => zoom(1.25)} />
-        <Pressable ref={atlasButton} accessibilityRole="button" accessibilityLabel={overview ? "庭の全体図を開く" : "地図を画面に合わせる"} onPress={overview || (() => set(initialCamera))}
-          style={({ pressed }) => [styles.fit, { borderLeftColor: colors.border }, pressed && styles.pressed]}>
-          <Ionicons name="scan-outline" color={colors.ink} size={16} />
-          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>{overview ? '全体図' : '標準'}</Text>
-        </Pressable>
+        {moved && <IconButton label="地図を画面に合わせる" icon="scan-outline" color={colors.ink} background="transparent" onPress={() => set(initialCamera)} />}
+        {fullScreen && <IconButton label={fullScreen.label} icon={fullScreen.active ? 'contract-outline' : 'expand-outline'} color={colors.ink}
+          background="transparent" onPress={fullScreen.onPress} />}
       </View>
-      {fullScreen && <Pressable accessibilityRole="button" accessibilityLabel={fullScreen.label} onPress={fullScreen.onPress}
-        style={({ pressed }) => [styles.mapButton, styles.expand, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
-        <Ionicons name={fullScreen.active ? 'contract-outline' : 'expand-outline'} size={18} color={colors.ink} />
-      </Pressable>}
     </View>}
   </View>;
 }
@@ -373,8 +344,8 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, palette, 
 const styles = StyleSheet.create({
   canvas: { flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative', borderRadius: 21, borderWidth: 1, userSelect: 'none' },
   node: { position: 'absolute', paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center', borderRadius: 12,
-    boxShadow: '0px 2px 5px rgba(23, 37, 25, 0.14)' },
-  centerNode: { borderRadius: 15, boxShadow: '0px 4px 9px rgba(23, 37, 25, 0.22)' },
+    boxShadow: '0px 1px 3px rgba(23, 37, 25, 0.10)' },
+  centerNode: { borderRadius: 14, boxShadow: '0px 2px 4px rgba(23, 37, 25, 0.14)' },
   handle: { position: 'absolute', top: 4, right: 5, opacity: 0.63 },
   moving: { boxShadow: '0px 7px 14px rgba(21, 42, 31, 0.28)' },
   centerMarker: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 3 },
@@ -392,14 +363,10 @@ const styles = StyleSheet.create({
   backTitle: { flexShrink: 1 },
   pressed: { opacity: 0.7 },
   bottom: { position: 'absolute', bottom: 7, left: 8, right: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 5 },
-  expand: { minWidth: 44 },
-  caption: { fontSize: 11, lineHeight: 15, fontWeight: '700', borderRadius: 8, overflow: 'hidden', paddingVertical: 3, paddingHorizontal: 7 },
-  legend: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: 8, rowGap: 2, paddingBottom: 4 },
-  key: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  keyLine: { width: 15, borderTopWidth: 2 },
-  dottedKey: { borderStyle: 'dashed' },
-  keyText: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
-  controls: { flexDirection: 'row', borderWidth: 1, borderRadius: 13 },
-  fit: { minHeight: 44, minWidth: 60, borderLeftWidth: StyleSheet.hairlineWidth, paddingHorizontal: 5, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 4 },
+  atlasButton: { paddingHorizontal: 9 },
+  caption: { fontSize: 12, lineHeight: 18, paddingHorizontal: 3 },
+  key: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 4, paddingBottom: 8 },
+  keyLine: { width: 15, borderTopWidth: 2, borderStyle: 'dashed' },
+  keyText: { fontSize: 11, lineHeight: 15, fontWeight: '600', flexShrink: 1 },
+  controls: { flexDirection: 'row', marginLeft: 'auto', borderWidth: 1, borderRadius: 13 },
 });
