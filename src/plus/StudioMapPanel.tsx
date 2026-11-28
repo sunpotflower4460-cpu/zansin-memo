@@ -7,50 +7,15 @@ import type { Suggestion } from '../domain/plus/insights';
 import type { MapIndex } from '../domain/plus/map';
 import { constellationGroups, radialNeighbors } from '../domain/plus/studioGraph';
 import type { Seed } from '../domain/types';
-import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
-import { PlusInput, buttonSelectionProps, focusControl } from './PlusUI';
+import { toSeedSnippet } from '../utils/seedText';
+import { buttonSelectionProps, focusControl } from './PlusUI';
 import { StudioMapCanvas, mapPalettes } from './StudioMapCanvas';
+import { StudioNoteList } from './StudioNoteList';
 import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 
 const layouts = [{ id: 'radial', label: 'マインドマップ' }, { id: 'constellation', label: '星座' }, { id: 'list', label: 'つながり一覧' }] as const;
 const noHints: Suggestion[] = [];
 const pageSize = 20;
-
-export function StudioNoteList({ index, selected, onPick, scope, details, hint }: {
-  index: MapIndex; selected: string; onPick: (id: string) => void; scope?: readonly string[];
-  details?: ReadonlyMap<string, string>; hint?: string;
-}) {
-  const [term, setTerm] = React.useState('');
-  const [page, setPage] = React.useState(0);
-  const query = normalizeSearchText(term.trim());
-  const list = React.useMemo(() => {
-    const notes = scope ? scope.flatMap((id) => index.byId.get(id) ?? []) : index.live;
-    return query ? notes.filter((seed) => searchableText(seed).includes(query) || normalizeSearchText(details?.get(seed.id) ?? '').includes(query)) : notes;
-  }, [details, index, query, scope]);
-  const shown = Math.min(page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
-  return <View style={styles.list}>
-    <PlusInput accessibilityLabel="地図のメモを探す" placeholder="題名・本文・カテゴリで検索"
-      value={term} onChangeText={(value) => { setPage(0); setTerm(value); }} />
-    {!list.length && <Text style={studioStyles.muted}>一致するメモがありません。</Text>}
-    {list.slice(shown * pageSize, (shown + 1) * pageSize).map((seed) => <Pressable key={seed.id} onPress={() => onPick(seed.id)}
-      accessibilityRole="button" accessibilityState={{ selected: selected === seed.id }}
-      accessibilityHint={[details?.get(seed.id), hint].filter(Boolean).join('。') || undefined}
-      accessibilityLabel={`${toSeedSnippet(seed, 55)}、つながり${index.adjacent.get(seed.id)?.size ?? 0}件`}
-      style={({ pressed }) => [styles.noteRow, selected === seed.id && styles.activeRow, pressed && studioStyles.quiet]}>
-      <View style={studioStyles.grow}>
-        <Text style={studioStyles.text} numberOfLines={2}>{toSeedSnippet(seed, 70)}</Text>
-        {(details?.has(seed.id) || seed.title) && <Text numberOfLines={2} style={studioStyles.muted}>{details?.get(seed.id) ?? seed.body}</Text>}
-      </View>
-      <Ionicons name="git-network-outline" color={studioColors.green} size={15} />
-      <Text style={studioStyles.muted}>{index.adjacent.get(seed.id)?.size ?? 0}</Text>
-    </Pressable>)}
-    {list.length > pageSize && <View style={studioStyles.wrap}>
-      <IconButton label="前のメモ" icon="chevron-back" disabled={shown === 0} onPress={() => setPage(shown - 1)} />
-      <Text style={studioStyles.muted}>{shown * pageSize + 1}〜{Math.min((shown + 1) * pageSize, list.length)} / {list.length}件</Text>
-      <IconButton label="次のメモ" icon="chevron-forward" disabled={(shown + 1) * pageSize >= list.length} onPress={() => setPage(shown + 1)} />
-    </View>}
-  </View>;
-}
 
 function DockButton({ label, text, icon, onPress, primary, focusRef }: {
   label: string; text: string; icon: StudioIcon; onPress: () => void; primary?: boolean; focusRef?: React.Ref<View>;
@@ -62,7 +27,7 @@ function DockButton({ label, text, icon, onPress, primary, focusRef }: {
   </Pressable>;
 }
 
-type Drawer = 'nearby' | 'relations' | 'groups' | 'actions';
+type Drawer = 'nearby' | 'relations' | 'groups' | 'path' | 'actions';
 
 function savedRelations(edges: MapIndex['edges'], seedId: string) {
   return new Map(edges.flatMap((edge) => {
@@ -77,7 +42,7 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   index: MapIndex; center: Seed; selected: Seed; settings: StudioPreferences; hints: readonly Suggestion[];
   preview?: { kind: 'suggestions' | 'connection'; label: string; emphasisId?: string; onClose: () => void };
   immersive: boolean; back?: { title: string; onPress: () => void }; onImmersive: () => void;
-  onSearch: () => void; onSettings: (patch: Partial<StudioPreferences>) => void;
+  onSearch: (onReturn: () => void) => void; onSettings: (patch: Partial<StudioPreferences>) => void;
   onSelect: (id: string) => void; onFocus: (id: string) => void; onRead: (id: string, onReturn?: () => void) => void; onAI: (id: string) => void;
   onReview: (suggestion: Suggestion) => void; onWrite: (id: string) => void;
 }) {
@@ -101,10 +66,13 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   const activeColor = React.useRef<View>(null);
   const relationButton = React.useRef<View>(null);
   const menuButton = React.useRef<View>(null);
+  const pathButton = React.useRef<View>(null);
+  const searchButton = React.useRef<View>(null);
   const restoreFocus = React.useRef<View>(null);
   const atCenter = center.id === selected.id;
   const neighbors = React.useMemo(() => [...index.adjacent.get(selected.id) ?? []], [index.adjacent, selected.id]);
   const neighborhood = React.useMemo(() => radialNeighbors(index, center), [center, index]);
+  const secondary = React.useMemo(() => new Map(neighborhood.second.map(({ id, via }) => [id, via])), [neighborhood.second]);
   const groups = React.useMemo(() => layout === 'constellation' ? constellationGroups(index) : undefined, [index, layout]);
   const group = groups?.find(({ id }) => id === groupId);
   const edgeNotes = React.useMemo(() => savedRelations(index.edges, selected.id), [index.edges, selected.id]);
@@ -123,11 +91,13 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
     return { ids, details };
   }, [center.id, expanded, hints, index.byId, index.edges, neighborhood]);
   const pending = hints.find(({ to }) => to.id === selected.id);
-  const route = expanded && neighborhood.second.find(({ id }) => id === selected.id);
-  const via = route && route.via && index.byId.get(route.via);
+  const viaId = (expanded || layout !== 'radial') ? secondary.get(selected.id) : undefined;
+  const via = viaId ? index.byId.get(viaId) : undefined;
+  const directlyLinked = index.adjacent.get(center.id)?.has(selected.id);
+  const path = !pending && !atCenter && (directlyLinked || via) ? [center, ...(via ? [via] : []), selected] : undefined;
   const relation = edgeNotes.get(center.id);
   const status = pending ? 'AIの候補' : atCenter ? '中心のメモ' : via
-    ? `「${toSeedSnippet(via, 19)}」を経由` : neighborhood.direct.includes(selected.id) ? '中心と直接つながるメモ' : '選んだメモ';
+    ? `「${toSeedSnippet(via, 19)}」を経由` : directlyLinked ? '中心と直接つながるメモ' : '選んだメモ';
 
   React.useEffect(() => {
     if (!drawer && !restoreFocus.current) return;
@@ -156,16 +126,28 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
     if (suggestion) onReview(suggestion);
   }
 
+  function centersOnPick(id: string) {
+    if (drawer === 'groups') return true;
+    if (drawer !== 'relations' || layout === 'list' || id === center.id) return false;
+    return layout === 'constellation' || (!index.adjacent.get(center.id)?.has(id) && !secondary.has(id));
+  }
+
+  function setDepth(next: boolean) {
+    setExpandedViews((before) => next ? [...before.filter((key) => key !== depthKey).slice(-31), depthKey] : before.filter((key) => key !== depthKey));
+  }
+
   function chooseFromDrawer(id: string) {
     setDrawer(undefined);
-    if (drawer === 'groups' || (drawer === 'relations' && !atCenter)) { onFocus(id); return; }
+    restoreFocus.current = readButton.current;
+    if (centersOnPick(id)) { onFocus(id); return; }
+    if (layout === 'radial' && !expanded && secondary.has(id)) setDepth(true);
     setFitRequest((before) => before + 1);
     chooseNode(id);
   }
 
   function toggleDepth() {
     if (expanded && via && !pending) onSelect(center.id);
-    setExpandedViews((before) => expanded ? before.filter((key) => key !== depthKey) : [...before.slice(-31), depthKey]);
+    setDepth(!expanded);
   }
 
   const connection = { label: 'このメモのつながり', text: `つながり ${neighbors.length}件`, icon: 'git-network-outline' as const,
@@ -176,18 +158,18 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
   const ai = { label: 'このメモからAIで探す', text: 'AIで探す', icon: 'sparkles-outline' as const, onPress: () => onAI(selected.id) };
   const showConnection = !atCenter && neighbors.length > 0 && !pending;
   const drawerTitle = drawer === 'groups' ? group?.label ?? '星座のまとまり'
-    : drawer === 'relations' ? 'メモのつながり' : drawer === 'actions' ? 'メモの操作' : '地図の続き';
+    : drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : '地図の続き';
   const closeLabel = drawer === 'groups' ? 'まとまりを閉じる' : '地図の操作画面を閉じる';
 
   return <View style={studioStyles.root}>
     <View style={[styles.workspace, drawer && styles.hidden]}>
       <StudioTitle title="考えの地図" subtitle={compact || immersive || preview ? undefined : `${index.live.length}件のメモ · ${index.edges.length}本のつながり`}>
-        {!immersive && <><IconButton label="地図を検索" icon="search-outline" onPress={onSearch} />
-          <IconButton label={appearance ? '表示スタイルを閉じる' : '表示スタイル'} icon="color-palette-outline" focusRef={colorButton}
+        <IconButton label="地図を検索" icon="search-outline" focusRef={searchButton} onPress={() => onSearch(() => focusControl(searchButton.current))} />
+        {!immersive && <IconButton label={appearance ? '表示スタイルを閉じる' : '表示スタイル'} icon="color-palette-outline" focusRef={colorButton}
             color={appearance ? '#fffdf7' : undefined} background={appearance ? studioColors.green : undefined} onPress={() => {
               setAppearance(!appearance);
               if (appearance) focusControl(colorButton.current);
-            }} /></>}
+            }} />}
         {(immersive || layout !== 'list') && <IconButton label={immersive ? '全画面を閉じる' : '地図を全画面で開く'}
           icon={immersive ? 'contract-outline' : 'expand-outline'} onPress={() => { setAppearance(false); onImmersive(); }} />}
       </StudioTitle>
@@ -207,7 +189,7 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
         suggestions={layout === 'radial' ? hints : noHints} expanded={expanded} onSelect={chooseNode} />}
       {layout === 'list' && back && <View style={studioStyles.wrap}><StudioAction label="前の中心へ戻る" icon="arrow-back-outline" onPress={back.onPress} /></View>}
       {(layout === 'list' || settings.layout === 'list') && <ScrollView style={[styles.noteList, layout !== 'list' && styles.hidden]}
-        contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+        contentContainerStyle={styles.listContent} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
         <StudioNoteList index={index} selected={selected.id} onPick={chooseNode} />
       </ScrollView>}
       {appearance ? <View style={[styles.dock, styles.appearance, compact && styles.compactAppearance]}>
@@ -231,9 +213,13 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
         })}</View>
       </View> : <View style={styles.dock} testID="studio-map-selection">
         <View style={studioStyles.row}>
-          <View style={styles.marker} aria-hidden>
+          {path ? <Pressable ref={pathButton} accessibilityRole="button" accessibilityLabel="つながりの経路を開く" onPress={() => open('path', pathButton.current)}
+            style={({ pressed }) => [styles.pathButton, pressed && studioStyles.quiet]}>
+            <Ionicons name="git-branch-outline" size={16} color={studioColors.green} />
+            <Text style={styles.dockText}>経路</Text>
+          </Pressable> : <View style={styles.marker} aria-hidden>
             <Ionicons name={pending ? 'sparkles-outline' : atCenter ? 'leaf-outline' : 'git-network-outline'} size={19} color={studioColors.green} />
-          </View>
+          </View>}
           <View style={studioStyles.grow}>
             <Text numberOfLines={1} style={styles.selectionStatus}>{compact && relation ? relation : status}</Text>
             <Text accessibilityRole="header" numberOfLines={1} style={styles.selectionTitle}>{toSeedSnippet(selected, 70)}</Text>
@@ -257,20 +243,39 @@ export function StudioMapPanel({ index, center, selected, settings, hints, previ
         {group && <IconButton label="まとまりの一覧に戻る" icon="arrow-back-outline" onPress={() => setGroupId(undefined)} />}
         <IconButton label={closeLabel} icon="close" focusRef={closeButton} onPress={() => setDrawer(undefined)} />
       </StudioTitle></View>
-      <ScrollView key={group ? group.id : drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent} keyboardShouldPersistTaps="handled">
+      <ScrollView key={group ? group.id : drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent}
+        automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
         {(drawer === 'nearby' || drawer === 'relations') && <>
           <Text style={studioStyles.text}>{drawer === 'nearby' ? `${toSeedSnippet(center, 40)} · ${hiddenNotes.length}件` : toSeedSnippet(selected, 55)}</Text>
           <StudioNoteList index={index} selected={selected.id} scope={drawer === 'nearby' ? hiddenNotes : neighbors}
             details={drawer === 'nearby' ? nearby.details : edgeNotes} onPick={chooseFromDrawer}
-            hint={drawer === 'relations' && !atCenter ? 'このメモを地図の中心にします' : '地図で選びます'} />
+            centersOnPick={centersOnPick} hint="地図で選びます" />
         </>}
-        {drawer === 'groups' && (group ? <StudioNoteList index={index} selected={selected.id} scope={group.seedIds} onPick={chooseFromDrawer} /> : <>
+        {drawer === 'groups' && (group ? <StudioNoteList index={index} selected={selected.id} scope={group.seedIds} onPick={chooseFromDrawer} centersOnPick={centersOnPick} /> : <>
           {groups?.slice(0, groupLimit).map((entry) => <Pressable key={entry.id} accessibilityRole="button" onPress={() => setGroupId(entry.id)} style={styles.noteRow}>
             <Ionicons name={entry.linked ? 'git-network-outline' : 'ellipse-outline'} color={studioColors.green} size={17} />
             <Text style={[studioStyles.text, studioStyles.grow]}>{entry.label}</Text><Text style={studioStyles.muted}>{entry.seedIds.length}件</Text>
           </Pressable>)}
           {(groups?.length ?? 0) > groupLimit && <StudioAction label="さらに表示" onPress={() => setGroupLimit(groupLimit + pageSize)} />}
         </>)}
+        {drawer === 'path' && <View style={styles.path}>{path?.map((seed, i) => {
+          const role = i === 0 ? '中心' : seed.id === selected.id ? '選択中' : '経由';
+          const annotation = i === 0 ? undefined : seed.id === selected.id ? edgeNotes.get(path[i - 1].id) : nearby.details.get(seed.id);
+          return <View key={seed.id}>
+            {i > 0 && <View style={styles.pathLink}>
+              {!!annotation && <Text style={studioStyles.muted}>{annotation}</Text>}
+            </View>}
+            <Pressable accessibilityRole="button" accessibilityLabel={`地図で「${toSeedSnippet(seed, 55)}」を選ぶ`}
+              onPress={() => chooseFromDrawer(seed.id)} style={({ pressed }) => [styles.pathStep, seed.id === selected.id && styles.activeRow, pressed && studioStyles.quiet]}>
+              <View style={styles.pathDot}><Ionicons name={i === 0 ? 'leaf-outline' : seed.id === selected.id ? 'checkmark' : 'ellipse-outline'} size={19} color={studioColors.green} /></View>
+              <View style={studioStyles.grow}>
+                <Text style={styles.selectionStatus}>{role}</Text>
+                <Text style={studioStyles.text}>{toSeedSnippet(seed, 70)}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={studioColors.green} />
+            </Pressable>
+          </View>;
+        })}</View>}
         {drawer === 'actions' && <View style={studioStyles.card}>
           <Text accessibilityRole="header" style={studioStyles.subtitle}>{toSeedSnippet(selected, 60)}</Text>
           <StudioAction label="つながるメモを書く" icon="add" onPress={() => { setDrawer(undefined); onWrite(selected.id); }} />
@@ -303,10 +308,16 @@ const styles = StyleSheet.create({
   dockText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '700', color: studioColors.green, textAlign: 'center' },
   previewBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingLeft: 10,
     backgroundColor: studioColors.soft, borderRadius: 12 },
-  list: { gap: 6 },
   noteRow: { flexDirection: 'row', alignItems: 'center', minHeight: 49, gap: 6, paddingHorizontal: 9, paddingVertical: 5,
     backgroundColor: studioColors.surface, borderRadius: 10, borderWidth: 1, borderColor: studioColors.rule },
   activeRow: { backgroundColor: studioColors.soft, borderColor: '#b8c8b4' },
+  pathButton: { flexDirection: 'row', minHeight: 44, minWidth: 54, justifyContent: 'center', alignItems: 'center', gap: 4,
+    paddingHorizontal: 5, borderWidth: 1, borderColor: '#c7d6c9', borderRadius: 11, backgroundColor: studioColors.soft },
+  path: { paddingVertical: 2 },
+  pathStep: { flexDirection: 'row', alignItems: 'center', minHeight: 60, gap: 10, padding: 8, borderWidth: 1, borderColor: studioColors.rule,
+    borderRadius: 12, backgroundColor: studioColors.surface },
+  pathDot: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: studioColors.soft },
+  pathLink: { minHeight: 21, borderLeftWidth: 2, borderLeftColor: '#9cb19e', marginLeft: 25, paddingLeft: 13, justifyContent: 'center', paddingVertical: 6 },
   appearance: { minHeight: 129, padding: 8, gap: 5 },
   compactAppearance: { minHeight: 106 },
   appearanceTitle: { color: studioColors.text, fontSize: 14, fontWeight: '700', lineHeight: 20, paddingHorizontal: 2 },

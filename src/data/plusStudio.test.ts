@@ -4,7 +4,7 @@ import { buildSeed } from '../domain/gardenCommands';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
 import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioPreferences } from '../domain/plus/studio';
-import { constellationGraph, constellationGroups, radialGraph } from '../domain/plus/studioGraph';
+import { constellationGraph, constellationGroups, radialGraph, studioMapLabel } from '../domain/plus/studioGraph';
 import { buildPlusTextExport } from '../utils/plusExport';
 import { connectionId, makeConnection } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
@@ -114,6 +114,15 @@ test('a small radial map reveals an omitted second-hop note beside its actual in
         Math.abs(node.y - peer.y) >= (node.height + peer.height) / 2);
     }
   }
+});
+
+test('short Japanese card titles split near a particle when the final line would be cramped', () => {
+  assert.equal(studioMapLabel('写真を一枚選ぶ', 6), '写真を\n一枚選ぶ');
+  assert.equal(studioMapLabel('写真を一枚選ぶ', 7), '写真を一枚選ぶ');
+  assert.equal(studioMapLabel('金木犀', 2), '金\n木犀');
+  assert.equal(studioMapLabel('New ideas', 5), 'New ideas');
+  assert.equal(studioMapLabel('写真の記録🌱', 4), '写真の記録🌱');
+  assert.equal(studioMapLabel('とても長い題名のメモ', 3), 'とても長い題名のメモ');
 });
 
 test('Studio preferences and reflections round-trip without requiring new fields in old gardens', () => {

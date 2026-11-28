@@ -47,6 +47,10 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     await button('地図を全画面で開く').click();
     assert.ok((await canvas.boundingBox()).height > compact + 100);
     assert.equal(await tab('記録').count(), 0);
+    await button('地図を検索').click();
+    await heading('メモを探す').waitFor();
+    await button('検索を閉じる').click();
+    await button('全画面を閉じる').waitFor();
     await shot('08-full-map');
     await button('全画面を閉じる').click();
     assert.ok(Math.abs((await mapNote.boundingBox()).width - zoomed.width) < 3, 'zoom survives the larger view');
@@ -57,11 +61,31 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     const photo = canvas.getByRole('button', { name: '写真を一枚選ぶ', exact: true });
     await photo.click();
     await page.getByTestId('studio-map-selection').getByText('「雨の日の音」を経由', { exact: true }).waitFor();
+    assert.equal(await canvas.getByTestId('studio-map-active-connection').count(), 2);
     await shot('11-two-hops');
+    await button('つながりの経路を開く').click();
+    await heading('つながりの経路').waitFor();
+    await page.getByText('思い出を呼び戻す手がかり', { exact: true }).filter({ visible: true }).waitFor();
+    await page.getByText('同じ散歩を音と写真で記録した', { exact: true }).filter({ visible: true }).waitFor();
+    await shot('16-path');
+    await button('地図で「雨の日の音」を選ぶ').click();
+    await heading('雨の日の音').waitFor();
+    await button('直接のつながりに戻す').click();
+    await button('このメモのつながり').click();
+    await button('写真を一枚選ぶ、つながり3件').click();
+    await photo.waitFor();
+    assert.equal(await photo.getAttribute('aria-pressed'), 'true');
+    await mapNote.getByText('中心', { exact: true }).waitFor();
+    await button('地図を拡大').click();
+    const photoBeforeMoving = await photo.boundingBox();
     await button('ここを中心にする').click();
     await photo.getByText('中心', { exact: true }).waitFor();
+    await button('前の中心へ戻る').getByText('散歩の記録', { exact: true }).waitFor();
     await button('前の中心へ戻る').click();
     await photo.waitFor();
+    assert.equal(await photo.getAttribute('aria-pressed'), 'true', 'back restores selection');
+    assert.ok(Math.abs((await photo.boundingBox()).width - photoBeforeMoving.width) < 3, 'back restores zoom');
+    await button('地図を画面に合わせる').click();
     await button('直接のつながりに戻す').click();
     await photo.waitFor({ state: 'detached' });
     await button('このメモのつながり').click();
@@ -70,8 +94,27 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     await shot('12-connections');
     await button('地図の操作画面を閉じる').click();
 
-    await canvas.getByRole('button', { name: '雨の日の音', exact: true }).click();
+    const rain = canvas.getByRole('button', { name: '雨の日の音', exact: true });
+    await rain.click();
     await page.getByText('思い出を呼び戻す手がかり', { exact: true }).filter({ visible: true }).waitFor();
+    await button('地図を検索').click();
+    const search = page.getByLabel('地図のメモを探す');
+    await search.fill('軒下');
+    await page.getByText('1件の検索結果', { exact: true }).waitFor();
+    await page.getByText(/軒下で聞いた音は/).filter({ visible: true }).waitFor();
+    await shot('17-search');
+    await button('「雨の日の音」の原文を開く').click();
+    await heading('元のメモ').waitFor();
+    await button('検索結果に戻る').click();
+    assert.equal(await search.inputValue(), '軒下');
+    await button('雨の日の音、つながり2件').click();
+    await rain.getByText('中心', { exact: true }).waitFor();
+    await button('地図を検索').click();
+    await heading('最近見た中心').waitFor();
+    await shot('18-recent');
+    await button('「散歩の記録」の地図に戻る').click();
+    await mapNote.getByText('中心', { exact: true }).waitFor();
+    assert.equal(await rain.getAttribute('aria-pressed'), 'true', 'recent center restores its saved selection');
     await button('ここを中心にする').click();
     await heading('雨の日の音').waitFor();
     await button('原文を開く').click();
@@ -183,7 +226,7 @@ const screenshotDir = process.env.STUDIO_SCREENSHOTS;
     assert.equal((await store()).reflections[0].body, reflection);
     assert.deepEqual(errors, []);
     await checkDenseSmallMap(browser);
-    console.log('PASS fixed map actions, two-hop and hidden notes, live palettes, camera and full screen, candidate and record routes, plan persistence');
+    console.log('PASS route reasons and browsing, camera and selection history, search and original, small screens, palettes, candidate and record routes, plan persistence');
   } finally {
     await browser.close();
   }
@@ -201,6 +244,8 @@ async function checkDenseSmallMap(browser) {
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     const { seeds, connections } = buildPlusExample(64);
+    const longNote = seeds.find(({ id }) => id === 'example-46');
+    longNote.body = `${'川沿いの道で気づいたこと。'.repeat(15)}遠くの灯りを見つけた。`;
     await page.addInitScript(({ key, example }) => localStorage.setItem(key, JSON.stringify(example)), {
       key: storeKey, example: { ...emptyStoreV3(), seeds, connections },
     });
@@ -235,6 +280,25 @@ async function checkDenseSmallMap(browser) {
     assert.ok(chosen && chosen.x >= main.x && chosen.x + chosen.width <= main.x + main.width &&
       chosen.y >= main.y && chosen.y + chosen.height <= main.y + main.height, 'the revealed note fits on the map');
     await canvas.getByTestId('studio-map-node-example-0').getByText('中心', { exact: true }).waitFor();
+    await button('ここを中心にする').tap();
+    await canvas.getByTestId('studio-map-node-example-44').getByText('中心', { exact: true }).waitFor();
+    await button('地図を検索').tap();
+    await page.getByLabel('地図のメモを探す').fill('散歩の記録');
+    await button('散歩の記録、つながり57件').tap();
+    await canvas.getByTestId('studio-map-node-example-0').getByText('中心', { exact: true }).waitFor();
+    for (const control of [button('前の中心へ戻る'), button(/^表示していない \d+件を一覧で見る$/), button('直接のつながりに戻す')]) {
+      const box = await control.boundingBox();
+      assert.ok(box && box.width >= 44 && box.x >= main.x && box.x + box.width <= main.x + main.width, 'map controls fit the narrow canvas');
+    }
+    await button('地図を検索').tap();
+    await page.getByLabel('地図のメモを探す').fill('遠くの灯り');
+    const matchingRow = button('帰り道のメモ 39、つながり1件');
+    const match = matchingRow.getByText('遠くの灯り', { exact: true });
+    await match.waitFor();
+    const matchBox = await match.boundingBox();
+    const rowBox = await matchingRow.boundingBox();
+    assert.ok(matchBox && rowBox && matchBox.y + matchBox.height <= rowBox.y + rowBox.height, 'the term in a long body stays visible in a narrow result');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, '19-small-search.png'), animations: 'disabled' });
     assert.deepEqual(errors, []);
   } finally {
     await page.close();

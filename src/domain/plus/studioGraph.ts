@@ -14,6 +14,18 @@ export type ConstellationGroup = { id: string; label: string; seedIds: string[];
 export type RadialNeighbor = { id: string; via?: string };
 export type RadialNeighborhood = { direct: string[]; second: RadialNeighbor[] };
 
+export function studioMapLabel(title: string, columns: number): string {
+  if (columns < 2 || !/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}々ー]+$/u.test(title)) return title;
+  const letters = [...title];
+  if (letters.length <= columns || letters.length > 2 * columns) return title;
+  const middle = letters.length / 2;
+  const split = Math.floor(middle);
+  const afterParticle = [split, split + 1, split - 1].find((i) => i >= letters.length - columns && i <= columns
+    && /[をとのがにではへ]/u.test(letters[i - 1]));
+  const at = afterParticle ?? split;
+  return `${letters.slice(0, at).join('')}\n${letters.slice(at).join('')}`;
+}
+
 function linkGraph(index: MapIndex, nodes: Node[], suggestions: Suggestion[]) {
   const lookup = new Map(nodes.map((node) => [node.seed.id, node]));
   const lines: Line[] = [];

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { GardenV3Writer, PlusCommand } from '../data/gardenV3Writer';
 import type { StudioPreferences } from '../domain/plus/contracts';
 import { requirePlusAccess } from '../domain/plus/entitlements';
@@ -12,7 +12,8 @@ import { initialStudioPreferences, saveStudioPreferences } from '../domain/plus/
 import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
 import { InsightCard, StudioInsights } from './StudioInsights';
-import { StudioMapPanel, StudioNoteList } from './StudioMapPanel';
+import { StudioMapPanel } from './StudioMapPanel';
+import { StudioNoteList } from './StudioNoteList';
 import { StudioRecords } from './StudioRecords';
 import { IconButton, StudioAction, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
 import { useStudioSuggestions } from './studioSuggestionState';
@@ -25,6 +26,8 @@ const nav = [
 ] as const satisfies readonly { id: string; label: string; icon: StudioIcon }[];
 type Tab = typeof nav[number]['id'];
 type MapPreview = { kind: 'suggestions' | 'connection'; center: string; selected?: string; emphasisId?: string; returnTo: 'ai' | 'records' };
+type MapVisit = { centerId: string; selectedId: string };
+type MapNavigation = { visit: MapVisit; history: MapVisit[] };
 const noSuggestions: readonly Suggestion[] = [];
 
 type StudioProps = {
@@ -38,10 +41,8 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
   const index = React.useMemo(() => indexMap(store.seeds, store.connections), [store.connections, store.seeds]);
   const first = index.byId.get('example-0') ?? index.live[0];
   const [tab, setTab] = React.useState<Tab>('map');
-  const [mapCenter, setMapCenter] = React.useState('');
-  const [selection, setSelection] = React.useState('');
+  const [navigation, setNavigation] = React.useState<MapNavigation>({ visit: { centerId: '', selectedId: '' }, history: [] });
   const [aiCenter, setAiCenter] = React.useState('');
-  const [trail, setTrail] = React.useState<string[]>([]);
   const [pick, setPick] = React.useState<'map' | 'ai'>();
   const [preview, setPreview] = React.useState<MapPreview>();
   const [review, setReview] = React.useState<Suggestion>();
@@ -50,34 +51,61 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
   const [mapNotice, setMapNotice] = React.useState<string>();
   const [pending, setPending] = React.useState(false);
   const handling = React.useRef(false);
-  const center = index.byId.get(preview?.center ?? mapCenter) ?? first;
-  const selected = index.byId.get(preview ? preview.selected ?? preview.center : selection) ?? center;
+  const returnFromPick = React.useRef<() => void>(undefined);
+  const center = index.byId.get(preview?.center ?? navigation.visit.centerId) ?? first;
+  const selected = index.byId.get(preview ? preview.selected ?? preview.center : navigation.visit.selectedId) ?? center;
   const focus = index.byId.get(aiCenter) ?? selected;
   const state = useStudioSuggestions(store, index, focus?.id ?? '', canSuggest() && (tab === 'ai' || (tab === 'map' && preview?.kind === 'suggestions')));
   const settings = store.studioPreferences ?? initialStudioPreferences;
 
   if (!focus || !center || !selected) return null;
   const focusId = focus.id;
-  const previousCenter = index.byId.get(trail.at(-1) ?? '');
+  const history = navigation.history.flatMap(({ centerId }, position) => {
+    const seed = index.byId.get(centerId);
+    return seed ? [{ seed, position }] : [];
+  });
+  const previous = history.at(-1);
+  const recentIds = new Set([index.byId.get(navigation.visit.centerId)?.id ?? first?.id]);
+  const recent = [...history].reverse().filter(({ seed }) => {
+    if (recentIds.has(seed.id)) return false;
+    recentIds.add(seed.id);
+    return true;
+  }).slice(0, 3);
   const skipped = store.proposalSuppressions.filter(({ pair }) => pair.includes(focusId))
     .flatMap(({ pair }) => index.byId.get(pair[0] === focusId ? pair[1] : pair[0]) ?? []);
 
   function changeTab(next: Tab) {
     if (next === 'ai' && (!aiCenter || (tab === 'map' && !preview))) setAiCenter(selected!.id);
+    if (pick) { Keyboard.dismiss(); returnFromPick.current = undefined; }
     setTab(next); setPick(undefined); setNotice(undefined); setPreview(undefined); setReview(undefined); setImmersive(false);
   }
 
   function focusMap(id: string) {
-    const origin = index.byId.get(mapCenter) ?? first;
-    if (origin && id !== origin.id) setTrail((before) => [...before.slice(-30), origin.id]);
-    setPreview(undefined); setMapCenter(id); setSelection(id);
+    setPreview(undefined);
+    setNavigation((before) => {
+      const origin = index.byId.get(before.visit.centerId) ?? first;
+      const history = origin && id !== origin.id ? [...before.history.slice(-30), {
+        centerId: origin.id, selectedId: index.byId.has(before.visit.selectedId) ? before.visit.selectedId : origin.id,
+      }] : before.history;
+      return { visit: { centerId: id, selectedId: id }, history };
+    });
   }
 
-  function previous() {
-    const id = trail.at(-1);
-    if (!id) return;
-    setTrail((before) => before.slice(0, -1));
-    setMapCenter(id); setSelection(id);
+  function restoreVisit(position: number) {
+    setPreview(undefined);
+    setNavigation((before) => {
+      const visit = before.history[position];
+      if (!visit || !index.byId.has(visit.centerId)) return before;
+      return { visit, history: before.history.slice(0, position) };
+    });
+  }
+
+  function closePick() {
+    Keyboard.dismiss();
+    setPick(undefined);
+    const restore = returnFromPick.current;
+    returnFromPick.current = undefined;
+    if (restore) requestAnimationFrame(restore);
   }
 
   function openAi(id: string) {
@@ -91,7 +119,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
 
   function selectOnMap(id: string) {
     if (preview) setPreview({ ...preview, selected: id });
-    else setSelection(id);
+    else setNavigation((before) => ({ ...before, visit: { ...before.visit, selectedId: id } }));
   }
 
   async function changeMap(patch: Partial<StudioPreferences>) {
@@ -127,8 +155,8 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         preview={preview && { kind: preview.kind, label: notice ?? (preview.kind === 'suggestions' ? '候補のつながり' : '記録から開いたつながり'),
           emphasisId: preview.emphasisId, onClose: closePreview }}
         immersive={immersive} onImmersive={() => setImmersive(!immersive)}
-        back={!preview && previousCenter ? { title: toSeedSnippet(previousCenter, 50), onPress: previous } : undefined}
-        onSearch={() => setPick('map')} onSettings={(patch) => void changeMap(patch)}
+        back={!preview && previous ? { title: toSeedSnippet(previous.seed, 50), onPress: () => restoreVisit(previous.position) } : undefined}
+        onSearch={(onReturn) => { returnFromPick.current = onReturn; setPick('map'); }} onSettings={(patch) => void changeMap(patch)}
         onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }} onWrite={onWrite} />
     </View>
     <View style={[studioStyles.root, (tab !== 'ai' || pick || review) && styles.hidden]}>
@@ -164,15 +192,21 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         <StudioAction label="データを書き出す・削除する" onPress={onData} />
       </View>
     </ScrollView>}
-    {pick && <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content} keyboardShouldPersistTaps="handled">
+    {pick && <ScrollView accessibilityViewIsModal onAccessibilityEscape={closePick} style={studioStyles.root}
+      contentContainerStyle={studioStyles.content} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
       <StudioTitle title={pick === 'ai' ? '起点のメモを選ぶ' : 'メモを探す'}>
-        <IconButton label="検索を閉じる" icon="close" onPress={() => setPick(undefined)} />
+        <IconButton label="検索を閉じる" icon="close" onPress={closePick} />
       </StudioTitle>
-      <StudioNoteList index={index} selected={pick === 'ai' ? focusId : selected.id} onPick={(id) => {
-        if (pick === 'ai') setAiCenter(id);
-        else focusMap(id);
-        setPick(undefined); setNotice(undefined);
-      }} />
+      <StudioNoteList index={index} selected={pick === 'ai' ? focusId : selected.id}
+        onRead={pick === 'map' ? (id, onReturn) => { Keyboard.dismiss(); onRead(id, onReturn, '検索結果に戻る'); } : undefined}
+        recent={pick === 'map' ? recent.map(({ seed, position }) => ({ seed, onPress: () => {
+          restoreVisit(position); closePick(); setNotice(undefined);
+        } })) : undefined}
+        onPick={(id) => {
+          if (pick === 'ai') setAiCenter(id);
+          else focusMap(id);
+          closePick(); setNotice(undefined);
+        }} />
     </ScrollView>}
     {review && <ScrollView accessibilityViewIsModal style={studioStyles.root} contentContainerStyle={studioStyles.content}>
       <StudioTitle title="候補を確認"><IconButton label="候補を閉じる" icon="close" disabled={pending} onPress={() => setReview(undefined)} /></StudioTitle>

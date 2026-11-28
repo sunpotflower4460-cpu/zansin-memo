@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import Svg, { Circle, Defs, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { connectionId } from '../data/gardenModel';
 import type { StudioPreferences } from '../domain/plus/contracts';
 import type { Suggestion } from '../domain/plus/insights';
 import type { MapIndex } from '../domain/plus/map';
-import { constellationGraph, radialGraph, type ConstellationGroup, type RadialNeighborhood, type StudioGraph } from '../domain/plus/studioGraph';
+import { constellationGraph, radialGraph, studioMapLabel, type ConstellationGroup, type RadialNeighborhood, type StudioGraph } from '../domain/plus/studioGraph';
 import type { Seed } from '../domain/types';
 import { theme } from '../styles/theme';
 import { toSeedSnippet } from '../utils/seedText';
@@ -64,6 +65,7 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
   back?: { title: string; onPress: () => void }; onDepth?: () => void; onMore: (visibleIds: string[]) => void; onGroups?: () => void;
   onSelect: (id: string) => void; fitRequest: number;
 }) {
+  const { fontScale } = useWindowDimensions();
   const [{ width, height }, setSize] = React.useState({ width: 0, height: 0 });
   const [camera, setCamera] = React.useState(initialCamera);
   const live = React.useRef(initialCamera);
@@ -83,8 +85,8 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
   }, [center, emphasisId, expanded, groups, height, index, neighborhood, radial, selected, suggestions, width]);
   const set = React.useCallback((value: Camera) => {
     const scale = limit(value.scale, 1, maxScale);
-    const x = width * (scale - 1) / 2 + 26;
-    const y = height * (scale - 1) / 2 + 30;
+    const x = scale > 1 ? width * (scale - 1) / 2 + 26 : 0;
+    const y = scale > 1 ? height * (scale - 1) / 2 + 30 : 0;
     const next = { scale, x: limit(value.x, -x, x), y: limit(value.y, -y, y) };
     live.current = next;
     const saved = trail.current;
@@ -142,11 +144,21 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
   const patternId = React.useId().replace(/[^\w-]/g, '');
   const selectedNode = graph?.nodes.find(({ seed }) => seed.id === selected);
   const via = selectedNode?.via;
-  const highlighted = selected !== center.id && graph?.lines.some(({ a, b }) =>
-    (a.seed.id === selected && b.seed.id === (via ?? center.id)) || (b.seed.id === selected && a.seed.id === (via ?? center.id)));
+  const lines = React.useMemo(() => {
+    const path = radial && selected !== center.id ? new Set([
+      connectionId(via ?? center.id, selected), ...(via ? [connectionId(center.id, via)] : []),
+    ]) : undefined;
+    const links = graph?.lines ?? [];
+    const hasPath = links.some((line) => path?.has(line.id));
+    return links.map((line) => ({
+      line, active: hasPath ? Boolean(path?.has(line.id)) : selected !== center.id && (line.a.seed.id === selected || line.b.seed.id === selected),
+      branch: line.a.isCenter || line.b.isCenter || line.a.via === line.b.seed.id || line.b.via === line.a.seed.id,
+    })).sort((a, b) => Number(a.active) - Number(b.active));
+  }, [center.id, graph, radial, selected, via]);
+  const focusRoute = lines.some(({ active }) => active);
   const shown = Math.max(0, (graph?.nodes.length ?? 0) - Number(radial));
   const hasCandidates = suggestions.length > 0 && radial;
-  const label = radial && !hasCandidates ? `${expanded ? '周辺' : '直接'} ${shown}件` : `表示 ${shown} / ${graph?.scope ?? 0}件`;
+  const label = radial && !hasCandidates ? `${expanded ? '周辺' : '直接'} ${shown}件` : `表示 ${shown} / ${(graph?.scope ?? 0) - Number(radial)}件`;
   const hidden = graph?.hidden ?? 0;
   return <View ref={surface} testID="studio-map-canvas" onLayout={({ nativeEvent }) => {
     const { width: nextWidth, height: nextHeight } = nativeEvent.layout;
@@ -178,44 +190,44 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
                 fill="none" stroke={colors.line} opacity={0.19} strokeWidth={1} strokeDasharray={palette === 'night' ? '2 5' : undefined} />)}
               {graph.islands.map((island) => <Rect key={island.group} x={island.x - island.width / 2} y={island.y - island.height / 2} width={island.width}
                 height={island.height} rx={19} fill={colors.motifs[island.group % colors.motifs.length]} stroke={colors.border} strokeOpacity={0.45} />)}
-              {graph.lines.map((line) => {
-                const ids = [line.a.seed.id, line.b.seed.id];
-                const active = highlighted ? (ids.includes(selected) && ids.includes(via ?? center.id)) ||
-                  (!!via && ids.includes(center.id) && ids.includes(via)) : ids.includes(selected);
+              {lines.map(({ line, active, branch }) => {
                 const path = pathFor(line, radial);
                 const ink = line.suggested ? colors.candidate : active ? colors.highlight : colors.line;
-                const branch = ids.includes(center.id) || line.a.via === line.b.seed.id || line.b.via === line.a.seed.id;
                 return <React.Fragment key={line.id}>
-                  {active && !line.suggested && <Path d={path} fill="none" stroke={ink} opacity={0.15} strokeWidth={7} strokeLinecap="round" />}
-                  <Path d={path} fill="none" stroke={ink} strokeWidth={active ? 2.6 : !radial || branch ? 1.5 : 1.15} strokeLinecap="round"
-                    strokeDasharray={line.suggested ? '4.5 4.5' : undefined} opacity={active || line.suggested ? 1 : 0.89} />
+                  {active && !line.suggested && <Path d={path} fill="none" stroke={ink} opacity={0.16} strokeWidth={8} strokeLinecap="round" />}
+                  <Path testID={active ? 'studio-map-active-connection' : undefined} d={path} fill="none" stroke={ink}
+                    strokeWidth={active ? 2.8 : !radial || branch ? 1.65 : 1.15} strokeLinecap="round" strokeDasharray={line.suggested ? '4.5 4.5' : undefined}
+                    opacity={active || line.suggested ? 1 : focusRoute ? branch ? 0.55 : 0.35 : branch ? 0.9 : 0.68} />
                 </React.Fragment>;
               })}
             </Svg>
           </View>
           {graph.nodes.map(({ seed, x, y, width: nodeWidth, height: nodeHeight, isCenter, suggested, via: parent }) => {
             const active = seed.id === selected;
+            const intermediate = seed.id === via;
             const filled = isCenter && radial;
             const ink = filled ? colors.onCenter : colors.ink;
             const title = toSeedSnippet(seed, 55);
+            const fontSize = filled ? 17 : !radial || parent ? 12 : 13;
+            const labelText = studioMapLabel(title, Math.floor((nodeWidth - 16) / (fontSize * Math.min(fontScale, 1.28))));
             return <Pressable key={seed.id} testID={`studio-map-node-${seed.id}`} accessibilityRole="button"
               accessibilityLabel={`${title}${suggested ? '、AIの候補' : ''}`}
               accessibilityHint={suggested ? '理由と原文を確認できます' : filled ? '地図の中心のメモ' : parent ? '中心から2つ先のメモ' : undefined}
-              accessibilityState={{ selected: active }} onPressIn={() => { dragged.current = false; }}
+              {...buttonSelectionProps(active)} onPressIn={() => { dragged.current = false; }}
               onPress={() => {
                 if (!dragged.current) onSelect(seed.id);
                 dragged.current = false;
               }}
               style={({ pressed }) => [styles.node, { left: x - nodeWidth / 2, top: y - nodeHeight / 2, width: nodeWidth, height: nodeHeight,
-                backgroundColor: filled ? colors.center : colors.node, borderColor: suggested ? colors.candidate : active ? colors.highlight : colors.border,
-                borderWidth: active || suggested ? 2 : 1, borderStyle: suggested ? 'dashed' : 'solid', opacity: pressed ? 0.78 : 1 },
+                backgroundColor: filled ? colors.center : colors.node, borderColor: suggested ? colors.candidate : active || intermediate ? colors.highlight : colors.border,
+                borderWidth: active || suggested ? 2 : intermediate ? 1.5 : 1, borderStyle: suggested ? 'dashed' : 'solid', opacity: pressed ? 0.78 : 1 },
               filled && styles.centerNode]}>
               {filled && <View aria-hidden style={styles.centerMarker}>
                 <Ionicons name="leaf-outline" color={ink} size={12} />
                 <Text maxFontSizeMultiplier={1.1} style={[styles.centerLabel, { color: ink }]}>中心</Text>
               </View>}
               <Text maxFontSizeMultiplier={1.28} numberOfLines={2} style={[styles.nodeText, { color: ink }, filled && styles.centerText,
-                (!radial || parent) && styles.clusterText]}>{title}</Text>
+                (!radial || parent) && styles.clusterText]}>{labelText}</Text>
             </Pressable>;
           })}
         </View>
@@ -224,9 +236,10 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
     <View pointerEvents="box-none" style={styles.top}>
       <View pointerEvents="box-none" style={styles.topLeading}>
         {back && <Pressable accessibilityRole="button" accessibilityLabel="前の中心へ戻る" accessibilityHint={back.title} onPress={back.onPress}
-          style={({ pressed }) => [styles.mapButton, { backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
+          style={({ pressed }) => [styles.mapButton, styles.backButton, { maxWidth: Math.max(54, Math.min(170, width * 0.37)),
+            backgroundColor: colors.node, borderColor: colors.border }, pressed && styles.pressed]}>
           <Ionicons name="chevron-back" size={15} color={colors.ink} />
-          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>戻る</Text>
+          <Text maxFontSizeMultiplier={1.15} numberOfLines={1} style={[styles.buttonText, styles.backTitle, { color: colors.ink }]}>{back.title}</Text>
         </Pressable>}
         {radial && graph && hidden > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={`表示していない ${hidden}件を一覧で見る`}
           onPress={() => onMore(graph.nodes.map(({ seed }) => seed.id))}
@@ -250,14 +263,20 @@ export function StudioMapCanvas({ index, center, selected, emphasisId, mode, pal
     </View>
     <View pointerEvents="box-none" style={styles.bottom}>
       <View pointerEvents="none" style={styles.legend}>
-        <View style={styles.key}><View style={[styles.keyLine, { borderTopColor: colors.line }]} /><Text style={[styles.keyText, { color: colors.ink }]}>つながり</Text></View>
+        {radial && graph?.scope === 1 ? <Text style={[styles.keyText, { color: colors.ink }]}>つながりはまだありません</Text>
+          : <View style={styles.key}><View style={[styles.keyLine, { borderTopColor: focusRoute ? colors.highlight : colors.line }]} />
+            <Text style={[styles.keyText, { color: colors.ink }]}>{focusRoute && radial ? '選んだ経路' : 'つながり'}</Text></View>}
         {hasCandidates && <View style={styles.key}><View style={[styles.keyLine, styles.dottedKey, { borderTopColor: colors.candidate }]} />
           <Text style={[styles.keyText, { color: colors.ink }]}>AIの候補</Text></View>}
       </View>
       <View style={[styles.controls, { backgroundColor: colors.node, borderColor: colors.border }]}>
         <IconButton label="地図を縮小" icon="remove" color={colors.ink} background="transparent" disabled={camera.scale <= 1} onPress={() => zoom(1 / 1.25)} />
         <IconButton label="地図を拡大" icon="add" color={colors.ink} background="transparent" disabled={camera.scale >= maxScale} onPress={() => zoom(1.25)} />
-        <IconButton label="地図を画面に合わせる" icon="scan-outline" color={colors.ink} background="transparent" onPress={() => set(initialCamera)} />
+        <Pressable accessibilityRole="button" accessibilityLabel="地図を画面に合わせる" onPress={() => set(initialCamera)}
+          style={({ pressed }) => [styles.fit, { borderLeftColor: colors.border }, pressed && styles.pressed]}>
+          <Ionicons name="scan-outline" color={colors.ink} size={16} />
+          <Text maxFontSizeMultiplier={1.15} style={[styles.buttonText, { color: colors.ink }]}>全体</Text>
+        </Pressable>
       </View>
     </View>
   </View>;
@@ -274,9 +293,11 @@ const styles = StyleSheet.create({
   centerText: { fontSize: 17, lineHeight: 21, fontFamily: theme.fonts.serif },
   clusterText: { fontSize: 12, lineHeight: 15 },
   top: { position: 'absolute', top: 6, left: 7, right: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
-  topLeading: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  topLeading: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 },
   mapButton: { minHeight: 44, borderRadius: 11, borderWidth: 1, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
   buttonText: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
+  backButton: { minWidth: 44, flexShrink: 1 },
+  backTitle: { flexShrink: 1 },
   pressed: { opacity: 0.7 },
   bottom: { position: 'absolute', bottom: 7, left: 12, right: 7, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 5 },
   caption: { fontSize: 11, lineHeight: 15, fontWeight: '700', borderRadius: 8, overflow: 'hidden', paddingVertical: 3, paddingHorizontal: 7 },
@@ -286,4 +307,6 @@ const styles = StyleSheet.create({
   dottedKey: { borderStyle: 'dashed' },
   keyText: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
   controls: { flexDirection: 'row', borderWidth: 1, borderRadius: 13 },
+  fit: { minHeight: 44, minWidth: 60, borderLeftWidth: StyleSheet.hairlineWidth, paddingHorizontal: 5, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 4 },
 });
