@@ -14,7 +14,7 @@ function evidence(status: Exclude<EntitlementStatus, 'unknown'>): VerifiedEntitl
   return { origin: 'fixture', status, verifiedAt: at, cacheUntil: at + 60 * 60_000, expiresAt: at + 60 * 60_000 };
 }
 
-export function createPurchasePreview() {
+export function createPurchasePreview(initialStatus: Exclude<EntitlementStatus, 'unknown'> = 'active') {
   const transaction = { id: 'fixture-transaction', productId: product.id };
   let action: 'success' | 'pending' | 'cancelled' | 'failed' | 'unverified' = 'success';
   let restored = false;
@@ -27,7 +27,7 @@ export function createPurchasePreview() {
     finish: async () => { restored = true; },
   };
   const flow = new PurchaseFlow(adapter);
-  flow.acceptVerified(evidence('active'));
+  flow.acceptVerified(evidence(initialStatus));
   return {
     flow,
     setStatus: (status: Exclude<EntitlementStatus, 'unknown'>) => flow.acceptVerified(evidence(status)),

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as React from 'react';
-import { ActivityIndicator, AppState, Platform, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { SectionCard } from '../components/SectionCard';
 import { loadGardenV3 } from '../data/gardenV3Storage';
@@ -12,9 +12,11 @@ import type { AtelierRevision, MapReturnContext } from '../domain/plus/contracts
 import { createAtelier } from '../domain/plus/atelier';
 import { currentEntitlement, plusRights, requirePlusAccess, type VerifiedEntitlement } from '../domain/plus/entitlements';
 import { createId } from '../utils/ids';
+import { theme } from '../styles/theme';
 import { PlusAiScreen, reconcilePreviewProposals } from './PlusAiScreen';
 import { PlusAtelierScreen } from './PlusAtelierScreen';
 import { PlusCollectionScreen } from './PlusCollectionScreen';
+import { PlusComparisonMap } from './PlusComparisonMap';
 import { PlusDataScreen } from './PlusDataScreen';
 import { createPurchasePreview, PlusPurchasePreview } from './PlusPurchasePreview';
 import { PlusMapScreen } from './PlusMapScreen';
@@ -42,7 +44,7 @@ function useEntitlementClock(evidence?: VerifiedEntitlement) {
   }, [evidence, tick]);
 }
 
-function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
+function PreviewGarden({ writer, comparison }: { writer: GardenV3Writer; comparison: boolean }) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const status = React.useSyncExternalStore(writer.subscribe, writer.getStatus);
   const [reading, setReading] = React.useState<string>();
@@ -53,11 +55,12 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   const [collection, setCollection] = React.useState<{ source?: AtelierRevision }>();
   const [purchase, setPurchase] = React.useState(false);
   const [data, setData] = React.useState(false);
-  const [purchaseModel] = React.useState(createPurchasePreview);
+  const [purchaseModel] = React.useState(() => createPurchasePreview(comparison ? 'free' : 'active'));
   const purchaseState = React.useSyncExternalStore(purchaseModel.flow.subscribe, purchaseModel.flow.snapshot);
   useEntitlementClock(purchaseState.evidence);
   const rightsNow = React.useCallback(() => plusRights(currentEntitlement(purchaseModel.flow.snapshot().evidence, Date.now(), true)), [purchaseModel]);
   const rights = rightsNow();
+  const showFreeMap = comparison && !rights.arrangeMap;
   const canArrange = React.useCallback(() => enabled.map && rightsNow().arrangeMap, [rightsNow]);
   const canRequest = React.useCallback(() => enabled.proposals && rightsNow().requestFixtureAi, [rightsNow]);
   const canUseAtelier = React.useCallback(() => enabled.atelier && rightsNow().atelierAdvanced, [rightsNow]);
@@ -108,22 +111,40 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
 
   return <View style={plusStyles.full}>
     {!purchase && !data && <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-      <Actions>{enabled.commerce && <PlusButton label="利用権の動作を試す" onPress={() => setPurchase(true)} />}
+      {comparison && (
+        <View style={styles.plan}>
+          <View style={styles.planLabel}>
+            <Heading>Plus を試す</Heading>
+            <Text style={plusStyles.meta} accessibilityLiveRegion="polite">{showFreeMap ? '無料版を表示中' : 'Plus を表示中'}</Text>
+          </View>
+          <Switch
+            accessibilityLabel="Plus を試す"
+            value={!showFreeMap}
+            onValueChange={(value) => purchaseModel.setStatus(value ? 'active' : 'free')}
+            trackColor={{ true: theme.colors.primary }}
+          />
+        </View>
+      )}
+      <Actions>{enabled.commerce && <PlusButton label={comparison ? '購入と復元を試す' : '利用権の動作を試す'} onPress={() => setPurchase(true)} />}
         {!(reading || ai || atelier || atelierList || collection) && <PlusButton label="データを書き出す・削除する" onPress={() => setData(true)} />}</Actions>
     </View>}
     <View style={[plusStyles.full, (purchase || data) && { display: 'none' }]}>
     {store.seeds.length ? <View style={[plusStyles.full, (reading || ai || atelier || atelierList || collection) && { display: 'none' }]}>
       <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-        <Actions><PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} />
-          <PlusButton label="作品集を開く" onPress={() => setCollection({})} /></Actions>
+        {(!showFreeMap || store.atelierProjects.length > 0 || store.collectionItems.length > 0) && <Actions>
+          {(!showFreeMap || store.atelierProjects.length > 0) && <PlusButton label="アトリエを開く" onPress={() => setAtelierList(true)} />}
+          {(!showFreeMap || store.collectionItems.length > 0) && <PlusButton label="作品集を開く" onPress={() => setCollection({})} />}
+        </Actions>}
         {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
       </View>
-      <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
-        onOpenCandidates={enabled.proposals ? (seedId, scope, origin) => setAi({ seedId, scope, origin }) : undefined}
-        restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
-        onOpenAtelier={enabled.atelier && rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />
+      {showFreeMap ? <PlusComparisonMap store={store} /> : (
+        <PlusMapScreen store={store} commit={commit} initialGroups={exampleGroups} onOpenSeed={(id, onReturn) => { returnFocus.current = onReturn; setReading(id); }}
+          onOpenCandidates={enabled.proposals ? (seedId, scope, origin) => setAi({ seedId, scope, origin }) : undefined}
+          restoreContext={origin} canArrange={enabled.map && rights.arrangeMap}
+          onOpenAtelier={enabled.atelier && rights.atelierAdvanced ? (seedId, materials, context) => void openAtelier(seedId, materials, context) : undefined} />
+      )}
     </View> : <ScrollView contentContainerStyle={plusStyles.page}>
-      <Heading title>考えの地図</Heading>
+      <Heading title>{comparison ? '例の庭' : '考えの地図'}</Heading>
       <SectionCard><Text style={plusStyles.text}>例のメモを使って、つながりや地図の見方を試せます。</Text>
         <PlusButton label="例の庭を開く" primary disabled={status.pending > 0} onPress={() => void startExample()} />
         {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
@@ -156,7 +177,7 @@ function PreviewGarden({ writer }: { writer: GardenV3Writer }) {
   </View>;
 }
 
-export function PlusPreview() {
+export function PlusPreview({ onClose }: { onClose?: () => void } = {}) {
   const [writer, setWriter] = React.useState<GardenV3Writer>();
   const [failure, setFailure] = React.useState<'busy' | 'storage'>();
   const [attempt, setAttempt] = React.useState(0);
@@ -185,11 +206,19 @@ export function PlusPreview() {
     return () => { active = false; release(); };
   }, [attempt, locks, tabOnly]);
   return <SafeAreaProvider><SafeAreaView style={plusStyles.paper}>
-    <View style={{ width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 }}>
-      <Text style={plusStyles.meta}>Kizashi Plus 開発プレビュー · 例のデータ</Text>
+    <View style={styles.header}>
+      {onClose ? (
+        <>
+          <View style={styles.headerRow}>
+            <View style={styles.planLabel}><Heading>無料と Plus の比較</Heading></View>
+            <PlusButton label="比較を閉じる" onPress={onClose} />
+          </View>
+          <Text style={plusStyles.meta}>例のメモで比較できます。料金は発生しません。</Text>
+        </>
+      ) : <Text style={plusStyles.meta}>Kizashi Plus 開発プレビュー · 例のデータ</Text>}
       {tabOnly && writer && <Text style={plusStyles.meta}>例の庭はこのタブを開いている間だけ使えます。</Text>}
     </View>
-    {writer ? <PreviewGarden writer={writer} /> : <View style={plusStyles.page}>
+    {writer ? <PreviewGarden writer={writer} comparison={Boolean(onClose)} /> : <View style={plusStyles.page}>
       {failure ? <><Text accessibilityRole="alert" style={plusStyles.alert}>{failure === 'busy'
         ? '別のタブで例の庭が開いています。そのタブを閉じてから、ここで読み込めます。'
         : '例の庭の保存データを読み込めませんでした。'}</Text>
@@ -198,3 +227,10 @@ export function PlusPreview() {
     </View>}
   </SafeAreaView></SafeAreaProvider>;
 }
+
+const styles = StyleSheet.create({
+  header: { width: '100%', maxWidth: 860, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  plan: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
+  planLabel: { flex: 1 },
+});

@@ -1,8 +1,9 @@
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 // 和紙の質感。内容の上にごく薄く重ねるだけで、操作は妨げない。
 import paperTexture from './assets/paper.png';
 import * as React from 'react';
-import { AppState, Image, Linking, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Linking, Modal, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppLaunchIntro } from './src/components/AppLaunchIntro';
 import { AppTabBar } from './src/components/AppTabBar';
@@ -41,7 +42,6 @@ import { SeedsScreen, type SeedsView } from './src/screens/SeedsScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { theme } from './src/styles/theme';
 import { showConfirm } from './src/utils/confirm';
-import { motion } from './src/utils/motion';
 import { tabLabels } from './src/utils/displayLabels';
 import { triggerSuccessFeedback, triggerWarningFeedback } from './src/utils/feedback';
 import { clearTemporaryExports, exportGarden } from './src/utils/exportUtils';
@@ -50,6 +50,17 @@ import { PRIVACY_POLICY_URL, SUPPORT_URL } from './src/config/appInfo';
 import { buildTransformOutput, getLocalDateKey, pickTodaySeed, syncResurfacedSeed } from './src/utils/seedUtils';
 import { buildAdjacency, dismissKey } from './src/utils/links';
 import { dismissedKeysFor, loadDismissed, saveDismissed } from './src/data/suggestionPrefs';
+
+if (Platform.OS !== 'web') {
+  // iOS・Android のスプラッシュを、最初のデータ読み込みが終わるまで表示する。
+  void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+}
+
+function useHideNativeSplash(ready: boolean) {
+  React.useEffect(() => {
+    if (ready && Platform.OS !== 'web') SplashScreen.hide();
+  }, [ready]);
+}
 
 type MainTab = 'home' | 'write' | 'seeds' | 'garden';
 
@@ -118,9 +129,13 @@ const PlusPreview = __DEV__ && process.env.EXPO_PUBLIC_KIZASHI_PLUS_PREVIEW === 
 const PlusStorageMeasure = __DEV__ && process.env.EXPO_PUBLIC_KIZASHI_PLUS_STORAGE_MEASURE === '1'
   ? React.lazy(() => import('./src/plus/PlusStorageMeasureScreen').then((module) => ({ default: module.PlusStorageMeasureScreen })))
   : undefined;
+const PlusComparison = process.env.EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON === '1'
+  ? React.lazy(() => import('./src/plus/PlusPreview').then((module) => ({ default: module.PlusPreview })))
+  : undefined;
 
 export default function App() {
   const DevelopmentPage = PlusStorageMeasure ?? PlusPreview;
+  useHideNativeSplash(Boolean(DevelopmentPage));
   if (DevelopmentPage) {
     return <React.Suspense fallback={null}><DevelopmentPage /></React.Suspense>;
   }
@@ -133,8 +148,9 @@ function CoreApp() {
   const seeds = store.seeds;
   const isReady = garden.phase.kind !== 'loading';
   const isBlocked = garden.phase.kind === 'blocked';
-  const [showLaunchIntro, setShowLaunchIntro] = React.useState(true);
+  useHideNativeSplash(isReady);
   const [practiceOpen, setPracticeOpen] = React.useState(false);
+  const [comparisonOpen, setComparisonOpen] = React.useState(false);
   const [screen, setScreen] = React.useState<ScreenState>({ kind: 'home' });
   const [writeDraft, setWriteDraft] = React.useState(initialWriteDraft);
   /** 「メモを足す」の接続先（中心）。 */
@@ -166,8 +182,6 @@ function CoreApp() {
   /** 消えないエラー（保存失敗など）。成功するか、本人が閉じるまで残す。 */
   const [persistentError, setPersistentError] = React.useState('');
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const launchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const launchedAtRef = React.useRef(Date.now());
   const transformTapMapRef = React.useRef<Record<string, number>>({});
   const writeSessionRef = React.useRef<WriteSession | null>(null);
   /** 書きかけの復元が終わるまで、空の入力欄を下書きへ反映しない（復元前の下書きを消さない）。 */
@@ -219,21 +233,8 @@ function CoreApp() {
   React.useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (launchTimer.current) clearTimeout(launchTimer.current);
     };
   }, []);
-
-  // 起動の演出は、読込が終わったら待たせずに閉じる（入力を遅らせない）。
-  React.useEffect(() => {
-    if (!isReady) {
-      return;
-    }
-    const elapsed = Date.now() - launchedAtRef.current;
-    launchTimer.current = setTimeout(() => setShowLaunchIntro(false), Math.max(0, motion.launchMinVisibleMs - elapsed));
-    return () => {
-      if (launchTimer.current) clearTimeout(launchTimer.current);
-    };
-  }, [isReady]);
 
   // 読込が終わったときに一度だけ: 復元の通知、初回案内、書きかけの復元。
   React.useEffect(() => {
@@ -1027,6 +1028,7 @@ function CoreApp() {
         onAddMemo={handleAddMemo}
         onOpenSynthesis={(seedId, mode) => openSynthesis(seedId, mode, 'home')}
         onShowPractice={() => setPracticeOpen(true)}
+        onComparePlus={PlusComparison ? () => setComparisonOpen(true) : undefined}
         onOpenSeed={(seedId) => openDetail(seedId, 'home', true)}
         onOpenPrivacyPolicy={handleOpenPrivacyPolicy}
         onOpenSupport={handleOpenSupport}
@@ -1087,13 +1089,20 @@ function CoreApp() {
               />
             </View>
           ) : null}
-          <AppLaunchIntro visible={!isReady || showLaunchIntro} />
+          {Platform.OS === 'web' && <AppLaunchIntro visible={!isReady} />}
         </View>
         {tabBarVisible ? <AppTabBar activeTab={activeTab} onChangeTab={(tab) => setScreen({ kind: tab })} /> : null}
       </SafeAreaView>
       <View style={styles.paper} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants">
         <Image source={paperTexture} resizeMode="repeat" style={styles.paperImage} />
       </View>
+      {PlusComparison && comparisonOpen && (
+        <Modal visible animationType="slide" onRequestClose={() => setComparisonOpen(false)}>
+          <React.Suspense fallback={<View style={styles.comparisonLoading}><ActivityIndicator accessibilityLabel="比較画面を読み込み中" /></View>}>
+            <PlusComparison onClose={() => setComparisonOpen(false)} />
+          </React.Suspense>
+        </Modal>
+      )}
       </View>
     </SafeAreaProvider>
   );
@@ -1103,6 +1112,12 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  comparisonLoading: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   paper: {
     ...StyleSheet.absoluteFillObject,

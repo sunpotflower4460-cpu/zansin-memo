@@ -43,6 +43,21 @@ export E2E_OUT=/tmp/e2e-out             # スクリーンショットの出力�
 
 ## Plusの開発プレビュー
 
+### 無料と Plus の比較版
+
+内部配布の iOS ビルドは `npx --yes eas-cli@27.11.0 build --platform ios --profile comparison` で生成する。iPhone では「きざし比較」を開き、ホームの「無料と Plus を比較」→「例の庭を開く」→「Plus を試す」。比較は無料から始まり、例のメモ・アトリエ・作品は比較を閉じた後も端末内に残る。アプリIDは `com.sunpotflower4460.kizashinotes.comparison`。購入・復元は試験用の状態で動作する。
+
+ブラウザーの比較試験では同じチェックアウトから比較版・通常版の順に書き出す。Metro キャッシュを引き継いだ通常版で比較の入口が無効になり、比較でオフに戻したときに下書きが残ることを確認する。
+
+```sh
+EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON=1 npx expo export -p web --output-dir /tmp/kizashi-comparison
+EXPO_PUBLIC_KIZASHI_PLUS_COMPARISON=0 npx expo export -p web --output-dir /tmp/kizashi-standard
+```
+
+比較版を8104、通常版を8102で配信し、`node scripts/e2e/plus-comparison.js` を実行する。ポートを変更した場合は `COMPARISON_URL` と `FREE_E2E_URL` を指定する。
+
+### Plus 専用の開発プレビュー
+
 通常Webと、架空データ専用のPlus開発Webを別のポートで起動する。Playwrightは上の準備を参照。標準のChromiumがある場合は `CHROMIUM_EXEC` にパスを指定できる。
 
 ```sh

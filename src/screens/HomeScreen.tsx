@@ -36,6 +36,7 @@ type HomeScreenProps = {
   onAddMemo: (seedId: string) => void;
   onOpenSynthesis: (seedId: string, mode: 'new' | 'review') => void;
   onShowPractice: () => void;
+  onComparePlus?: () => void;
   onOpenPrivacyPolicy: () => void;
   onOpenSupport: () => void;
   onClearAllData: () => void;
@@ -79,6 +80,7 @@ export function HomeScreen({
   onAddMemo,
   onOpenSynthesis,
   onShowPractice,
+  onComparePlus,
   onOpenPrivacyPolicy,
   onOpenSupport,
   onClearAllData,
@@ -105,6 +107,20 @@ export function HomeScreen({
           <Text style={styles.heading}>きざしノート</Text>
         </View>
       </View>
+      {onComparePlus && (
+        <AnimatedPressable
+          onPress={onComparePlus}
+          style={[styles.linkButton, styles.comparisonButton]}
+          pressedStyle={styles.linkButtonPressed}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel="無料と Plus を比較"
+          accessibilityHint="例のメモでPlusのオンとオフを試せます"
+        >
+          <Ionicons name="git-network-outline" size={18} color={theme.colors.primary} />
+          <Text style={styles.linkButtonText}>無料と Plus を比較</Text>
+        </AnimatedPressable>
+      )}
       {seeds.length === 0 ? (
         <FadeInView delayMs={40}>
           <SectionCard>
@@ -597,6 +613,12 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     marginTop: theme.spacing.xs,
+  },
+  comparisonButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   linkButtonPressed: {
     backgroundColor: theme.colors.surfaceMuted,

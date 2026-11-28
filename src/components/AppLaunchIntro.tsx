@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Animated, Image, StyleSheet, Text } from 'react-native';
-// スプラッシュと同じ画像を使い、起動画面からそのままつながって見えるようにする。
+// OSのスプラッシュがないWeb版の起動画面。
 import splashMark from '../../assets/splash-icon.png';
 import { theme } from '../styles/theme';
 import { motion } from '../utils/motion';
