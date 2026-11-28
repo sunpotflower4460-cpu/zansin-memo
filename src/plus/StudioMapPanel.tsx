@@ -5,12 +5,13 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import type { StudioPlacement, StudioPreferences } from '../domain/plus/contracts';
 import type { Suggestion } from '../domain/plus/insights';
 import type { MapIndex } from '../domain/plus/map';
-import { constellationGroups, radialNeighbors } from '../domain/plus/studioGraph';
+import { radialNeighbors } from '../domain/plus/studioGraph';
 import type { Seed } from '../domain/types';
 import { showConfirm } from '../utils/confirm';
 import { triggerSuccessFeedback } from '../utils/feedback';
 import { toSeedSnippet } from '../utils/seedText';
 import { buttonSelectionProps, focusControl } from './PlusUI';
+import { StudioConstellations, constellationPalettes } from './StudioConstellations';
 import { StudioMapCanvas, mapPalettes } from './StudioMapCanvas';
 import { StudioNoteList } from './StudioNoteList';
 import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles, type StudioIcon } from './StudioUI';
@@ -20,9 +21,8 @@ const layouts = [
   { id: 'constellation', label: '星座', icon: 'sparkles-outline' },
   { id: 'list', label: '一覧', accessibilityLabel: 'つながり一覧', icon: 'list-outline' },
 ] as const;
-const noHints: Suggestion[] = [];
+const compactLayouts = [{ ...layouts[0], label: 'マップ', accessibilityLabel: layouts[0].label }, layouts[1], layouts[2]] as const;
 const noPlacements: readonly StudioPlacement[] = [];
-const pageSize = 20;
 
 function DockButton({ label, text, icon, onPress, primary, focusRef }: {
   label: string; text: string; icon: StudioIcon; onPress: () => void; primary?: boolean; focusRef?: React.Ref<View>;
@@ -34,7 +34,7 @@ function DockButton({ label, text, icon, onPress, primary, focusRef }: {
   </Pressable>;
 }
 
-type Drawer = 'nearby' | 'relations' | 'groups' | 'path' | 'actions';
+type Drawer = 'nearby' | 'relations' | 'path' | 'actions';
 type Arrangement = {
   centerId: string; selectedId: string; expanded: boolean; wasFullScreen: boolean;
   initial: readonly StudioPlacement[]; points: StudioPlacement[]; history: StudioPlacement[][];
@@ -77,11 +77,10 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const expandedInMap = expandedViews.includes(depthKey);
   const expanded = editing && arrangement ? arrangement.expanded : expandedInMap;
   const [drawer, setDrawer] = React.useState<Drawer>();
-  const [hiddenNotes, setHiddenNotes] = React.useState<string[]>([]);
+  const [visibleNotes, setVisibleNotes] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [nearbyFilter, setNearbyFilter] = React.useState<'hidden' | 'all'>('hidden');
   const [fitRequest, setFitRequest] = React.useState(0);
   const [appearance, setAppearance] = React.useState(false);
-  const [groupId, setGroupId] = React.useState<string>();
-  const [groupLimit, setGroupLimit] = React.useState(pageSize);
   const closeButton = React.useRef<View>(null);
   const readButton = React.useRef<View>(null);
   const colorButton = React.useRef<View>(null);
@@ -91,6 +90,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const pathButton = React.useRef<View>(null);
   const searchButton = React.useRef<View>(null);
   const arrangeButton = React.useRef<View>(null);
+  const moreButton = React.useRef<View>(null);
   const endArrangeButton = React.useRef<View>(null);
   const wasEditing = React.useRef(false);
   const restoreFocus = React.useRef<View>(null);
@@ -98,8 +98,6 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   const neighbors = React.useMemo(() => [...index.adjacent.get(selected.id) ?? []], [index.adjacent, selected.id]);
   const neighborhood = React.useMemo(() => radialNeighbors(index, center), [center, index]);
   const secondary = React.useMemo(() => new Map(neighborhood.second.map(({ id, via }) => [id, via])), [neighborhood.second]);
-  const groups = React.useMemo(() => layout === 'constellation' ? constellationGroups(index) : undefined, [index, layout]);
-  const group = groups?.find(({ id }) => id === groupId);
   const edgeNotes = React.useMemo(() => savedRelations(index.edges, selected.id), [index.edges, selected.id]);
   const nearby = React.useMemo(() => {
     const ids = [...neighborhood.direct];
@@ -115,6 +113,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
     }
     return { ids, details };
   }, [center.id, expanded, hints, index.byId, index.edges, neighborhood]);
+  const hiddenNotes = React.useMemo(() => nearby.ids.filter((id) => !visibleNotes.has(id)), [nearby.ids, visibleNotes]);
   const pending = hints.find(({ to }) => to.id === selected.id);
   const viaId = (expanded || layout !== 'radial') ? secondary.get(selected.id) : undefined;
   const via = viaId ? index.byId.get(viaId) : undefined;
@@ -202,7 +201,6 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
 
   function open(next: Drawer, trigger = readButton.current) {
     restoreFocus.current = trigger;
-    if (next === 'groups') { setGroupId(undefined); setGroupLimit(pageSize); }
     setDrawer(next);
   }
 
@@ -217,9 +215,8 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
   }
 
   function centersOnPick(id: string) {
-    if (drawer === 'groups') return true;
     if (drawer !== 'relations' || layout === 'list' || id === center.id) return false;
-    return layout === 'constellation' || (!index.adjacent.get(center.id)?.has(id) && !secondary.has(id));
+    return !index.adjacent.get(center.id)?.has(id) && !secondary.has(id);
   }
 
   function setDepth(next: boolean) {
@@ -232,7 +229,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
 
   function chooseFromDrawer(id: string) {
     setDrawer(undefined);
-    restoreFocus.current = readButton.current;
+    restoreFocus.current = readButton.current ?? moreButton.current;
     if (centersOnPick(id)) { onFocus(id); return; }
     if (layout === 'radial' && !expanded && secondary.has(id)) setDepth(true);
     setFitRequest((before) => before + 1);
@@ -251,9 +248,7 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
       : neighbors.length ? connection : { label: 'つながるメモを書く', text: 'つなげて書く', icon: 'add' as const, onPress: () => onWrite(selected.id) };
   const ai = { label: 'このメモからAIで探す', text: 'AIで探す', icon: 'sparkles-outline' as const, onPress: () => onAI(selected.id) };
   const showConnection = !atCenter && neighbors.length > 0 && !pending;
-  const drawerTitle = drawer === 'groups' ? group?.label ?? '星座のまとまり'
-    : drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : '地図の続き';
-  const closeLabel = drawer === 'groups' ? 'まとまりを閉じる' : '地図の操作画面を閉じる';
+  const drawerTitle = drawer === 'relations' ? 'メモのつながり' : drawer === 'path' ? 'つながりの経路' : drawer === 'actions' ? 'メモの操作' : 'つながるメモ';
   const fullScreenLabel = immersive ? '全画面を閉じる' : '地図を全画面で開く';
   function toggleFullScreen() {
     setAppearance(false); onImmersive(!immersive);
@@ -273,27 +268,33 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
         <StudioAction label="元の画面に戻る" onPress={preview.onClose} />
       </View>}
       {!preview && !editing && !immersive && !preferList && <View style={studioStyles.row}>
-        <StudioSegments label="つながりの見方" items={layouts} value={settings.layout} onChange={(value) => onSettings({ layout: value })} compact />
+        <StudioSegments label="つながりの見方" items={width <= 350 ? compactLayouts : layouts} value={settings.layout} onChange={(value) => onSettings({ layout: value })} compact />
         <IconButton label={appearance ? '表示スタイルを閉じる' : '表示スタイル'} icon="color-palette-outline" focusRef={colorButton}
           color={appearance ? '#fffdf7' : undefined} background={appearance ? studioColors.green : undefined} onPress={() => {
             setAppearance(!appearance);
             if (appearance) focusControl(colorButton.current);
           }} />
       </View>}
-      {layout !== 'list' && <StudioMapCanvas index={index} center={center} selected={selected.id} emphasisId={preview?.emphasisId}
-        mode={layout} palette={settings.palette} groups={groups} viewKey={editing ? 'arrangement' : viewKey} neighborhood={neighborhood} fitRequest={fitRequest}
-        back={editing ? undefined : back} onDepth={layout === 'radial' && neighborhood.second.length ? toggleDepth : undefined}
+      {layout !== 'list' && <View style={[styles.diagram, layout !== 'radial' && styles.hidden]}><StudioMapCanvas
+        index={index} center={center} selected={selected.id} emphasisId={preview?.emphasisId} palette={settings.palette}
+        viewKey={editing ? 'arrangement' : viewKey} neighborhood={neighborhood} fitRequest={fitRequest}
+        back={editing ? undefined : back} onDepth={neighborhood.second.length ? toggleDepth : undefined} moreButton={moreButton}
         fullScreen={editing ? undefined : { active: immersive, label: fullScreenLabel, onPress: toggleFullScreen }}
         placement={editing && arrangement ? arrangement.points : placement}
         arrange={editing ? { onPlace: (point) => changePlacement((before) => [
           ...before.filter(({ seedId }) => seedId !== point.seedId), ...(point.x || point.y ? [point] : []),
         ]), onReject: () => setArrangeNotice('空いている場所へ移動できます。') } : undefined}
         onMore={(visibleIds) => {
-          const visible = new Set(visibleIds);
-          setHiddenNotes(nearby.ids.filter((id) => !visible.has(id)));
-          open('nearby');
-        }} onGroups={groups ? () => open('groups') : undefined}
-        suggestions={layout === 'radial' ? hints : noHints} expanded={expanded} onSelect={chooseNode} />}
+          setVisibleNotes(new Set(visibleIds));
+          setNearbyFilter('hidden');
+          open('nearby', moreButton.current);
+        }} suggestions={hints} expanded={expanded} onSelect={chooseNode} />
+      </View>}
+      {(settings.layout === 'constellation' || layout === 'constellation') && <View style={[styles.diagram, layout !== 'constellation' && styles.hidden]}>
+        <StudioConstellations index={index} centerId={center.id} palette={settings.palette} compact={compact} showDetails={!appearance}
+          fullScreen={{ active: immersive, label: fullScreenLabel, onPress: toggleFullScreen }} onRead={onRead}
+          onMindMap={(id) => { setAppearance(false); onFocus(id); onSettings({ layout: 'radial' }); }} />
+      </View>}
       {layout === 'list' && back && !editing && <View style={studioStyles.wrap}><StudioAction label="前の中心へ戻る" icon="arrow-back-outline" onPress={back.onPress} /></View>}
       {(layout === 'list' || settings.layout === 'list') && <ScrollView style={[styles.noteList, layout !== 'list' && styles.hidden]}
         contentContainerStyle={styles.listContent} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
@@ -309,25 +310,34 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
           <StudioAction label="自動配置に戻す" title="自動配置" icon="refresh-outline" disabled={saving || !arrangement.points.length} onPress={() => changePlacement(() => [])} />
         </View>
       </View> : appearance ? <View style={[styles.dock, styles.appearance, compact && styles.compactAppearance]}>
-        <Text accessibilityRole="header" style={styles.appearanceTitle}>地図のデザイン</Text>
+        <Text accessibilityRole="header" style={styles.appearanceTitle}>{layout === 'constellation' ? '星空の配色' : '地図のデザイン'}</Text>
         <View style={styles.palettes}>{(Object.keys(mapPalettes) as StudioPreferences['palette'][]).map((key) => {
           const preset = mapPalettes[key];
+          const sky = layout === 'constellation' ? constellationPalettes[key] : undefined;
+          const ink = sky?.ink ?? preset.ink;
+          const glow = sky?.light ?? preset.highlight;
           const active = key === settings.palette;
           return <Pressable key={key} ref={active ? activeColor : undefined} accessibilityRole="button" {...buttonSelectionProps(active)} accessibilityLabel={preset.label}
             onPress={() => onSettings({ palette: key })}
-            style={({ pressed }) => [styles.palette, { backgroundColor: preset.art, borderColor: active ? preset.highlight : preset.border },
+            style={({ pressed }) => [styles.palette, { backgroundColor: sky?.space ?? preset.art, borderColor: active ? glow : sky?.rule ?? preset.border },
               active && styles.activePalette, pressed && studioStyles.quiet]}>
             <Svg width={66} height={31} viewBox="0 0 80 38" pointerEvents="none" aria-hidden>
-              <Path d="M7 12 C17 12 25 19 39 19 C53 19 60 10 72 10 M39 19 C53 19 61 28 72 28" stroke={preset.line} strokeWidth="2" fill="none" />
-              <Circle cx="7" cy="12" r="4" fill={preset.node} stroke={preset.highlight} /><Circle cx="72" cy="10" r="4" fill={preset.node} stroke={preset.highlight} />
-              <Circle cx="72" cy="28" r="4" fill={preset.candidate} />
-              <Rect x="30" y="12" rx="4" width="19" height="14" fill={preset.center} />
+              {sky ? <>
+                <Path d="M12 11 L35 23 L53 9 L68 24" stroke={sky.light} strokeWidth="1" fill="none" />
+                <Circle cx="12" cy="11" r="2.2" fill={sky.light} /><Circle cx="35" cy="23" r="3.5" fill={sky.focus} />
+                <Circle cx="53" cy="9" r="2.4" fill={sky.light} /><Circle cx="68" cy="24" r="2" fill={sky.light} />
+              </> : <>
+                <Path d="M7 12 C17 12 25 19 39 19 C53 19 60 10 72 10 M39 19 C53 19 61 28 72 28" stroke={preset.line} strokeWidth="2" fill="none" />
+                <Circle cx="7" cy="12" r="4" fill={preset.node} stroke={preset.highlight} /><Circle cx="72" cy="10" r="4" fill={preset.node} stroke={preset.highlight} />
+                <Circle cx="72" cy="28" r="4" fill={preset.candidate} />
+                <Rect x="30" y="12" rx="4" width="19" height="14" fill={preset.center} />
+              </>}
             </Svg>
-            <Text style={[styles.paletteLabel, { color: preset.ink }]}>{preset.label}</Text>
-            {active && <Ionicons style={styles.paletteCheck} name="checkmark-circle" size={17} color={preset.highlight} />}
+            <Text style={[styles.paletteLabel, { color: ink }]}>{preset.label}</Text>
+            {active && <Ionicons style={styles.paletteCheck} name="checkmark-circle" size={17} color={glow} />}
           </Pressable>;
         })}</View>
-      </View> : <View style={styles.dock} testID="studio-map-selection">
+      </View> : layout !== 'constellation' && <View style={styles.dock} testID="studio-map-selection">
         <View style={studioStyles.row}>
           {path ? <Pressable ref={pathButton} accessibilityRole="button" accessibilityLabel="つながりの経路を開く" onPress={() => open('path', pathButton.current)}
             style={({ pressed }) => [styles.pathButton, pressed && studioStyles.quiet]}>
@@ -356,24 +366,29 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
     </View>
     {drawer && <View style={styles.drawer} accessibilityViewIsModal onAccessibilityEscape={() => setDrawer(undefined)}>
       <View style={styles.drawerHeader}><StudioTitle title={drawerTitle}>
-        {group && <IconButton label="まとまりの一覧に戻る" icon="arrow-back-outline" onPress={() => setGroupId(undefined)} />}
-        <IconButton label={closeLabel} icon="close" focusRef={closeButton} onPress={() => setDrawer(undefined)} />
+        <IconButton label="地図の操作画面を閉じる" icon="close" focusRef={closeButton} onPress={() => setDrawer(undefined)} />
       </StudioTitle></View>
-      <ScrollView key={group ? group.id : drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent}
+      <ScrollView key={drawer} style={styles.noteList} contentContainerStyle={styles.drawerContent}
         automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
-        {(drawer === 'nearby' || drawer === 'relations') && <>
-          <Text style={studioStyles.text}>{drawer === 'nearby' ? `${toSeedSnippet(center, 40)} · ${hiddenNotes.length}件` : toSeedSnippet(selected, 55)}</Text>
-          <StudioNoteList index={index} selected={selected.id} scope={drawer === 'nearby' ? hiddenNotes : neighbors}
-            details={drawer === 'nearby' ? nearby.details : edgeNotes} onPick={chooseFromDrawer}
+        {drawer === 'nearby' && <>
+          <View style={[studioStyles.card, styles.nearbySummary]}>
+            <View style={studioStyles.emblem} aria-hidden><Ionicons name="locate-outline" size={20} color={studioColors.green} /></View>
+            <View style={studioStyles.grow}>
+              <Text style={studioStyles.subtitle} numberOfLines={2}>{toSeedSnippet(center, 45)}</Text>
+              <Text style={studioStyles.muted}>選ぶと、今の地図に表示します</Text>
+            </View>
+          </View>
+          <StudioSegments label="つながるメモの表示範囲" value={nearbyFilter} onChange={setNearbyFilter} items={[
+            { id: 'hidden', label: `図にない ${hiddenNotes.length}件` }, { id: 'all', label: `すべて ${nearby.ids.length}件` },
+          ]} />
+          <StudioNoteList index={index} selected={selected.id} scope={nearbyFilter === 'hidden' ? hiddenNotes : nearby.ids}
+            details={nearby.details} onPick={chooseFromDrawer} hint="今の中心を保ったまま、このメモを地図に表示します" mapLabel="地図に表示" />
+        </>}
+        {drawer === 'relations' && <>
+          <Text style={studioStyles.text}>{toSeedSnippet(selected, 55)}</Text>
+          <StudioNoteList index={index} selected={selected.id} scope={neighbors} details={edgeNotes} onPick={chooseFromDrawer}
             centersOnPick={centersOnPick} hint="地図で選びます" />
         </>}
-        {drawer === 'groups' && (group ? <StudioNoteList index={index} selected={selected.id} scope={group.seedIds} onPick={chooseFromDrawer} centersOnPick={centersOnPick} /> : <>
-          {groups?.slice(0, groupLimit).map((entry) => <Pressable key={entry.id} accessibilityRole="button" onPress={() => setGroupId(entry.id)} style={styles.noteRow}>
-            <Ionicons name={entry.linked ? 'git-network-outline' : 'ellipse-outline'} color={studioColors.green} size={17} />
-            <Text style={[studioStyles.text, studioStyles.grow]}>{entry.label}</Text><Text style={studioStyles.muted}>{entry.seedIds.length}件</Text>
-          </Pressable>)}
-          {(groups?.length ?? 0) > groupLimit && <StudioAction label="さらに表示" onPress={() => setGroupLimit(groupLimit + pageSize)} />}
-        </>)}
         {drawer === 'path' && <View style={styles.path}>{path?.map((seed, i) => {
           const role = i === 0 ? '中心' : seed.id === selected.id ? '選択中' : '経由';
           const annotation = i === 0 ? undefined : seed.id === selected.id ? edgeNotes.get(path[i - 1].id) : nearby.details.get(seed.id);
@@ -405,12 +420,14 @@ export function StudioMapPanel({ index, center, selected: mapSelection, settings
 
 const styles = StyleSheet.create({
   hidden: { display: 'none' },
+  diagram: { flex: 1, minHeight: 0 },
   placementError: { color: studioColors.orange },
   workspace: { flex: 1, minHeight: 0, width: '100%', maxWidth: 840, alignSelf: 'center', paddingHorizontal: 12,
     paddingTop: 6, paddingBottom: 7, gap: 7 },
   drawer: { flex: 1, minHeight: 0, width: '100%', maxWidth: 840, alignSelf: 'center' },
   drawerHeader: { paddingHorizontal: 14, paddingTop: 11, paddingBottom: 8 },
   drawerContent: { paddingHorizontal: 14, paddingBottom: 18, gap: 9 },
+  nearbySummary: { flexDirection: 'row', alignItems: 'center', backgroundColor: studioColors.soft },
   noteList: { flex: 1, minHeight: 0 },
   listContent: { paddingBottom: 4 },
   dock: { borderWidth: 1, borderColor: '#d0dacb', borderRadius: 17, paddingHorizontal: 8, paddingVertical: 6, gap: 4,
@@ -426,8 +443,6 @@ const styles = StyleSheet.create({
   dockText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '700', color: studioColors.green, textAlign: 'center' },
   previewBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingLeft: 10,
     backgroundColor: studioColors.soft, borderRadius: 12 },
-  noteRow: { flexDirection: 'row', alignItems: 'center', minHeight: 49, gap: 6, paddingHorizontal: 9, paddingVertical: 5,
-    backgroundColor: studioColors.surface, borderRadius: 10, borderWidth: 1, borderColor: studioColors.rule },
   activeRow: { backgroundColor: studioColors.soft, borderColor: '#b8c8b4' },
   pathButton: { flexDirection: 'row', minHeight: 44, minWidth: 54, justifyContent: 'center', alignItems: 'center', gap: 4,
     paddingHorizontal: 5, borderWidth: 1, borderColor: '#c7d6c9', borderRadius: 11, backgroundColor: studioColors.soft },

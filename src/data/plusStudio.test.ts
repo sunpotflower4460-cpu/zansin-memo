@@ -4,7 +4,7 @@ import { buildSeed } from '../domain/gardenCommands';
 import { rankInsights, settleInsight, shortlistInsights } from '../domain/plus/insights';
 import { indexMap } from '../domain/plus/map';
 import { adjacentMonth, monthDays, recordDays, saveReflection, saveStudioArrangement, saveStudioPreferences } from '../domain/plus/studio';
-import { canPlaceStudioNode, constellationGraph, constellationGroups, placeStudioNodes, radialGraph, studioMapLabel } from '../domain/plus/studioGraph';
+import { canPlaceStudioNode, constellationFigure, constellationGroups, placeStudioNodes, radialGraph, studioMapLabel } from '../domain/plus/studioGraph';
 import { buildPlusTextExport } from '../utils/plusExport';
 import { connectionId, makeConnection } from './gardenModel';
 import { emptyStoreV3, parseStoreV3, serializeStoreV3 } from './gardenV3Model';
@@ -88,17 +88,26 @@ test('semantic scores can surface an unrelated vocabulary pair without fabricati
   assert.deepEqual(candidates.map(({ to, kind }) => [to.id, kind]), [[second.id, '意味が近い記録']]);
 });
 
-test('constellation draws only present connections and leaves all undisplayed notes counted', () => {
+test('constellation traces only actual connections and can reveal a member outside the sketch', () => {
   const { seeds, connections } = buildStudioExample(new Date(today));
   const index = indexMap(seeds, connections);
-  const plot = constellationGraph(index, seeds[0], { width: 321, height: 275 });
-  assert.equal(plot.hidden + plot.nodes.length, seeds.length);
-  assert.ok(plot.nodes.some(({ seed }) => seed.id === seeds[0].id));
-  assert.ok(plot.lines.length > 0 && plot.lines.every((line) => connections.some(({ id }) => line.id === id)));
-  for (const node of plot.nodes) {
-    assert.ok(node.x - node.width / 2 >= 0 && node.x + node.width / 2 <= 321);
-    assert.ok(node.y - node.height / 2 >= 0 && node.y + node.height / 2 <= 275);
+  const groups = constellationGroups(index);
+  const group = groups.find(({ seedIds }) => seedIds.includes('example-0'))!;
+  const plot = constellationFigure(index, group, 6);
+  assert.equal(group.label, '散歩の記録');
+  assert.equal(plot.stars[0].id, 'example-0');
+  assert.ok(plot.stars.length < group.seedIds.length);
+  assert.ok(plot.lines.length >= plot.stars.length - 1);
+  assert.ok(plot.lines.every((line) => connections.some(({ id }) => line.id === id)));
+  for (const { x, y } of plot.stars) {
+    assert.ok(x > 0 && x < 1 && y > 0 && y < 1);
   }
+  assert.equal(plot.stars.some(({ id }) => id === 'example-14'), false);
+  const revealed = constellationFigure(index, group, 4, 'example-14');
+  assert.equal(revealed.stars[0].id, 'example-14');
+  assert.ok(revealed.lines.some(({ id }) => id === connectionId('example-14', 'example-3')));
+  const isolated = groups.find(({ linked }) => !linked)!;
+  assert.deepEqual(constellationFigure(index, isolated, 6).lines, []);
 });
 
 test('constellation groups account for undisplayed members and radial emphasis keeps a recorded relation visible', () => {
@@ -139,7 +148,7 @@ test('a small radial map reveals an omitted second-hop note beside its actual in
   const chosen = find(revealed, 'note-9');
   const intermediary = find(revealed, 'note-4');
   assert.ok(chosen && intermediary && chosen.via === intermediary.seed.id);
-  assert.equal(chosen.group, intermediary.group);
+  assert.equal(Math.sign(chosen.x - frame.width / 2), Math.sign(intermediary.x - frame.width / 2));
   assert.equal(revealed.hidden + revealed.nodes.length, seeds.length);
   assert.ok(revealed.lines.some(({ id }) => id === connectionId('note-4', 'note-9')));
   assert.ok(revealed.lines.some(({ id }) => id === connectionId('note-0', 'note-4')));

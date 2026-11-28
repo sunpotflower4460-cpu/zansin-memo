@@ -32,23 +32,24 @@ function ResultOriginal({ seed, onRead }: { seed: Seed; onRead: ReadResult }) {
   </Pressable>;
 }
 
-export function StudioNoteList({ index, selected, onPick, scope, details, hint, centersOnPick, onRead, recent }: {
+export function StudioNoteList({ index, selected, onPick, scope, details, hint, centersOnPick, onRead, recent, mapLabel }: {
   index: MapIndex; selected: string; onPick: (id: string) => void; scope?: readonly string[];
-  details?: ReadonlyMap<string, string>; hint?: string; centersOnPick?: (id: string) => boolean; onRead?: ReadResult;
+  details?: ReadonlyMap<string, string>; hint?: string; centersOnPick?: (id: string) => boolean; onRead?: ReadResult; mapLabel?: string;
   recent?: readonly { seed: Seed; onPress: () => void }[];
 }) {
   const [term, setTerm] = React.useState('');
   const [page, setPage] = React.useState(0);
   const query = normalizeSearchText(term.trim());
+  const highlightMatches = Boolean(onRead || mapLabel);
   const candidates = React.useMemo(() => (scope ? scope.flatMap((id) => index.byId.get(id) ?? []) : index.live)
     .map((seed) => ({ seed, text: searchableText(seed) })), [index, scope]);
   const list = React.useMemo(() => {
     if (!query) return candidates;
     const found = candidates.filter(({ seed, text }) => text.includes(query) || matchesSearch(details?.get(seed.id) ?? '', query));
-    if (!onRead) return found;
+    if (!highlightMatches) return found;
     return found.sort(({ seed: a }, { seed: b }) => Number(matchesSearch(b.title ?? '', query)) -
       Number(matchesSearch(a.title ?? '', query)) || b.updatedAt.localeCompare(a.updatedAt));
-  }, [candidates, details, onRead, query]);
+  }, [candidates, details, highlightMatches, query]);
   const shown = Math.min(page, Math.max(0, Math.ceil(list.length / pageSize) - 1));
   function changeTerm(value: string) { setPage(0); setTerm(value); }
 
@@ -69,18 +70,19 @@ export function StudioNoteList({ index, selected, onPick, scope, details, hint, 
         </Pressable>)}
       </View>
     </View>}
-    {!!onRead && !!query && list.length > 0 && <Text accessibilityLiveRegion="polite" style={studioStyles.muted}>{list.length}件の検索結果</Text>}
+    {highlightMatches && !!query && list.length > 0 && <Text accessibilityLiveRegion="polite" style={studioStyles.muted}>{list.length}件の検索結果</Text>}
     {!list.length && <Text accessibilityLiveRegion="polite" style={studioStyles.muted}>一致するメモがありません。</Text>}
     {list.slice(shown * pageSize, (shown + 1) * pageSize).map(({ seed }) => {
       const title = toSeedSnippet(seed, 55);
       const detail = details?.get(seed.id);
-      const excerpt = onRead && query ? buildMatchExcerpt(seed, query) : undefined;
+      const excerpt = highlightMatches && query ? buildMatchExcerpt(seed, query) : undefined;
       const description = excerpt && excerpt.field !== 'title' ? excerpt.text : detail ?? (seed.title ? seed.body : undefined);
+      const relation = mapLabel && detail !== description ? detail : undefined;
       const jumps = centersOnPick?.(seed.id) ?? false;
       const action = jumps || onRead ? '地図の中心にします' : hint;
       return <View key={seed.id} style={[styles.noteRow, selected === seed.id && styles.activeRow]}>
         <Pressable accessibilityRole="button" {...buttonSelectionProps(selected === seed.id)} onPress={() => onPick(seed.id)}
-          accessibilityHint={[excerpt?.text ?? detail, action].filter(Boolean).join('。') || undefined}
+          accessibilityHint={[excerpt?.text ?? detail, relation, action].filter(Boolean).join('。') || undefined}
           accessibilityLabel={`${title}、つながり${index.adjacent.get(seed.id)?.size ?? 0}件`}
           style={({ pressed }) => [styles.noteMain, pressed && studioStyles.quiet]}>
           <View style={studioStyles.grow}>
@@ -91,9 +93,10 @@ export function StudioNoteList({ index, selected, onPick, scope, details, hint, 
                 <Text style={styles.matchField}>{fieldLabel[excerpt.field]}{'  '}</Text><SearchMatch text={description} query={query} />
               </> : description}
             </Text>}
+            {relation && <Text numberOfLines={1} style={[studioStyles.muted, styles.matchField]}>{relation}</Text>}
           </View>
-          <Ionicons name={jumps || onRead ? 'locate-outline' : 'git-network-outline'} color={studioColors.green} size={15} />
-          <Text style={studioStyles.muted}>{onRead ? '地図へ' : jumps ? '中心に' : index.adjacent.get(seed.id)?.size ?? 0}</Text>
+          <Ionicons name={jumps || onRead || mapLabel ? 'locate-outline' : 'git-network-outline'} color={studioColors.green} size={15} />
+          <Text style={mapLabel ? styles.resultAction : studioStyles.muted}>{onRead ? '地図へ' : jumps ? '中心に' : mapLabel ?? index.adjacent.get(seed.id)?.size ?? 0}</Text>
         </Pressable>
         {onRead && <ResultOriginal seed={seed} onRead={onRead} />}
       </View>;

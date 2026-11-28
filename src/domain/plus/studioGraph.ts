@@ -7,12 +7,13 @@ import { mapGroups, type MapIndex } from './map';
 
 type Size = { width: number; height: number };
 type Cell = { x: number; y: number; width: number; height: number };
-export type StudioNode = Cell & { seed: Seed; group: number; isCenter: boolean; suggested: boolean; via?: string };
+export type StudioNode = Cell & { seed: Seed; isCenter: boolean; suggested: boolean; via?: string };
 type Node = StudioNode;
 type Line = { id: string; a: Node; b: Node; suggested: boolean };
-type Island = Cell & { group: number };
-export type StudioGraph = { nodes: Node[]; lines: Line[]; islands: Island[]; hidden: number; scope: number };
+export type StudioGraph = { nodes: Node[]; lines: Line[]; hidden: number; scope: number };
 export type ConstellationGroup = { id: string; label: string; seedIds: string[]; linked: boolean };
+type Star = { id: string; x: number; y: number; anchor: boolean };
+export type ConstellationFigure = { stars: Star[]; lines: { id: string; a: Star; b: Star }[] };
 export type RadialNeighbor = { id: string; via?: string };
 export type RadialNeighborhood = { direct: string[]; second: RadialNeighbor[] };
 
@@ -166,7 +167,7 @@ export function radialGraph(index: MapIndex, center: Seed, { width, height }: Si
     columns = mapColumns(neighborhood.direct, [...hintIds], second, perSide, emphasisId, selectedId);
   }
   const nodes: Node[] = [{
-    seed: center, x: width / 2, y: centerY, width: Math.min(205, width * 0.34), height: 70, group: 0, isCenter: true, suggested: false,
+    seed: center, x: width / 2, y: centerY, width: Math.min(205, width * 0.34), height: 70, isCenter: true, suggested: false,
   }];
   for (const side of [0, 1]) {
     const group = columns[side];
@@ -176,12 +177,12 @@ export function radialGraph(index: MapIndex, center: Seed, { width, height }: Si
       if (!seed) return;
       const column = via ? 0.16 : 0.167;
       nodes.push({ seed, x: width * (side ? 1 - column : column), y: centerY + (i - (group.length - 1) / 2) * spacing,
-        width: Math.min(167, width * (via ? 0.264 : 0.283)), height: via ? 44 : 48, group: side + 1,
+        width: Math.min(167, width * (via ? 0.264 : 0.283)), height: via ? 44 : 48,
         isCenter: false, suggested: hintIds.has(id), via });
     });
   }
   const scope = direct.size + hintIds.size + second.length + 1;
-  return { nodes, lines: linkGraph(index, nodes, hints), islands: [], hidden: scope - nodes.length, scope };
+  return { nodes, lines: linkGraph(index, nodes, hints), hidden: scope - nodes.length, scope };
 }
 
 export function constellationGroups(index: MapIndex): ConstellationGroup[] {
@@ -189,42 +190,42 @@ export function constellationGroups(index: MapIndex): ConstellationGroup[] {
   return groups.map(({ id, seedIds, kind }) => {
     const linked = kind === 'connections';
     const ordered = linked ? [...seedIds].sort((a, b) => (index.adjacent.get(b)?.size ?? 0) - (index.adjacent.get(a)?.size ?? 0) || a.localeCompare(b)) : seedIds;
-    return { id, label: linked ? `「${toSeedSnippet(index.byId.get(ordered[0])!, 19)}」のまとまり` : 'つながりのないメモ', seedIds: ordered, linked };
+    return { id, label: linked ? toSeedSnippet(index.byId.get(ordered[0])!, 35) : 'つながりのないメモ', seedIds: ordered, linked };
   }).sort((a, b) => Number(b.linked) - Number(a.linked) || b.seedIds.length - a.seedIds.length || a.id.localeCompare(b.id));
 }
 
-export function constellationGraph(index: MapIndex, center: Seed, { width, height }: Size, groups = constellationGroups(index)): StudioGraph {
-  const components = groups.flatMap<{ ids: string[]; linked: boolean }>(({ seedIds, linked }) => linked ? [{ ids: seedIds, linked }]
-    : Array.from({ length: Math.ceil(seedIds.length / 3) }, (_, i) => ({ ids: seedIds.slice(i * 3, i * 3 + 3), linked })));
-  const columns = width > 540 ? 3 : 2;
-  const anchor = components.find((group) => group.ids.includes(center.id));
-  const visible = (anchor ? [anchor, ...components.filter((group) => group !== anchor)] : components).slice(0, columns * (height < 240 ? 1 : 2));
-  const columnsUsed = Math.min(columns, visible.length || 1);
-  const columnWidth = (width - 26) / columnsUsed;
-  const rows = Math.max(1, Math.ceil(visible.length / columns));
-  const rowHeight = (height - 106) / rows;
-  const islands: Island[] = [];
-  const nodes = visible.flatMap(({ ids, linked }, groupIndex) => {
-    const start = ids.includes(center.id) ? center.id : ids[0];
-    // Extend the preview along real links from its representative, so a visible
-    // component still reads as connected when most of its members are omitted.
-    const walk = new Set([start]);
-    if (linked) for (const id of walk) {
-      for (const peer of index.adjacent.get(id) ?? []) walk.add(peer);
-      if (walk.size >= 3) break;
+const starSlots = [[0.50, 0.47], [0.14, 0.20], [0.78, 0.14], [0.87, 0.62], [0.52, 0.88], [0.16, 0.77]] as const;
+
+export function constellationFigure(index: MapIndex, group: ConstellationGroup, limit: number, around = group.seedIds[0]): ConstellationFigure {
+  const anchor = group.seedIds.includes(around) ? around : group.seedIds[0];
+  const size = Math.min(limit, starSlots.length, group.seedIds.length);
+  if (size < 1) return { stars: [], lines: [] };
+  const chosen = new Set([anchor]);
+  if (group.linked) {
+    // A partial figure stays connected by walking actual neighbors out from its anchor.
+    for (const id of chosen) {
+      if (chosen.size >= size) break;
+      const neighbors = [...index.adjacent.get(id) ?? []].sort((a, b) =>
+        (index.adjacent.get(b)?.size ?? 0) - (index.adjacent.get(a)?.size ?? 0) || a.localeCompare(b, undefined, { numeric: true }));
+      for (const peer of neighbors) {
+        chosen.add(peer);
+        if (chosen.size >= size) break;
+      }
     }
-    const ranked = [...new Set([...walk, ...ids])];
-    const clusterX = 13 + (groupIndex % columns + 0.5) * columnWidth;
-    const clusterY = 54 + (Math.floor(groupIndex / columns) + 0.5) * rowHeight;
-    const count = Math.min(rowHeight >= 90 ? 3 : 2, ranked.length);
-    const pillWidth = Math.min(133, columnWidth * 0.461);
-    const spread = Math.min(73, columnWidth * 0.241);
-    if (count > 1 && linked) islands.push({ x: clusterX, y: clusterY, width: columnWidth - 9, height: rowHeight - 6, group: groupIndex });
-    return ranked.slice(0, count).map((id, i): Node => ({
-      seed: index.byId.get(id)!, x: clusterX + (count === 1 || i === 2 ? 0 : i === 0 ? -spread : spread),
-      y: clusterY + (count < 3 ? (count === 1 ? 0 : i === 0 ? -13 : 13) : i === 2 ? 23 : -23),
-      width: pillWidth, height: 44, group: groupIndex, isCenter: id === center.id, suggested: false,
-    }));
+  } else {
+    for (const id of group.seedIds) {
+      if (chosen.size >= size) break;
+      chosen.add(id);
+    }
+  }
+  const flip = Array.from(group.id).reduce((total, letter) => total + letter.charCodeAt(0), 0) % 4;
+  const slots = chosen.size === 1 ? [[0.5, 0.5]] : chosen.size === 2 ? [[0.28, 0.68], [0.73, 0.27]]
+    : chosen.size === 3 ? [[0.48, 0.76], [0.19, 0.27], [0.81, 0.19]] : starSlots;
+  const stars = Array.from(chosen, (id, i) => {
+    const [x, y] = slots[i];
+    return { id, x: flip % 2 ? 1 - x : x, y: flip > 1 ? 1 - y : y, anchor: id === anchor };
   });
-  return { nodes, lines: linkGraph(index, nodes, []), islands, hidden: index.live.length - nodes.length, scope: index.live.length };
+  const lines = stars.flatMap((a, i) => stars.slice(i + 1).flatMap((b) =>
+    index.adjacent.get(a.id)?.has(b.id) ? [{ id: connectionId(a.id, b.id), a, b }] : []));
+  return { stars, lines };
 }
