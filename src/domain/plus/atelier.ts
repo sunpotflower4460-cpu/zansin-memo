@@ -3,9 +3,10 @@ import { withCoreCommand } from '../../data/gardenV3Writer';
 import { promoteToSprout } from '../gardenCommands';
 import type { Seed } from '../types';
 import type { AtelierDraft, AtelierProject, AtelierRevision, AtelierSuggestion, GardenStoreV3, MapReturnContext, SourceRef, SourceSnapshot } from './contracts';
+import type { CraftCandidate } from './craft';
 import { isTextBoundary, mergeLineage, readSource, sameSourceRef, snapshotSource, textDigest, validTextRange } from './sources';
 
-type DraftTarget = { projectId: string; branchId: string; expected: number };
+export type DraftTarget = { projectId: string; branchId: string; expected: number };
 type Pin = AtelierDraft['pinnedExcerpts'][number];
 
 export const activeDraft = (store: GardenStoreV3, project: AtelierProject) =>
@@ -17,6 +18,14 @@ export function materialState(seeds: readonly Seed[], snapshot: SourceSnapshot |
   const current = readSource(seeds, snapshot.source.ref);
   if (!current) return readSource(seeds, snapshot.source.ref, true) ? 'changed' : 'missing';
   return textDigest(current.text) === snapshot.source.textDigest ? 'current' : 'changed';
+}
+
+export function readCraftEvidence(store: Pick<GardenStoreV3, 'seeds' | 'sourceSnapshots'>, entry: AtelierSuggestion['evidence'][number]) {
+  const snapshot = store.sourceSnapshots.find((item) => sameSourceRef(item.source.ref, entry.source.ref) &&
+    item.source.textDigest === entry.source.textDigest && item.source.updatedAt === entry.source.updatedAt);
+  if (!snapshot || !validTextRange(snapshot.text, entry.start, entry.end) || snapshot.text.slice(entry.start, entry.end) !== entry.quote) return undefined;
+  const state = materialState(store.seeds, snapshot);
+  return state === 'current' || state === 'changed' ? { snapshot, state, quote: entry.quote } : undefined;
 }
 
 export function captureMaterial(store: GardenStoreV3, ref: SourceRef, id: string, at: string) {
@@ -258,4 +267,61 @@ export function insertAtelierExample(target: DraftTarget, args: { id: string; st
       insertedSuggestionIds: [...draft.insertedSuggestionIds, suggestion.id], lineage: mergeLineage(draft.lineage, { status: 'known', rootSeedIds: suggestion.processingRootSeedIds }),
       editRevision: draft.editRevision + 1, updatedAt: args.at });
   });
+}
+
+/** Commit the chosen recipe, exact ingredients, draft and optional work source in one writer operation. */
+export function adoptCraft(args: { id: string; target: DraftTarget; create: boolean; candidate: CraftCandidate; saveVersion: boolean; at: string }): PlusCommand {
+  const { id, target, candidate, at } = args;
+  return { id, apply: (store) => {
+    const prior = store.atelierSuggestions.find((item) => item.id === id);
+    if (prior) return prior.requestId === `local-craft:${id}` && prior.projectId === target.projectId && prior.branchId === target.branchId &&
+      prior.decision === 'inserted' ? store : { rejected: '別の案が保存されています。下書きを確認してください。' };
+    const { parts, title, body, recipe, generator } = candidate;
+    if (!title.trim() || !body.trim() || parts.length < 2 || parts.length > 3 ||
+        new Set(parts.map((part) => part.source.ref.seedId)).size !== parts.length) return { rejected: '異なるメモを2〜3枚選んでください' };
+    const uses = generator === 'recipe' ? candidate.uses : undefined;
+    if (uses && (uses.length !== parts.length || uses.some((text) => !text.trim() || text.length > 200))) {
+      return { rejected: '素材の使い道を確認できません。この案を開き直してください。' };
+    }
+    let working = store;
+    if (args.create) {
+      if (store.atelierProjects.some((project) => project.id === target.projectId)) return { rejected: '作業中の下書きを確認してください' };
+      const result = createAtelier({ id: target.projectId, branchId: target.branchId, materials: [], centerSeedId: parts[0].source.ref.seedId, at }).apply(store);
+      if ('rejected' in result) return result;
+      working = result;
+    }
+    const draft = working.atelierDrafts.find((entry) => entry.projectId === target.projectId && entry.branchId === target.branchId);
+    const project = working.atelierProjects.find((entry) => entry.id === target.projectId && entry.activeBranchId === target.branchId);
+    if (!draft || !project || draft.editRevision !== target.expected) {
+      return { rejected: '下書きが変わりました。開き直してから取り込めます。' };
+    }
+    if (!project.title && !draft.text && draft.editRevision === 0 && project.branches.length === 1) {
+      working = { ...working, atelierProjects: working.atelierProjects.map((entry) => entry === project ? { ...entry, title } : entry) };
+    }
+    const materials = [...draft.materials];
+    const evidence: AtelierSuggestion['evidence'] = [];
+    const origins = [];
+    for (const [i, part] of parts.entries()) {
+      const result = captureMaterial(working, part.source.ref, `${id}:source:${i}`, at);
+      const snapshot = result?.snapshot;
+      if (!result || !snapshot || snapshot.source.textDigest !== part.source.textDigest || snapshot.title !== part.title ||
+          !validTextRange(snapshot.text, part.start, part.end) || snapshot.text.slice(part.start, part.end) !== part.quote) {
+        return { rejected: '素材の原文が変わりました。使う一節を選び直してください。' };
+      }
+      working = { ...working, sourceSnapshots: result.snapshots };
+      if (!materials.some((material) => material.snapshotId === snapshot.id)) materials.push({ snapshotId: snapshot.id, versionMode: 'current' });
+      evidence.push({ source: snapshot.source, quote: part.quote, start: part.start, end: part.end });
+      origins.push(snapshot.lineage);
+    }
+    const roots = mergeLineage(...origins);
+    const insertion = draft.text ? `\n\n${title}\n${body}` : body;
+    const suggestion: AtelierSuggestion = { id, requestId: `local-craft:${id}`, resultId: id, projectId: draft.projectId, branchId: draft.branchId,
+      baseEditRevision: draft.editRevision, baseTextDigest: textDigest(draft.text), kind: 'outline', content: body,
+      craft: { recipe, generator, title, uses }, evidence, processingRootSeedIds: roots.rootSeedIds, permissionEpochs: {},
+      decision: 'inserted', availability: 'ready', createdAt: at, insertedAt: at };
+    const next = { ...draft, materials, text: draft.text + insertion, lineage: mergeLineage(draft.lineage, roots),
+      insertedSuggestionIds: [...draft.insertedSuggestionIds, id], editRevision: draft.editRevision + 1, updatedAt: at };
+    working = replaceDraft({ ...working, atelierSuggestions: [...working.atelierSuggestions, suggestion] }, draft, next);
+    return args.saveVersion ? saveAtelierRevision({ ...target, expected: next.editRevision }, `${id}:version`, at).apply(working) : working;
+  } };
 }

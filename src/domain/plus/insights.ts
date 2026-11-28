@@ -1,6 +1,6 @@
 import { connectionId, normalizePair } from '../../data/gardenModel';
 import { withCoreCommand, type PlusCommand } from '../../data/gardenV3Writer';
-import { normalizeSearchText } from '../../utils/seedText';
+import { normalizeSearchText, toSeedSnippet } from '../../utils/seedText';
 import { connectSeeds } from '../gardenCommands';
 import type { Seed } from '../types';
 import type { GardenStoreV3 } from './contracts';
@@ -39,6 +39,14 @@ function noteText(seed: Seed): string {
   return [seed.title, seed.body].filter(Boolean).join('。').slice(0, 1300);
 }
 
+function bodyKey(seed: Seed) {
+  const body = normalizeSearchText(seed.body.trim());
+  const title = normalizeSearchText(seed.title?.trim() ?? '');
+  // A numbered note can repeat its own title before an otherwise identical paragraph.
+  return title && /\d+$/.test(title) && body.startsWith(title)
+    ? JSON.stringify([title.replace(/\d+$/, ''), body.slice(title.length)]) : body;
+}
+
 function features(seed: Seed) {
   const text = noteText(seed);
   const normalized = normalizeSearchText(text);
@@ -49,8 +57,8 @@ function features(seed: Seed) {
 }
 
 export type Suggestion = {
-  from: Seed; to: Seed; kind: '目的と手がかり' | '共通のテーマ' | '意味が近い記録';
-  reason: string; evidence: [string, string];
+  from: Seed; to: Seed; kind: '目的と手がかり' | '共通のテーマ' | '意味が近い記録' | '共通のつなぎ役';
+  reason: string; evidence: [string, string]; bridge?: Seed;
 };
 
 export function shortlistInsights(index: MapIndex, store: Pick<GardenStoreV3, 'permissions' | 'connections' | 'proposalSuppressions'>, centerId: string) {
@@ -59,20 +67,37 @@ export function shortlistInsights(index: MapIndex, store: Pick<GardenStoreV3, 'p
   const source = index.byId.get(centerId);
   if (!source || blockedIds.has(centerId)) return undefined;
   const from = features(source);
+  const bridges = new Map<string, Seed>();
+  const neighbors = [...index.adjacent.get(source.id) ?? []].filter((id) => !blockedIds.has(id));
+  neighbors.sort((a, b) => (index.adjacent.get(a)?.size ?? 0) - (index.adjacent.get(b)?.size ?? 0));
+  for (const via of neighbors) {
+    const peers = index.adjacent.get(via)!;
+    // A large hub by itself is a poor reason to suggest every leaf to every other leaf.
+    if (peers.size > 12) continue;
+    for (const id of peers) if (!bridges.has(id)) bridges.set(id, index.byId.get(via)!);
+  }
   const pool = index.live.filter((seed) => seed.id !== source.id && !blockedIds.has(seed.id) &&
     !blockedPairs.has(connectionId(source.id, seed.id)) && seed.body.trim().length >= 4).map(features);
   const frequency = new Map<string, number>();
   for (const entry of pool) for (const term of entry.words) frequency.set(term, (frequency.get(term) ?? 0) + 1);
-  const ranked = pool.map((to) => {
+  const scored = pool.map((to) => {
     const common = [...from.words].filter((term) => to.words.has(term));
     common.sort((a, b) => frequency.get(a)! - frequency.get(b)! || b.length - a.length);
     const topics = from.topics.filter((topic) => to.topics.includes(topic));
     const direction = (from.intent && to.example) || (to.intent && from.example);
     const termScore = common.slice(0, 3).reduce((score, term) => score + 1.1 / Math.sqrt(frequency.get(term)!), 0);
     const score = topics.length * 0.72 + termScore + (direction && topics.length ? 0.85 : 0);
-    return { to, common, topics, direction, score };
+    const bridge = bridges.get(to.seed.id);
+    return { to, common, topics, direction, bridge, score: score + (bridge ? 1.1 : 0) };
   }).sort((a, b) => b.score - a.score || b.to.seed.createdAt.localeCompare(a.to.seed.createdAt) || a.to.seed.id.localeCompare(b.to.seed.id));
-  // Keep room for recent notes without shared words. The language model can surface them.
+  // Reserve the limited model slots for distinct texts, including recent notes without shared words.
+  const seenBodies = new Set([bodyKey(source)]);
+  const ranked = scored.filter(({ to }) => {
+    const key = bodyKey(to.seed);
+    if (seenBodies.has(key)) return false;
+    seenBodies.add(key);
+    return true;
+  });
   const preferred = ranked.slice(0, 16);
   const preferredIds = new Set(preferred.map(({ to }) => to.seed.id));
   const remaining = ranked.filter(({ to }) => !preferredIds.has(to.seed.id))
@@ -87,13 +112,22 @@ function quote(seed: Seed, token?: string, topic?: string): string {
   const pattern = topic ? themes.find(([label]) => label === topic)?.[1] : undefined;
   const excerpt = (token && sentences.find((sentence) => normalizeSearchText(sentence).includes(token)) ||
     pattern && sentences.find((sentence) => pattern.test(sentence)) || sentences.find((sentence) => sentence.trim().length >= 12) || sentences[0]).trim();
-  return excerpt.length > 93 ? excerpt.slice(0, 93) : excerpt;
+  return Array.from(excerpt).slice(0, 93).join('');
+}
+
+function purposeReason(goal: ReturnType<typeof features>, clue: ReturnType<typeof features>, shared: string) {
+  if (goal.topics.includes('思い出を残すこと') && clue.topics.includes('写真や映像') && /撮り続け|撮っている|撮ってみた|写真を選ん/u.test(clue.seed.body)) {
+    return '記録を続けたい日に、すでに撮っている写真を一枚選ぶ。そこから一言書き始める方法を試せそうです。';
+  }
+  if (goal.topics.includes('思い出を残すこと') && /一言|一行/u.test(clue.seed.body)) {
+    return '残したいことを一言だけ書く方法が見つかりました。書く量を減らすと続けやすいか、この2枚から試せます。';
+  }
+  return `「${toSeedSnippet(goal.seed, 22)}」で気になっていることに、「${toSeedSnippet(clue.seed, 22)}」のやり方を借りられそうです。接点は「${shared}」です。`;
 }
 
 export function rankInsights({ from, ranked }: Shortlist, similarities: readonly number[] = []): Suggestion[] {
   const scores = similarities.filter((score) => Number.isFinite(score) && score >= 0).sort((a, b) => a - b);
   const semanticCutoff = scores.length <= 3 ? 0.72 : Math.max(0.68, scores[Math.floor(scores.length / 2)] + 0.055);
-  const seenBodies = new Set([normalizeSearchText(from.seed.body.trim())]);
   const rankedMatches = ranked.map((candidate, index) => {
     const similarity = Number.isFinite(similarities[index]) ? similarities[index] : -1;
     const semantic = similarity >= semanticCutoff;
@@ -102,18 +136,27 @@ export function rankInsights({ from, ranked }: Shortlist, similarities: readonly
   }).filter(({ relevant }) => relevant).sort((a, b) => b.score - a.score || b.similarity - a.similarity);
 
   const results: Suggestion[] = [];
-  for (const { to, common, topics, direction } of rankedMatches) {
-    const normalized = normalizeSearchText(to.seed.body.trim());
-    if (seenBodies.has(normalized)) continue;
-    seenBodies.add(normalized);
+  const usedBridges = new Set<string>();
+  for (const { to, common, topics, direction, bridge } of rankedMatches) {
     const label = topics.slice(0, 2).join('・') || common.slice(0, 2).join('・');
-    const kind = direction && label ? '目的と手がかり' : label ? '共通のテーマ' : '意味が近い記録';
-    const reason = kind === '目的と手がかり'
-      ? `「${label}」で重なります。片方で考えていることを、もう一方の具体例から見直せそうです。`
-      : kind === '共通のテーマ'
-        ? `「${label}」が両方に出てきます。書いた場面の違いを比べると、同じ関心を別の角度から見られそうです。`
-        : '端末の言語モデルが文章の意味の近さを見つけました。引用を見比べて、残したい関係か確かめられます。';
-    results.push({ from: from.seed, to: to.seed, kind, reason, evidence: [quote(from.seed, common[0], topics[0]), quote(to.seed, common[0], topics[0])] });
+    if (!label && bridge) {
+      if (usedBridges.has(bridge.id)) continue;
+      usedBridges.add(bridge.id);
+    }
+    const kind = !label && bridge ? '共通のつなぎ役' : direction && label ? '目的と手がかり' : label ? '共通のテーマ' : '意味が近い記録';
+    let reason: string;
+    if (kind === '共通のつなぎ役' && bridge) {
+      reason = `どちらも「${toSeedSnippet(bridge, 35)}」につないだメモです。二つの間にも手がかりがあるか、読み比べてみましょう。`;
+    } else if (kind === '目的と手がかり') {
+      reason = from.intent && to.example ? purposeReason(from, to, topics[0] ?? common[0]) : purposeReason(to, from, topics[0] ?? common[0]);
+    } else if (kind === '共通のテーマ') {
+      reason = common.length ? `どちらのメモにも、題名や本文に「${common[0]}」という言葉があります。二つの場面を読み比べられます。`
+        : `どちらの文章にも「${topics[0]}」に関わる表現があります。`;
+    } else {
+      reason = '端末の言語モデルが文章の意味の近さを見つけました。引用を見比べて、残したい関係か確かめられます。';
+    }
+    results.push({ from: from.seed, to: to.seed, kind, reason, bridge: kind === '共通のつなぎ役' ? bridge : undefined,
+      evidence: [quote(from.seed, common[0], topics[0]), quote(to.seed, common[0], topics[0])] });
     if (results.length === 5) break;
   }
   return results;
@@ -125,9 +168,12 @@ export function settleInsight(suggestion: Suggestion, action: 'connect' | 'dismi
   const edgeId = connectionId(...pair);
   const connect = withCoreCommand(connectSeeds({ commandId: id, a: from.id, b: to.id, now: at }));
   return { id, apply: (store) => {
-    const sources = [from, to].every((before) => store.seeds.some((seed) => seed.id === before.id && !seed.deletedAt &&
+    const sources = suggestion.bridge ? [from, to, suggestion.bridge] : [from, to];
+    const current = sources.every((before) => store.seeds.some((seed) => seed.id === before.id && !seed.deletedAt &&
       seed.updatedAt === before.updatedAt && seed.body === before.body && seed.title === before.title));
-    if (!sources || store.permissions.some(({ seedId, discovery }) => discovery === 'exclude' && pair.includes(seedId))) {
+    const bridge = suggestion.bridge;
+    const pathChanged = bridge && pair.some((id) => !store.connections.some((edge) => edge.id === connectionId(id, bridge.id)));
+    if (!current || pathChanged || store.permissions.some(({ seedId, discovery }) => discovery === 'exclude' && sources.some((seed) => seed.id === seedId))) {
       return { rejected: 'メモが変わりました。候補を探し直してください。' };
     }
     if (store.connections.some((edge) => edge.id === edgeId) || store.proposalSuppressions.some((entry) => connectionId(...entry.pair) === edgeId)) return store;

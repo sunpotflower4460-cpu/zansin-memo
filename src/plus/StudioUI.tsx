@@ -33,12 +33,12 @@ export function StudioTitle({ title, subtitle, children, back, compact }: {
   </View>;
 }
 
-export function StudioAction({ label, title = label, icon, onPress, primary, disabled, expanded, focusRef }: {
+export function StudioAction({ label, title = label, icon, onPress, primary, plain, disabled, expanded, focusRef }: {
   label: string; title?: string; icon?: StudioIcon; onPress: () => void; primary?: boolean; disabled?: boolean;
-  expanded?: boolean; focusRef?: Ref<View>;
+  plain?: boolean; expanded?: boolean; focusRef?: Ref<View>;
 }) {
   return <Pressable ref={focusRef} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, expanded }} onPress={onPress} disabled={disabled}
-    style={({ pressed }) => [studioStyles.action, primary && studioStyles.primary, (pressed || disabled) && studioStyles.quiet]}>
+    style={({ pressed }) => [studioStyles.action, plain && studioStyles.plainAction, primary && studioStyles.primary, (pressed || disabled) && studioStyles.quiet]}>
     {icon && <Ionicons name={icon} size={17} color={primary ? '#fffdf6' : studioColors.green} />}
     <Text style={[studioStyles.actionText, primary && studioStyles.onPrimary]}>{title}</Text>
   </Pressable>;
@@ -94,6 +94,7 @@ export const studioStyles = StyleSheet.create({
   iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: studioColors.soft },
   action: { minHeight: 44, borderWidth: 1, borderColor: studioColors.rule, backgroundColor: studioColors.surface,
     borderRadius: 11, paddingHorizontal: 11, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  plainAction: { minWidth: 44, borderColor: 'transparent', backgroundColor: 'transparent', paddingHorizontal: 7 },
   primary: { backgroundColor: studioColors.green, borderColor: studioColors.green },
   actionText: { color: studioColors.green, fontSize: 13, lineHeight: 19, fontWeight: '600', flexShrink: 1 },
   onPrimary: { color: '#fffdf6' },

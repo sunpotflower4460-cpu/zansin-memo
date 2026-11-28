@@ -5,43 +5,39 @@ import type { ReturnTypeOfInsights } from './studioSuggestionState';
 import type { Suggestion } from '../domain/plus/insights';
 import type { Seed } from '../domain/types';
 import { toSeedSnippet } from '../utils/seedText';
-import { IconButton, StudioAction, StudioTitle, studioColors, studioStyles } from './StudioUI';
+import { IconButton, StudioAction, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
 
-export function InsightCard({ suggestion, pending, onRead, onSettle, compact, onMap }: {
+export function InsightCard({ suggestion, pending, onRead, onSettle, onMap, onCraft }: {
   suggestion: Suggestion; pending: boolean; onRead: (id: string) => void;
-  onSettle: (suggestion: Suggestion, action: 'connect' | 'dismiss') => void; compact?: boolean; onMap?: () => void;
+  onSettle: (suggestion: Suggestion, action: 'connect' | 'dismiss') => void; onMap?: () => void; onCraft?: (suggestion: Suggestion) => void;
 }) {
-  const [showEvidence, setShowEvidence] = React.useState(false);
   return <View style={[studioStyles.card, styles.insight]}>
-    <View style={studioStyles.row}><View style={styles.kind}><Text style={styles.kindText}>{suggestion.kind}</Text></View></View>
     <Text accessibilityRole="header" style={styles.candidateTitle}>{toSeedSnippet(suggestion.to, 70)}</Text>
-    {compact && <View style={studioStyles.wrap}>
-      <StudioAction label={showEvidence ? '理由と引用を閉じる' : '理由と引用を見る'} title="理由と引用" icon="chatbox-ellipses-outline"
-        expanded={showEvidence} onPress={() => setShowEvidence(!showEvidence)} />
-      {onMap && <StudioAction label="候補を地図で見る" title="地図で見る" icon="git-network-outline" onPress={onMap} />}
-    </View>}
-    {(!compact || showEvidence) && <>
-      <Text style={studioStyles.text}>{suggestion.reason}</Text>
-      <View style={styles.quotes}>
+    <Text style={styles.kindText}>{suggestion.kind}</Text>
+    <Text style={studioStyles.text}>{suggestion.reason}</Text>
+    <View style={styles.quotes}>
       {[suggestion.from, suggestion.to].map((seed, index) => <View key={seed.id} style={styles.quote}>
-        <Text style={styles.quoteLabel}>{toSeedSnippet(seed, 35)}</Text>
+        <Text style={styles.quoteLabel}>{index === 0 ? '起点' : '候補'} · {toSeedSnippet(seed, 35)}</Text>
         <Text selectable style={styles.quoteText}>「{suggestion.evidence[index]}」</Text>
       </View>)}
-      </View>
-    </>}
+    </View>
     <View style={studioStyles.wrap}>
       <StudioAction label="つながりを保存" primary icon="link-outline" disabled={pending} onPress={() => onSettle(suggestion, 'connect')} />
-      <StudioAction label="見送る" disabled={pending} onPress={() => onSettle(suggestion, 'dismiss')} />
-      <StudioAction label="原文を開く" title={compact ? '原文' : undefined} icon="document-text-outline" onPress={() => onRead(suggestion.to.id)} />
+      {onCraft && <StudioAction label="この2枚でアイデアをつくる" title="作業台へ" icon="construct-outline" disabled={pending} onPress={() => onCraft(suggestion)} />}
+    </View>
+    <View style={styles.cardLinks}>
+      {onMap && <StudioAction label="候補を地図で見る" title="地図で見る" plain onPress={onMap} />}
+      <StudioAction label="原文を開く" title="原文" plain onPress={() => onRead(suggestion.to.id)} />
+      <StudioAction label="見送る" plain disabled={pending} onPress={() => onSettle(suggestion, 'dismiss')} />
     </View>
   </View>;
 }
 
-export function StudioInsights({ focus, state, notice, pending, skipped, onPick, onRead, onMap, onSettle, onRestore, onPermission }: {
+export function StudioInsights({ focus, state, notice, pending, skipped, onPick, onRead, onMap, onSettle, onRestore, onPermission, onCraft }: {
   focus: Seed; state: ReturnTypeOfInsights; notice?: string; pending: boolean;
   skipped: Seed[]; onPick: () => void; onRead: (id: string) => void; onMap: (candidate?: string) => void;
   onSettle: (suggestion: Suggestion, action: 'connect' | 'dismiss') => void; onRestore: (peerId: string) => void;
-  onPermission: (include: boolean) => void;
+  onPermission: (include: boolean) => void; onCraft?: (suggestion: Suggestion) => void;
 }) {
   const [options, setOptions] = React.useState(false);
   const [browse, setBrowse] = React.useState(false);
@@ -59,9 +55,15 @@ export function StudioInsights({ focus, state, notice, pending, skipped, onPick,
     scroll.current?.scrollTo({ y: Math.max(0, reviewY.current - 8), animated: false });
   }
   return <ScrollView ref={scroll} style={studioStyles.root} contentContainerStyle={studioStyles.content}>
-    <StudioTitle title="AIの提案">
+    <StudioTitle title="つながりの候補">
       <IconButton label={options ? '候補の設定を閉じる' : '候補の設定'} icon="options-outline" onPress={() => setOptions(!options)} />
     </StudioTitle>
+    <StudioSegments label="候補の探し方" items={[{ id: 'words', label: '言葉で探す' }, { id: 'model', label: '端末内AIも使う' }]}
+      value={state.useModel ? 'model' : 'words'} onChange={(value) => state.setUseModel(value === 'model')} />
+    {state.useModel && state.mode === 'unavailable' && <Text style={studioStyles.muted}>この端末では、共通の言葉や話題から候補を表示します。</Text>}
+    {state.useModel && state.mode === 'assets' && <StudioAction label={state.preparing ? '言語モデルを準備中' : '言語モデルを準備'}
+      disabled={state.preparing} icon="download-outline" onPress={() => void state.prepare()} />}
+    {state.prepareError && state.useModel && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>モデルを準備できませんでした。言葉による候補は引き続き使えます。</Text>}
     <Pressable accessibilityRole="button" accessibilityLabel="起点を選ぶ" accessibilityHint={`候補のもとにするメモは「${sourceText}」です。`}
       onPress={onPick} style={({ pressed }) => [studioStyles.destination, styles.source, pressed && studioStyles.quiet]}>
       <View style={studioStyles.emblem} aria-hidden><Ionicons name="document-text-outline" size={21} color={studioColors.green} /></View>
@@ -73,9 +75,6 @@ export function StudioInsights({ focus, state, notice, pending, skipped, onPick,
     {options && <View style={studioStyles.card}>
       <Text accessibilityRole="header" style={studioStyles.subtitle}>候補の設定</Text>
       <Text style={studioStyles.muted}>{state.mode === 'semantic' ? '端末内の言語モデルで照合します。' : '端末内の文章を照合します。'}</Text>
-      {state.mode === 'assets' && <StudioAction label={state.preparing ? '言語モデルを準備中' : '言語モデルを準備'}
-        disabled={state.preparing} icon="download-outline" onPress={() => void state.prepare()} />}
-      {state.prepareError && <Text accessibilityLiveRegion="polite" style={studioStyles.error}>準備できませんでした。通信できるときに再試行できます。</Text>}
       {!state.excluded && <StudioAction label="このメモを自動候補から外す" onPress={() => onPermission(false)} disabled={pending} />}
     </View>}
     {!state.excluded && state.loading && <View style={styles.status}>
@@ -99,7 +98,7 @@ export function StudioInsights({ focus, state, notice, pending, skipped, onPick,
           onPress={() => setActiveId(state.suggestions[position + 1]?.to.id)} />
       </View>
       <InsightCard key={active.to.id} suggestion={active} pending={pending} onRead={onRead} onSettle={onSettle}
-        onMap={() => onMap(active.to.id)} compact />
+        onMap={() => onMap(active.to.id)} onCraft={onCraft} />
     </View>}
     {state.suggestions.length > 1 && <StudioAction label={browse ? '候補の一覧を閉じる' : '候補を一覧で見る'}
       icon="list-outline" onPress={() => setBrowse(!browse)} />}
@@ -127,8 +126,8 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', gap: 7, alignItems: 'center' },
   insight: { gap: 10, borderColor: '#d4d9c8' },
   candidateTitle: { color: studioColors.text, fontSize: 21, lineHeight: 28, fontWeight: '700' },
-  kind: { borderRadius: 8, backgroundColor: studioColors.apricot, paddingVertical: 4, paddingHorizontal: 8 },
-  kindText: { color: '#7d432d', fontSize: 12, fontWeight: '700' },
+  kindText: { color: '#7d432d', fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  cardLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: studioColors.rule },
   quotes: { gap: 1, borderRadius: 11, overflow: 'hidden', backgroundColor: '#e2e9dd' },
   quote: { gap: 3, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#f0f3ea' },
   quoteLabel: { color: studioColors.green, fontSize: 12, lineHeight: 18, fontWeight: '700' },

@@ -11,7 +11,7 @@ export type StudioNode = Cell & { seed: Seed; isCenter: boolean; suggested: bool
 type Node = StudioNode;
 type Line = { id: string; a: Node; b: Node; suggested: boolean };
 export type StudioGraph = { nodes: Node[]; lines: Line[]; hidden: number; scope: number };
-export type ConstellationGroup = { id: string; label: string; seedIds: string[]; linked: boolean };
+export type ConstellationGroup = { id: string; label: string; seedIds: string[]; linked: boolean; basis?: 'category' | 'word' | 'ungrouped' };
 type Star = { id: string; x: number; y: number; anchor: boolean };
 export type ConstellationFigure = { stars: Star[]; lines: { id: string; a: Star; b: Star }[] };
 export type RadialNeighbor = { id: string; via?: string };
@@ -223,7 +223,7 @@ export function constellationFigure(index: MapIndex, group: ConstellationGroup, 
     : chosen.size === 3 ? [[0.48, 0.76], [0.19, 0.27], [0.81, 0.19]] : starSlots;
   const stars = Array.from(chosen, (id, i) => {
     const [x, y] = slots[i];
-    return { id, x: flip % 2 ? 1 - x : x, y: flip > 1 ? 1 - y : y, anchor: id === anchor };
+    return { id, x: flip % 2 ? 1 - x : x, y: flip > 1 ? 1 - y : y, anchor: !group.basis && id === anchor };
   });
   const lines = stars.flatMap((a, i) => stars.slice(i + 1).flatMap((b) =>
     index.adjacent.get(a.id)?.has(b.id) ? [{ id: connectionId(a.id, b.id), a, b }] : []));

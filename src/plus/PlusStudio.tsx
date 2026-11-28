@@ -13,6 +13,7 @@ import { createId } from '../utils/ids';
 import { toSeedSnippet } from '../utils/seedText';
 import { InsightCard, StudioInsights } from './StudioInsights';
 import { StudioMapPanel } from './StudioMapPanel';
+import { StudioMaterialBar, type StudioMaterials } from './StudioMaterials';
 import { StudioMore } from './StudioMore';
 import { StudioNoteList } from './StudioNoteList';
 import { StudioRecords } from './StudioRecords';
@@ -21,7 +22,7 @@ import { useStudioSuggestions } from './studioSuggestionState';
 
 const nav = [
   { id: 'map', label: '地図', icon: 'git-network-outline' },
-  { id: 'ai', label: 'AIの提案', icon: 'sparkles-outline' },
+  { id: 'ai', label: 'つなぐ', icon: 'sparkles-outline' },
   { id: 'records', label: '記録', icon: 'calendar-outline' },
   { id: 'more', label: 'その他', icon: 'ellipsis-horizontal' },
 ] as const satisfies readonly { id: string; label: string; icon: StudioIcon }[];
@@ -34,11 +35,12 @@ const noSuggestions: readonly Suggestion[] = [];
 type StudioProps = {
   writer: GardenV3Writer; canArrange: () => boolean; canSuggest: () => boolean;
   onRead: (id: string, onReturn?: () => void, backLabel?: string) => void; onWrite: (centerId?: string) => void;
-  onAtelier?: () => void; onAtelierFromMemo?: (id: string) => void; onCollection?: (from: 'more' | 'records') => void;
+  onAtelier?: () => void; onAtelierFromMemo?: (id: string, materials?: string[], quotes?: string[]) => void; onCollection?: (from: 'more' | 'records') => void;
+  materials?: StudioMaterials;
   onData: () => void; onPurchase?: () => void; onManualMap: () => void; onMapImmersiveChange?: (active: boolean) => void;
 };
 
-export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, onData, onPurchase,
+export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, onAtelier, onAtelierFromMemo, onCollection, materials, onData, onPurchase,
   onManualMap, onMapImmersiveChange }: StudioProps) {
   const store = React.useSyncExternalStore(writer.subscribe, writer.getSnapshot);
   const { height } = useWindowDimensions();
@@ -147,6 +149,8 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
     } finally { handling.current = false; setPending(false); }
   }
 
+  const craftPair = onAtelierFromMemo ? (item: Suggestion) => onAtelierFromMemo(item.from.id, [item.from.id, item.to.id], item.evidence) : undefined;
+
   async function settle(entry: Suggestion, action: 'connect' | 'dismiss', fromMap: boolean) {
     const saved = await apply(settleInsight(entry, action, createId(), new Date().toISOString()),
       action === 'connect' ? 'つながりを保存しました' : '候補を見送りました');
@@ -173,10 +177,10 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
         back={!preview && previous ? { title: toSeedSnippet(previous.seed, 50), onPress: () => restoreVisit(previous.position) } : undefined}
         onSearch={(onReturn) => { returnFromPick.current = onReturn; setPick('map'); }} onSettings={(patch) => void changeMap(patch)}
         onSelect={selectOnMap} onFocus={focusMap} onRead={onRead} onAI={openAi} onReview={(item) => { setNotice(undefined); setReview(item); }}
-        onWrite={onWrite} onAtelier={onAtelierFromMemo} />
+        onWrite={onWrite} onAtelier={onAtelierFromMemo} materials={materials} />
     </View>
     <View style={[studioStyles.root, (tab !== 'ai' || pick || review) && styles.hidden]}>
-      {canSuggest() ? <StudioInsights focus={focus} state={state} notice={notice} pending={pending} skipped={skipped}
+      {canSuggest() ? <StudioInsights onCraft={craftPair} focus={focus} state={state} notice={notice} pending={pending} skipped={skipped}
       onPick={() => setPick('ai')} onRead={(id) => onRead(id, undefined, '候補に戻る')} onMap={(id) => {
         setPreview({ kind: 'suggestions', center: focusId, selected: id, emphasisId: id, returnTo: 'ai' });
         setNotice(undefined); setTab('map');
@@ -185,7 +189,7 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
       onRestore={(id) => void apply(restoreProposalPair(focusId, id, createId()), '見送りを解除しました')}
       onPermission={(include) => void apply(updateSeedPermission(createId(), focusId, permissionFor(store, focusId)?.epoch ?? 0,
         { discovery: include ? 'include' : 'exclude' }, new Date().toISOString()), include ? '候補に含めました' : '自動候補から外しました')} /> :
-      <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}><StudioTitle title="AIの提案" />
+      <ScrollView style={studioStyles.root} contentContainerStyle={studioStyles.content}><StudioTitle title="つながりの候補" />
         <Text style={studioStyles.text}>このビルドでは提案機能が無効です。</Text></ScrollView>}
     </View>
     <View style={[studioStyles.root, (tab !== 'records' || pick) && styles.hidden]}>
@@ -220,9 +224,10 @@ export function PlusStudio({ writer, canArrange, canSuggest, onRead, onWrite, on
     {review && <ScrollView accessibilityViewIsModal style={studioStyles.root} contentContainerStyle={studioStyles.content}>
       <StudioTitle title="候補を確認"><IconButton label="候補を閉じる" icon="close" disabled={pending} onPress={() => setReview(undefined)} /></StudioTitle>
       {notice && <Text accessibilityLiveRegion="polite" style={studioStyles.status}>{notice}</Text>}
-      <InsightCard suggestion={review} pending={pending} onRead={(id) => onRead(id, undefined, '候補に戻る')}
+      <InsightCard onCraft={craftPair} suggestion={review} pending={pending} onRead={(id) => onRead(id, undefined, '候補に戻る')}
         onSettle={(entry, action) => void settle(entry, action, true)} />
     </ScrollView>}
+    {materials && !review && !pick && !fullMap && <StudioMaterialBar materials={materials} />}
     {!review && !fullMap && <View accessibilityRole="tablist" style={styles.nav}>
       {nav.map((item) => <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
         accessibilityState={{ selected: !pick && tab === item.id }} onPress={() => changeTab(item.id)}

@@ -14,6 +14,7 @@ import { createId } from '../utils/ids';
 import { normalizeSearchText, searchableText, toSeedSnippet } from '../utils/seedText';
 import { Actions, focusControl, Heading, PlusButton, PlusInput, plusStyles } from './PlusUI';
 import { PlusWorkPaper, paperMap } from './PlusWorkPaper';
+import { StudioCraftSources } from './StudioCraftSources';
 import { IconButton, StudioAction, StudioRow, StudioSegments, StudioTitle, studioColors, studioStyles } from './StudioUI';
 import { useBufferedText } from './useBufferedText';
 import { makeWorkFile, makeWorkText } from './workFiles';
@@ -173,6 +174,7 @@ function Composer({ writer, store, source, onCancel, onSave, canCompose, canComp
       <PlusWorkPaper content={preview.content} width={paperWidth} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {used > height && <Text style={plusStyles.alert}>この内容は一枚に収まりません。文章や出典を調整できます。</Text>}
       {notice && <Text accessibilityLiveRegion="polite" style={plusStyles.alert}>{notice}</Text>}
+      <StudioCraftSources store={store} ids={source.insertedSuggestionIds} label="もとにした案と一節" />
       <StudioAction label="作品集に残す" icon="checkmark" primary disabled={busy || !canCompose} onPress={() => void save()} />
       {!canCompose && <Text style={plusStyles.meta}>新しい作品を保存できる利用権の確認が必要です。編集中の文章は残っています。</Text>}
     </ScrollView>;
@@ -305,6 +307,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
   const live = snapshot && readSource(store.seeds, snapshot.source.ref, true);
   const linkedMaterials = [...new Map([...content.materials, ...(content.diagram?.nodes.flatMap((node) =>
     store.sourceSnapshots.find(({ id }) => id === node.sourceSnapshotId) ?? []) ?? [])].map((item) => [item.id, item])).values()];
+  const craftSource = store.atelierRevisions.find(({ id }) => id === work.atelierRevisionId);
 
   if (editing && isCurrent) return <WorkEditor writer={writer} store={store} work={work} onBack={() => setEditing(false)} onSave={(next) => { setEditing(false); onRevision(next); }} />;
   return <View style={plusStyles.full}>
@@ -321,6 +324,7 @@ function WorkView({ content, context, newer, store, writer, onList, onRevision, 
       <PlusWorkPaper content={content} width={width} height={height} paperRef={paperRef} onMeasure={setUsed} />
       {overflow && <Text style={plusStyles.alert}>一枚には収まりません。文章を調整するか、テキストで取り出せます。</Text>}
       {(content.hidden.length > 0 || content.missingMaterials > 0) && <Text style={plusStyles.meta}>削除・参照できない材料の引用を隠しています。ご自身の文章に材料の内容が残っている場合は、共有前に確認できます。</Text>}
+      {craftSource && <StudioCraftSources store={store} ids={craftSource.insertedSuggestionIds} label="もとにした案と一節" />}
       {!comparison && last && <Text style={plusStyles.meta}>{file && last.collectionRevisionId === work.id && file.format === last.format ? '現在の版のファイルを用意しました' : '最後の出力版は作品集に記録されています'}</Text>}
       <Actions>
         {!comparison && isCurrent && <PlusButton label="本文・題名を編集" onPress={() => setEditing(true)} />}
